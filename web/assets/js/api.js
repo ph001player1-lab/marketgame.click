@@ -23,6 +23,20 @@ export const actionsInFlight = () => inFlight;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * Идентификатор нажатия. crypto.randomUUID есть только на https, а сайт
+ * могут открыть и по http, пока домен не получил сертификат, — тогда
+ * собираем такой же UUID v4 из crypto.getRandomValues.
+ */
+function newRequestId() {
+  if (crypto.randomUUID) return crypto.randomUUID();
+  const b = crypto.getRandomValues(new Uint8Array(16));
+  b[6] = (b[6] & 0x0f) | 0x40;
+  b[8] = (b[8] & 0x3f) | 0x80;
+  const x = [...b].map((v) => v.toString(16).padStart(2, '0')).join('');
+  return `${x.slice(0, 8)}-${x.slice(8, 12)}-${x.slice(12, 16)}-${x.slice(16, 20)}-${x.slice(20)}`;
+}
+
 async function send(body, withAuth) {
   const headers = { 'content-type': 'application/json', apikey: CONFIG.publishableKey };
   if (withAuth) {
@@ -59,7 +73,7 @@ export async function act(action, params = {}) {
   generation++;
   inFlight++;
   try {
-    return await send({ action, requestId: crypto.randomUUID(), ...params }, true);
+    return await send({ action, requestId: newRequestId(), ...params }, true);
   } finally {
     inFlight--;
   }
