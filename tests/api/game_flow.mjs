@@ -152,6 +152,21 @@ await step('первый вход команды — профиль', async () =
   assert.equal(d2.player.cash, 10000);
 });
 
+await step('стартовый кредит открыт ещё до первого месяца', async () => {
+  const d = await dash(CAT, gameId);
+  assert.equal(d.loan.tier, 1);
+  assert.equal(d.loan.available, 30000);
+  ok(await call(CAT, 'requestLoan', { gameId, amount: 5000 }));
+  const d2 = await dash(CAT, gameId);
+  assert.equal(d2.player.cash, 15000);
+  assert.equal(d2.loan.balance, 5000);
+  // Заём сам по себе капитал не меняет: касса выросла ровно на долг.
+  const [s] = await sql`select capital from v_standings where player_id = ${d2.player.id}`;
+  assert.equal(s, undefined, 'до первого месяца команды нет в итогах');
+  ok(await call(CAT, 'repayLoan', { gameId, amount: 5000 }));
+  await moneyInvariants(sql, gameId);
+});
+
 await step('табло по коду открыто без входа и без почт', async () => {
   const b = await call(null, 'board', { code });
   ok(b);
@@ -182,8 +197,7 @@ await step('месяц 1: решения, автоход за Dan, расчёт'
   assert.equal(d.lastResult.opex.rent, 7500);
   assert.equal(d.lastResult.opex.insurance, 1200);
   assert.equal(d.lastResult.opex.utilities, 6300);
-  assert.equal(d.loan.tier, 1, 'после первого месяца открыт кредит');
-  assert.ok(d.notices.some((n) => n.kind === 'credit'), 'уведомление о кредитном лимите');
+  assert.equal(d.loan.tier, 1, 'после первого месяца кредит на том же уровне');
 });
 
 await step('кредит, досрочное погашение, лимит', async () => {

@@ -274,7 +274,7 @@ try {
     await p.getByLabel('Recipient').selectOption({ label: 'Taco Town' });
     await p.getByRole('textbox', { name: 'Amount, $' }).fill('250');
     await p.getByRole('button', { name: 'Send', exact: true }).click();
-    await p.getByText('$250 → Taco Town').waitFor();
+    await p.getByText('Sent $250 to Taco Town.').waitFor();
     await shot(p, 'laptop-05-bank');
     await p.close();
   });

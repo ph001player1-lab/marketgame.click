@@ -40,7 +40,7 @@ const dynamic = {
   'institutions.': ['landlord', 'bank', 'insurer', 'utility', 'landlordWhat', 'bankWhat', 'insurerWhat', 'utilityWhat'],
   'leagues.': ['start', 'growth', 'elite', 'startWho', 'growthWho', 'eliteWho'],
   'board.views.': ['teams', 'economy', 'money', 'rating'],
-  'board.metrics.': ['cash', 'profit', 'marketSharePct', 'served', 'price', 'brand', 'reputation', 'quality',
+  'board.metrics.': ['capital', 'cash', 'profit', 'marketSharePct', 'served', 'price', 'brand', 'reputation', 'quality',
     'capacity', 'marketingTotal', 'qualityInvest', 'tax', 'dividends'],
   'board.citySeries.': ['profitTax', 'companies', 'otherIncome', 'spending'],
   'host.confirmStake.': ['sell', 'buyback', 'deal'],

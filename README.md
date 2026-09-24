@@ -108,15 +108,39 @@ GitHub Actions запускает всё это при каждом измене
 
 Без своего почтового сервиса Supabase шлёт письма только участникам своей
 команды (владелец проекта их получит) и всего несколько в час. Для игр с
-людьми нужен свой сервис, например Resend:
+людьми нужен свой сервис — Resend (бесплатно: 3 000 писем в месяц, 100 в
+день).
 
-1. resend.com → добавить домен marketgame.click → внести в Dynadot DNS-записи,
-   которые покажет Resend.
-2. Создать API-ключ → секрет `SMTP_PASS` в GitHub.
-3. Запустить развёртывание: оно подключит почту само.
+1. **Аккаунт:** resend.com → Sign up.
+2. **Домен:** **Domains** → **Add Domain** → `marketgame.click`, регион
+   North Virginia (us-east-1). Resend покажет 3–4 DNS-записи.
+3. **Записи в Dynadot:** **My Domains** → marketgame.click → **DNS
+   Settings** (режим *Dynadot DNS*) → раздел **Subdomain Records** — по
+   строке на каждую запись Resend, значения копировать из Resend как есть:
 
-Отправитель по умолчанию — noreply@marketgame.click; другой — переменная
-репозитория `SMTP_SENDER`.
+   | Subdomain           | Тип | Значение                                  | Приоритет |
+   |---------------------|-----|-------------------------------------------|-----------|
+   | `send`              | MX  | `feedback-smtp.us-east-1.amazonses.com`   | 10        |
+   | `send`              | TXT | `v=spf1 include:amazonses.com ~all`       |           |
+   | `resend._domainkey` | TXT | длинный ключ `p=…` из Resend               |           |
+   | `_dmarc`            | TXT | `v=DMARC1; p=none;` (по желанию)          |           |
+
+   Записи сайта (A и CNAME) не трогать.
+4. **Проверка:** в Resend у домена **Verify DNS Records**; статус
+   **Verified** — обычно через несколько минут, иногда до суток.
+5. **Ключ:** **API Keys** → **Create API Key** → имя `supabase`,
+   Permission **Sending access**, Domain `marketgame.click` → скопировать
+   ключ `re_…` (Resend показывает его один раз).
+6. **Секрет в GitHub:** **Settings** → **Secrets and variables** →
+   **Actions** → **New repository secret** → Name `SMTP_PASS`, Secret —
+   ключ → **Add secret**.
+7. **Развёртывание:** **Actions** → **Deploy Supabase** → **Run workflow**.
+   Шаг *Email sending (custom SMTP)* подключит почту: smtp.resend.com,
+   порт 465, пользователь `resend`, отправитель noreply@marketgame.click.
+
+Проверка: войти на сайт со своей почтой — код придёт от
+noreply@marketgame.click. Другой отправитель — переменная репозитория
+`SMTP_SENDER` (Settings → Secrets and variables → Actions → Variables).
 
 ## Сайт: GitHub Pages и домен
 

@@ -113,13 +113,21 @@ export { defaultDecision };
  * и при открытии нового: новое дело не наследует бренд, репутацию,
  * разогретую рекламу и прошлые убытки для налога.
  */
+/**
+ * Стартовый кредит: у нового ресторана лимит первого уровня открыт сразу,
+ * а не после первого месяца, как в v4.9. Настоящему ресторану дают
+ * кредит на открытие (в США — займы SBA), а без него команды разорялись в
+ * первом же месяце, не успев ничего предпринять.
+ */
+export const STARTUP_LOAN_TIER = 1;
+
 export function businessReset(): Row {
   return {
     brand: 0, reputation: 1, quality: 0, capacity_shifts: 0,
     seo_level: 0, seo_streak: 0, seo_unlocked: false,
     maps_level: 0, social_adstock: 0,
     outdoor_level: 0, outdoor_active_until: 0, affiliate_active: false,
-    loan_tier: 0, loan_balance: 0, loan_term_left: 0, loan_monthly_principal: 0,
+    loan_tier: STARTUP_LOAN_TIER, loan_balance: 0, loan_term_left: 0, loan_monthly_principal: 0,
     cf_positive_streak: 0, ever_missed_payment: false, tax_loss_cf: 0
   };
 }

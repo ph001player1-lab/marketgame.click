@@ -89,11 +89,13 @@ export function renderReport(page, data, opts = {}) {
     blocks.push(h('section', { class: 'card' },
       h('h2', { class: 'card__title' }, t('history.months')),
       simpleTable([t('common.month'), t('decision.price'), t('history.served'), t('board.share'), t('pl.revenue'),
-        t('pl.profit'), t('history.cashEnd')],
+        t('pl.profit'), t('history.cashEnd'), t('history.loanEnd'), t('board.capital')],
       months.map((x) => x.r
-        ? [x.round, usdc(x.r.price), int(x.r.served), pctRaw(x.r.marketSharePct), usd(x.r.revenue), usd(x.r.profit), usd(x.r.cashAfter)]
-        : [x.round, t('statuses.' + x.w.status), '—', '—', '—', usd(x.w.income), usd(x.w.savings) + ' ' + t('history.savingsMark')]),
-      { numeric: [1, 2, 3, 4, 5, 6] }),
+        ? [x.round, usdc(x.r.price), int(x.r.served), pctRaw(x.r.marketSharePct), usd(x.r.revenue), usd(x.r.profit),
+            usd(x.r.cashAfter), usd(x.r.loanBalanceAfter), usd(x.r.cashAfter - x.r.loanBalanceAfter)]
+        : [x.round, t('statuses.' + x.w.status), '—', '—', '—', usd(x.w.income),
+            usd(x.w.savings) + ' ' + t('history.savingsMark'), '—', usd(x.w.savings)]),
+      { numeric: [1, 2, 3, 4, 5, 6, 7, 8] }),
       team.results.length ? h('div', { class: 'toolbar' }, h('label', { class: 'toolbar__field' }, t('history.monthDetails') + ' ', pick)) : null,
       detail));
     if (team.results.length) {
@@ -149,14 +151,15 @@ function teamCsv(data, teamName) {
     'Food & supplies', 'Rent', 'Insurance', 'Utilities & other', 'Payroll', 'Extra shifts', 'Quality upkeep',
     'Quality investment', 'Advertising', ...CHANNELS.map((c) => t('channels.' + c + '.name')),
     'Operating profit', 'Loan interest', 'Profit before tax', 'Profit tax', 'Net profit', 'Loan principal paid',
-    'Cash flow', 'Dividends', 'Cash / savings at month end', 'Brand', 'Reputation', 'Quality', 'Capacity',
-    'Decision sent by team'];
+    'Cash flow', 'Dividends', 'Cash / savings at month end', 'Loan balance at month end', 'Capital (cash − loan)',
+    'Brand', 'Reputation', 'Quality', 'Capacity', 'Decision sent by team'];
   const dec = new Map(team.decisions.map((d) => [d.round, d]));
   const rows = [
     ...team.results.map((r) => [r.roundNumber, 'open', r.price, r.served, r.lost, r.marketSharePct, r.revenue, r.cogs,
       r.opex.rent, r.opex.insurance, r.opex.utilities, r.opex.payroll, r.opex.shiftCost, r.opex.qualityUpkeep,
       r.opex.qualityInvest, r.opex.marketing, ...CHANNELS.map((c) => r.marketingByChannel[c]),
       r.ebit, r.interest, r.profitBeforeTax, r.tax, r.profit, r.principalPaid, r.cashFlow, r.dividends, r.cashAfter,
+      r.loanBalanceAfter, r.cashAfter - r.loanBalanceAfter,
       r.brand, r.reputation, r.quality, r.capacity,
       dec.has(r.roundNumber) ? (dec.get(r.roundNumber).autoplay ? 'no (repeated)' : 'yes') : '']),
     ...team.offBusinessMonths.map((w) => {
@@ -165,6 +168,7 @@ function teamCsv(data, teamName) {
       row[1] = w.status;
       row[head.indexOf('Net profit')] = w.income;
       row[head.indexOf('Cash / savings at month end')] = w.savings;
+      row[head.indexOf('Capital (cash − loan)')] = w.savings;
       return row;
     })
   ].sort((a, b) => a[0] - b[0]);
@@ -172,12 +176,12 @@ function teamCsv(data, teamName) {
 }
 
 function gameCsv(data) {
-  const head = ['Team', 'Month', 'In business', 'Cash / savings', 'Profit / income', 'Market share %', 'Guests served',
+  const head = ['Team', 'Month', 'In business', 'Capital (cash − loan)', 'Cash / savings', 'Profit / income', 'Market share %', 'Guests served',
     'Price', 'Brand', 'Reputation', 'Quality', 'Capacity', 'Advertising', 'Quality investment', 'Profit tax', 'Dividends'];
   const rows = [];
   for (const p of data.players || []) {
     for (const e of p.series) {
-      rows.push([p.restaurant, e.round, e.inBusiness ? 'yes' : e.offBusinessStatus, e.cash, e.profit, e.marketSharePct,
+      rows.push([p.restaurant, e.round, e.inBusiness ? 'yes' : e.offBusinessStatus, e.capital, e.cash, e.profit, e.marketSharePct,
         e.served, e.price, e.brand, e.reputation, e.quality, e.capacity, e.marketingTotal, e.qualityInvest, e.tax, e.dividends]);
     }
   }

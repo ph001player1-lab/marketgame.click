@@ -25,8 +25,8 @@ function decide(i, month, cash) {
     if (total > cash * 0.9) for (const k of keys) d[k] = Math.floor((d[k] * cash * 0.9) / total);
     return d;
   };
-  // Первый месяц все осторожны: кредита ещё нет, а разорение в первом же
-  // месяце оставило бы табло пустым.
+  // Первый месяц все осторожны: разорение в первом же месяце оставило бы
+  // табло для проверки экранов пустым.
   if (month === 1) return cap({ ...base, price: 30 + (i % 3) - 1, [['seoSpend', 'mapsSpend', 'promoSpend'][i % 3]]: 500 });
   switch (i) {
     case 0: return cap({ ...base, price: 28, promoSpend: 2000, socialSpend: 1500 });

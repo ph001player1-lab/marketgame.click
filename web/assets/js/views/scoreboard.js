@@ -16,6 +16,7 @@ import { ratingTable } from './rating.js';
 
 // Что можно показать на графике команд. zero: false — ось не от нуля (цена).
 const METRICS = [
+  { key: 'capital', fmt: usd, tick: usdShort },
   { key: 'cash', fmt: usd, tick: usdShort },
   { key: 'profit', fmt: usd, tick: usdShort },
   { key: 'marketSharePct', fmt: pctRaw, tick: (v) => short(v) + '%' },
@@ -57,7 +58,7 @@ export function createScoreboard(root, opts = {}) {
   let myId = opts.myId || null;
   let sig = '';
   let view = VIEWS.includes(load('view')) ? load('view') : 'teams';
-  let metric = METRICS.some((m) => m.key === load('metric')) ? load('metric') : 'cash';
+  let metric = METRICS.some((m) => m.key === load('metric')) ? load('metric') : 'capital';
   let metricTable = load('metricTable', '0') === '1';
   let ratingCache = null;
   let cards = [];

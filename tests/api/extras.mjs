@@ -173,6 +173,26 @@ await step('два одновременных «Рассчитать» — ме�
   await moneyInvariants(sql, gameId);
 });
 
+await step('капитал — деньги минус долг: кредит в последний момент не помогает', async () => {
+  const m = await call(HOST, 'monitor', { gameId });
+  const bob = m.players.find((p) => p.email === BOB);
+  const capital = async () => {
+    const [s] = await sql`select capital from v_standings where player_id = ${bob.id}`;
+    const b = await call(null, 'board', { code: m.game.code });
+    return { view: Math.round(s.capital), board: b.players.find((p) => p.id === bob.id).capital };
+  };
+  const before = await capital();
+  const d = await dash(BOB, gameId);
+  assert.equal(d.lifecycle, 'active', 'Bob ведёт дело');
+  assert.ok(d.loan.available >= 5000, 'у Bob есть кредитный лимит');
+  ok(await call(BOB, 'requestLoan', { gameId, amount: Math.min(20000, d.loan.available) }));
+  const after = await capital();
+  assert.equal(after.view, before.view, 'заём не меняет капитал в итогах');
+  assert.equal(after.board, after.view, 'табло считает капитал так же, как итоги');
+  const [p] = await sql`select cash, loan_balance from players where id = ${bob.id}`;
+  assert.equal(after.view, Math.round(p.cash - p.loan_balance));
+});
+
 await step('поправка ведущего после финала сразу видна в рейтинге', async () => {
   for (let i = 4; i <= 12; i++) await month(gameId);
   const before = (await call(null, 'rating', { league: 'start' })).leagues[0].players;

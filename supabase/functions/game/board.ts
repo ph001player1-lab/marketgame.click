@@ -159,10 +159,12 @@ async function timeline(sql: Sql, gameId: string) {
       id: String(p.id), restaurant: teamLabel(p), displayName: p.display_name ?? null,
       status: String(p.status),
       location: { kind: p.location_kind ?? null, state: p.location_state ?? null, country: p.location_country ?? null },
-      // Капитал сейчас — по тому же правилу, что и v_standings: касса или
-      // накопления. Штраф или перевод между месяцами виден на табло сразу.
+      // Капитал сейчас — по тому же правилу, что и v_standings: касса минус
+      // долг банку или накопления. Штраф или перевод между месяцами виден
+      // на табло сразу.
       capital: Math.round(p.status === 'left' ? 0
-        : ['active', 'bankrupt'].includes(String(p.status)) ? num(p.cash) : num(p.employment_savings)),
+        : ['active', 'bankrupt'].includes(String(p.status)) ? num(p.cash) - num(p.loan_balance)
+          : num(p.employment_savings)),
       series: [] as Row[]
     });
   }
@@ -170,6 +172,7 @@ async function timeline(sql: Sql, gameId: string) {
     byPlayer.get(String(r.player_id))?.series.push({
       round: num(r.round_number), inBusiness: true,
       profit: Math.round(num(r.profit)), cash: Math.round(num(r.cash_after)),
+      capital: Math.round(num(r.cash_after) - num(r.loan_balance_after)),
       marketSharePct: round2(num(r.market_share) * 100), served: Math.round(num(r.served)),
       price: round2(num(r.price)), brand: round2(num(r.brand_after)),
       reputation: round2(num(r.reputation_after)), quality: round2(num(r.quality)),
@@ -187,6 +190,7 @@ async function timeline(sql: Sql, gameId: string) {
     byPlayer.get(String(w.player_id))?.series.push({
       round: num(w.round_number), inBusiness: false, offBusinessStatus: w.status,
       profit: broke ? null : Math.round(num(w.income)), cash: broke ? null : Math.round(num(w.savings)),
+      capital: broke ? null : Math.round(num(w.savings)),
       marketSharePct: null, served: null, price: null, brand: null, reputation: null,
       quality: null, capacity: null, marketingTotal: null, qualityInvest: null, tax: null, dividends: null
     });

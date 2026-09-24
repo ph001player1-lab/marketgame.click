@@ -14,7 +14,7 @@ import {
 import {
   type Sql, type Row, fail, num, cents, round2, normEmail, isEmail, currentRound, accountingRound,
   activeConfig, addLedger, addCity, addNotice, logHostAction, moneyTarget, available,
-  OFF_BUSINESS, INSTITUTIONS, isInstitution, usd, teamLabel
+  OFF_BUSINESS, INSTITUTIONS, isInstitution, usd, teamLabel, STARTUP_LOAN_TIER
 } from './lib.ts';
 import { gameMeta, rulesFor, upcomingChanges } from './player.ts';
 import { cityBudget, institutionsState } from './board.ts';
@@ -187,6 +187,7 @@ export async function setRoster(sql: Sql, game: Row, actor: string, b: Row,
         from players where email = ${e} order by created_at desc limit 1`;
       const [p] = await tx`insert into players ${tx({
         game_id: game.id, email: e, cash: cfg.START_CAPITAL, reputation: 1, status: 'active',
+        loan_tier: STARTUP_LOAN_TIER,
         display_name: prev?.display_name ?? null, restaurant_name: prev?.restaurant_name ?? null,
         location_kind: prev?.location_kind ?? null, location_state: prev?.location_state ?? null,
         location_country: prev?.location_country ?? null

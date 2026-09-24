@@ -188,9 +188,10 @@ const EN = {
     title: 'Bank',
     balance: 'Loan balance', rate: 'Rate', nextPayment: 'Next payment (principal + interest)',
     termLeft: 'Payments left', available: 'Available to borrow', limit: 'Credit limit',
-    noCredit: 'Credit opens after your first month. The limit grows by itself: two months in a row of positive cash flow raise it.',
+    noCredit: 'Credit isn\'t available right now.',
     borrow: 'Borrow', repay: 'Repay early', amount: 'Amount, $',
-    note: 'The bank in this game is fictional.',
+    note: 'The bank in this game is fictional. Your capital counts cash minus the loan: borrowing alone doesn\'t make you richer.',
+    capital: 'Your capital (cash − loan)',
     received: 'Loan received: {amount}.',
     repaid: 'Repaid {amount}.'
   },
@@ -198,7 +199,8 @@ const EN = {
   transfer: {
     title: 'Send money to another team',
     lead: 'Out of your cash. Useful for deals, helping an ally or buying a share of their business.',
-    to: 'Recipient', amount: 'Amount, $', send: 'Send', nobody: 'No other teams yet.'
+    to: 'Recipient', amount: 'Amount, $', send: 'Send', nobody: 'No other teams yet.',
+    sent: 'Sent {amount} to {team}.'
   },
 
   stakes: {
@@ -256,13 +258,14 @@ const EN = {
     title: 'Scoreboard',
     views: { teams: 'Teams', economy: 'Economy', money: 'Where the money went', rating: 'Rating' },
     metrics: {
-      cash: 'Cash', profit: 'Profit', marketSharePct: 'Market share', served: 'Guests served',
+      capital: 'Capital', cash: 'Cash', profit: 'Profit', marketSharePct: 'Market share', served: 'Guests served',
       price: 'Price', brand: 'Brand', reputation: 'Reputation', quality: 'Quality',
       capacity: 'Capacity', marketingTotal: 'Advertising', qualityInvest: 'Quality investment',
       tax: 'Profit tax', dividends: 'Dividends'
     },
     metricNotes: {
-      cash: 'Cash in the restaurant at month end. For teams out of business — their savings.',
+      capital: 'Cash minus what the team still owes the bank; savings for teams out of business. The most capital at the end wins.',
+      cash: 'Cash in the restaurant at month end, before subtracting loans. For teams out of business — their savings.',
       profit: 'Net profit after interest and tax. For teams out of business — their income.',
       marketSharePct: 'Share of all guests in town that the restaurant served.',
       served: 'Guests served; guests beyond capacity were turned away.',
@@ -357,7 +360,7 @@ const EN = {
     title: 'Rating',
     lead: 'All rated games of the league. Score = 0.7 × average capital multiplier + 0.9 × average place score.',
     howTitle: 'How the rating works',
-    how1: 'Capital multiplier = money at the end of the game ÷ starting capital.',
+    how1: 'Capital multiplier = capital at the end of the game ÷ starting capital. Capital is money minus what the team still owes the bank.',
     how2: 'Place score is 1 for first place, 0 for last, in between for the rest.',
     how3: 'A game counts when it is played to the last month of its league and isn\'t a practice game.',
     how4: 'A team counts in a game when it played at least three quarters of the months: 9 of 12, 18 of 24, 27 of 36.',
@@ -500,6 +503,7 @@ const EN = {
     monthDetails: 'Month details',
     served: 'Served',
     cashEnd: 'Cash at end',
+    loanEnd: 'Loan at end',
     savingsMark: '(savings)',
     decisions: 'Your decisions',
     auto: '(repeated)',
@@ -649,10 +653,11 @@ const EN = {
       bank: {
         title: 'Bank and loans',
         body: [
-          '- Credit opens after your first month: up to **{l1}**.',
+          '- A startup loan of up to **{l1}** is open from the very first month — even before month 1 is calculated.',
           '- Two months in a row of positive cash flow raise the limit to **{l3}** ({l2} after a missed payment). The limit never goes down.',
           '- Interest is {rate} a year ({monthly} a month) on what you owe. The principal is repaid in {term} equal monthly payments; a new loan restarts the schedule.',
           '- Repay early at any time.',
+          '> A loan is not income: your capital is cash **minus** what you owe. Borrow to grow, not to look rich — a loan taken in the last month adds nothing but interest.',
           'The bank in this game is fictional and isn\'t an offer of credit.'
         ]
       },
@@ -701,7 +706,7 @@ const EN = {
       scoring: {
         title: 'Winning and the rating',
         body: [
-          '- **Capital** is your money at the end: cash in the restaurant, or savings if you are out of business.',
+          '- **Capital** is your money at the end minus what you still owe the bank: cash minus the loan balance, or savings if you are out of business.',
           '- **Multiplier** = capital ÷ {startCapital}. **Place** is by capital.',
           '- The league rating adds up all rated games: score = 0.7 × average multiplier + 0.9 × average place score (1 for first place, 0 for last).',
           '- A game is rated when it\'s played to its last month and isn\'t a practice game. A team counts if it played at least three quarters of the months ({minMonths} of {total}).'
@@ -741,7 +746,7 @@ const EN = {
     negative_spend: 'Amounts can\'t be negative.',
     shifts_step: 'You can add or cut one shift per month.',
     shifts_out_of_range: 'That\'s outside the allowed number of shifts.',
-    no_credit_yet: 'Credit opens after your first month.',
+    no_credit_yet: 'Credit isn\'t available yet.',
     over_limit: 'That\'s over your credit limit. Available: {available}.',
     no_loan: 'You have no loan to repay.',
     bad_amount: 'Check the amount.',

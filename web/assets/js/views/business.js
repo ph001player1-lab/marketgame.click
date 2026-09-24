@@ -419,6 +419,7 @@ export function createBusiness(root, ctx) {
         const l = s.loan;
         const row = (label, v) => h('tr', {}, h('td', {}, label), h('td', { class: 'r' }, v));
         replace(table,
+          row(t('bank.capital'), usd(s.player.cash - l.balance)),
           row(t('bank.balance'), usd(l.balance)),
           row(t('bank.rate'), pct(l.rateAnnual)),
           l.balance > 0 ? row(t('bank.nextPayment'), usd(l.nextPayment)) : null,
@@ -443,7 +444,7 @@ export function createBusiness(root, ctx) {
       h('div', { class: 'btn-row' }, h('div', { style: { flex: '1 1 160px' } }, amount),
         h('button', { class: 'btn', type: 'button', onclick: (e) =>
           run(e.currentTarget, 'transferMoney', { toPlayerId: select.value, amount: parseMoney(amount.value) }, null)
-            .then((res) => { if (res?.ok) { toast(t('transfer.title') + ': ' + usd(res.sent) + ' → ' + res.to, 'ok'); amount.value = ''; } }) },
+            .then((res) => { if (res?.ok) { toast(t('transfer.sent', { amount: usd(res.sent), team: res.to }), 'ok'); amount.value = ''; } }) },
           t('transfer.send'))));
     const el = card(t('transfer.title'), h('p', { class: 'muted small' }, t('transfer.lead')), empty, form);
     let sig = '';

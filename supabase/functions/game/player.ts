@@ -98,6 +98,7 @@ export function formatResult(r: Row | undefined) {
     ebit: num(r.ebit), interest: num(r.interest), profitBeforeTax: num(r.profit_before_tax),
     tax: num(r.tax), profit: num(r.profit), principalPaid: num(r.principal_paid),
     cashFlow: num(r.cash_flow), dividends: num(r.dividends), cashAfter: num(r.cash_after),
+    loanBalanceAfter: num(r.loan_balance_after),
     brand: round2(num(r.brand_after)), reputation: round2(num(r.reputation_after)),
     quality: round2(num(r.quality)), capacity: Math.round(num(r.capacity))
   };
