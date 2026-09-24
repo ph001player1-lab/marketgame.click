@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<!-- «Захвати рынок или закрой бизнес» — вводный слайд для новичков -->
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Захвати рынок или закрой бизнес — как устроена игра</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600;800&family=Golos+Text:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    /* Цвет здесь несёт смысл, а не украшает:
+       бирюза — рынок, манго — деньги, чили — то, что вас разорит. */
+    --ink:    #0E2A33;   /* глубокая морская синь, фон */
+    --panel:  #143843;
+    --line:   #23545F;
+    --sand:   #F4EBDA;   /* текст */
+    --dim:    #90AEB6;   /* второстепенный текст */
+    --sea:    #4EC9C0;   /* рынок и всё, что про гостей */
+    --mango:  #F2A65A;   /* деньги */
+    --chili:  #E0453B;   /* риск */
+    --lime:   #9FD356;   /* ваша доля */
+  }
+
+  *{ box-sizing:border-box; margin:0; padding:0; }
+
+  html,body{
+    height:100%;
+    background:#071820;
+    display:flex; align-items:center; justify-content:center;
+    font-family:"Golos Text",system-ui,sans-serif;
+  }
+
+  /* Кадр 16:9: подстраивается и под проектор, и под окно браузера.
+     Все размеры считаются от одной единицы --u, поэтому слайд
+     остаётся собранным на любом экране. */
+  .slide{
+    --u: min(1vw, 1.7778vh);
+    width:  calc(100 * var(--u));
+    height: calc(56.25 * var(--u));
+    background:var(--ink);
+    color:var(--sand);
+    padding: calc(2.1 * var(--u)) calc(3.0 * var(--u));
+    display:grid;
+    /* Колонку задаём явно. Без неё неявная колонка получает ширину
+       auto, то есть тянется по содержимому, и правый край шапки
+       уезжает за пределы кадра. minmax(0,1fr) держит её в границах. */
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+    gap: calc(1.15 * var(--u));
+    overflow:hidden;
+  }
+
+  /* ------------------------------------------------ шапка */
+  /* Шапка на обычном потоке: никаких вложенных flex и grid. Строка
+     условий переносится сама, если шрифт окажется шире ожидаемого,
+     и не может выехать за край кадра. */
+  .wordmark{
+    font-family:"Unbounded",sans-serif; font-weight:800;
+    font-size: calc(2.5 * var(--u)); line-height:1.05;
+    letter-spacing:-0.01em;
+  }
+  .wordmark span{ color:var(--chili); }
+
+  .facts{
+    margin-top: calc(0.55 * var(--u));
+    font-size: calc(1.02 * var(--u)); color:var(--dim); line-height:1.4;
+  }
+  .facts b{
+    font-family:"Unbounded",sans-serif; font-weight:600;
+    font-size: calc(1.15 * var(--u)); color:var(--mango);
+  }
+  .facts span{ display:inline-block; margin-right: calc(2.2 * var(--u)); white-space:nowrap; }
+
+  /* ------------------------------------------------ герой: рынок */
+  .market{ display:flex; flex-direction:column; gap: calc(0.9 * var(--u)); }
+
+  .market-line{ display:flex; align-items:flex-end; gap: calc(1.6 * var(--u)); }
+
+  .big{
+    font-family:"Unbounded",sans-serif; font-weight:800;
+    font-size: calc(4.6 * var(--u)); line-height:.86; white-space:nowrap;
+    color:var(--sea); letter-spacing:-0.02em;
+  }
+  .market-said{
+    font-size: calc(1.25 * var(--u)); line-height:1.35;
+    max-width: calc(52 * var(--u)); padding-bottom: calc(0.4 * var(--u));
+  }
+  .market-said strong{ color:var(--sand); font-weight:600; }
+
+  /* Полоса рынка — главный предмет слайда. Один взгляд объясняет то,
+     на что в тексте уходит абзац: пирог не растёт, доли отнимаются
+     друг у друга, а часть гостей вообще не доходит ни к кому. */
+  .band{
+    display:flex; height: calc(4.0 * var(--u));
+    border-radius: calc(0.6 * var(--u)); overflow:hidden;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.06);
+  }
+  .seg{
+    display:flex; flex-direction:column; justify-content:center;
+    padding: 0 calc(0.9 * var(--u));
+    animation: grow .9s cubic-bezier(.2,.7,.3,1) both;
+  }
+  .seg b{ font-size: calc(1.35 * var(--u)); font-weight:700; line-height:1.1; }
+  .seg i{ font-style:normal; font-size: calc(0.82 * var(--u)); opacity:.75; }
+
+  .seg-you   { background:var(--lime);  color:#16301A; flex-basis:34%; animation-delay:.05s; }
+  .seg-b     { background:var(--sea);   color:#0B2E2C; flex-basis:27%; animation-delay:.15s; }
+  .seg-c     { background:#2E7F86;      color:#EAF7F6; flex-basis:19%; animation-delay:.25s; }
+  .seg-d     { background:#1F5C67;      color:#D6ECEF; flex-basis:12%; animation-delay:.35s; }
+  .seg-none  { background:#16323B;      color:var(--dim); flex-basis:8%;  animation-delay:.45s;
+               box-shadow: inset 0 0 0 1px var(--line); }
+
+  @keyframes grow{ from{ flex-basis:0; opacity:0; } }
+
+  @media (prefers-reduced-motion: reduce){
+    .seg{ animation:none; }
+  }
+
+  /* ------------------------------------------------ две колонки */
+  .cols{ display:grid; grid-template-columns: 1fr 1fr; gap: calc(2.4 * var(--u));
+         min-height:0; }
+  .cols > div{ min-height:0; overflow:hidden; }
+
+  .head{
+    font-size: calc(1.15 * var(--u)); font-weight:700;
+    padding-bottom: calc(0.5 * var(--u)); margin-bottom: calc(0.9 * var(--u));
+    border-bottom: calc(0.15 * var(--u)) solid var(--line);
+  }
+
+  .levers{ display:flex; flex-direction:column; justify-content:flex-start; gap: calc(0.5 * var(--u)); }
+  .lever{ display:grid; grid-template-columns: calc(9.5 * var(--u)) 1fr; gap: calc(1 * var(--u)); align-items:baseline; }
+  .lever b{ font-size: calc(1.25 * var(--u)); font-weight:600; color:var(--sea); }
+  .lever span{ font-size: calc(0.9 * var(--u)); line-height:1.25; color:var(--dim); }
+
+  /* Денежная цепочка: показываем не формулу, а порядок списаний —
+     именно в этом порядке игрок и теряет деньги за месяц. */
+  .flow{ display:flex; flex-direction:column; justify-content:flex-start; gap: calc(0.18 * var(--u)); }
+  .row{
+    display:grid; grid-template-columns: calc(1.3*var(--u)) 1fr calc(13*var(--u));
+    gap: calc(0.7 * var(--u)); align-items:baseline;
+    font-size: calc(0.95 * var(--u));
+  }
+  .row em{ font-style:normal; color:var(--dim); font-weight:600; }
+  .row s{ text-decoration:none; }
+  .row u{ text-decoration:none; color:var(--dim); font-size: calc(0.85 * var(--u)); text-align:right; }
+  .row-total{
+    margin-top: calc(0.35 * var(--u)); padding-top: calc(0.55 * var(--u));
+    border-top: calc(0.12 * var(--u)) solid var(--line);
+    font-size: calc(1.35 * var(--u)); font-weight:700; color:var(--mango);
+  }
+
+  .fixed-note{
+    margin-top: calc(0.7 * var(--u));
+    background:var(--panel); border-left: calc(0.3*var(--u)) solid var(--mango);
+    padding: calc(0.6 * var(--u)) calc(0.85 * var(--u));
+    font-size: calc(0.94 * var(--u)); line-height:1.32;
+  }
+  .fixed-note b{ color:var(--mango); }
+
+  /* ------------------------------------------------ риски */
+  .risks{ display:grid; grid-template-columns: repeat(3, 1fr); gap: calc(1.4 * var(--u)); }
+  .risk{
+    background:var(--panel); border-radius: calc(0.5 * var(--u));
+    padding: calc(0.75 * var(--u)) calc(1 * var(--u));
+    border-top: calc(0.25 * var(--u)) solid var(--sea);
+  }
+  .risk-danger{ border-top-color:var(--chili); }
+  .risk b{ display:block; font-size: calc(1.1 * var(--u)); margin-bottom: calc(0.25 * var(--u)); }
+  .risk span{ font-size: calc(0.86 * var(--u)); line-height:1.26; color:var(--dim); }
+  .risk-danger b{ color:var(--chili); }
+
+  /* ------------------------------------------------ финал */
+  .goal{
+    display:flex; align-items:baseline; gap: calc(1.4 * var(--u));
+    border-top: calc(0.15 * var(--u)) solid var(--line);
+    padding-top: calc(0.85 * var(--u));
+  }
+  .goal b{
+    font-family:"Unbounded",sans-serif; font-weight:600;
+    font-size: calc(1.7 * var(--u)); line-height:1;
+  }
+  .goal span{ font-size: calc(1.05 * var(--u)); color:var(--dim); }
+</style>
+</head>
+<body>
+<div class="slide">
+
+  <div class="top">
+    <div class="wordmark">Захвати рынок или <span>закрой бизнес</span></div>
+    <p class="facts">
+      <span><b>4–8</b> заведений на пляже</span>
+      <span><b>12</b> месяцев</span>
+      <span><b>5 минут</b> на решение</span>
+      <span><b>100 000 ฿</b> у каждого на старте</span>
+    </p>
+  </div>
+
+  <div class="market">
+    <div class="market-line">
+      <div class="big">10 000</div>
+      <div class="market-said">
+        <strong>гостей в месяц — на всех.</strong>
+        Рынок не растёт от того, что вас стало больше.
+        Всё, что вы забрали, вы забрали у соседа.
+      </div>
+    </div>
+
+    <div class="band">
+      <div class="seg seg-you"><b>34%</b><i>вы</i></div>
+      <div class="seg seg-b"><b>27%</b><i>сосед</i></div>
+      <div class="seg seg-c"><b>19%</b><i>сосед</i></div>
+      <div class="seg seg-d"><b>12%</b><i>сосед</i></div>
+      <div class="seg seg-none"><b>8%</b><i>ушли ни с чем</i></div>
+    </div>
+  </div>
+
+  <div class="cols">
+    <div>
+      <div class="head">Чем вы притягиваете гостей</div>
+      <div class="levers">
+        <div class="lever"><b>Цена</b><span>Дешевле зовёт больше людей, но с каждого вы возьмёте меньше</span></div>
+        <div class="lever"><b>Реклама</b><span>Шесть каналов, у каждого свой характер: одни работают сразу, другие месяцами</span></div>
+        <div class="lever"><b>Качество</b><span>Притягивает гостей и одновременно удорожает кухню</span></div>
+        <div class="lever"><b>Смены</b><span>Сколько гостей вы физически успеете накормить</span></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="head">Что остаётся в кассе к концу месяца</div>
+      <div class="flow">
+        <div class="row"><em>+</em><s>Выручка</s><u>цена × гостей</u></div>
+        <div class="row"><em>−</em><s>Продукты</s><u>120 ฿ с блюда</u></div>
+        <div class="row"><em>−</em><s>Аренда и зарплаты</s><u>370 000 ฿</u></div>
+        <div class="row"><em>−</em><s>Реклама и вложения в качество</s><u>сколько решили</u></div>
+        <div class="row"><em>−</em><s>Проценты банку</s><u>если брали кредит</u></div>
+        <div class="row row-total"><em>=</em><s>Прибыль</s><u></u></div>
+      </div>
+      <div class="fixed-note">
+        <b>370 000 ฿ спишется в любом случае</b> — даже в месяц, когда к вам не зашёл никто.
+      </div>
+    </div>
+  </div>
+
+  <div class="risks">
+    <div class="risk">
+      <b>Мест может не хватить</b>
+      <span>Пришло больше, чем вы готовы принять — лишние уходят к соседям и портят вам репутацию</span>
+    </div>
+    <div class="risk">
+      <b>Банк даёт в долг</b>
+      <span>До 2 000 000 ฿ под 15% годовых на полгода. Лимит открывается тем, кто уже показал прибыль</span>
+    </div>
+    <div class="risk risk-danger">
+      <b>Касса ушла в минус</b>
+      <span>Заведение закрыто. Госслужба, свободное плавание или работа на другого игрока — накопите 100 000 ฿ и открывайте новое дело</span>
+    </div>
+  </div>
+
+  <div class="goal">
+    <b>Побеждает тот, у кого через 12 месяцев больше денег.</b>
+    <span>Не выручка. Не доля рынка. Деньги в кассе.</span>
+  </div>
+
+</div>
+</body>
+</html>

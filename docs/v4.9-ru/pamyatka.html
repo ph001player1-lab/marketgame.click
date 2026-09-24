@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<!-- "Захвати рынок или закрой бизнес" — памятка игрока к v3.3 · от 18.08.2026 -->
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Захвати рынок или закрой бизнес — памятка игрока</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#16263D;      /* основной цвет текста — глубокий чернильный */
+    --sea:#0E7C7B;      /* андаманская бирюза — заголовки блоков */
+    --amber:#B4761A;    /* деньги и цифры, к которым надо приглядеться */
+    --brick:#A83B2B;    /* только про разорение */
+    --paper:#FBFAF7;
+    --rule:#CFCCC2;
+    --muted:#5C6672;
+    --tint:#EFF3F2;
+  }
+
+  @page{ size:A4 portrait; margin:9mm; }
+
+  *{ box-sizing:border-box; margin:0; padding:0; }
+
+  body{
+    background:#E7E5DE;
+    font-family:"IBM Plex Sans","Segoe UI",Roboto,sans-serif;
+    color:var(--ink);
+    font-size:7.8pt;
+    line-height:1.26;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  .sheet{
+    width:192mm;
+    min-height:279mm;
+    margin:8mm auto;
+    padding:0;
+    background:var(--paper);
+    box-shadow:0 2px 14px rgba(0,0,0,.18);
+  }
+
+  /* ---------------------------------------------- шапка */
+  .masthead{
+    display:flex; align-items:flex-end; justify-content:space-between;
+    gap:4mm; padding:0 0 2mm; flex-wrap:wrap; border-bottom:1.6pt solid var(--ink);
+  }
+  .masthead h1{
+    font-family:Oswald,"Arial Narrow",sans-serif;
+    font-weight:600; font-size:15pt; line-height:1;
+    text-transform:uppercase; letter-spacing:.01em;
+  }
+  .masthead h1 em{ font-style:normal; color:var(--brick); }
+  .kicker{
+    font-family:"IBM Plex Mono",monospace; font-size:7pt;
+    letter-spacing:.14em; text-transform:uppercase; color:var(--muted);
+    margin-bottom:1.2mm;
+  }
+  .vitals{ display:flex; gap:4mm; text-align:right; flex-shrink:0; }
+  .vital .n{
+    font-family:"IBM Plex Mono",monospace; font-weight:600;
+    font-size:10.5pt; line-height:1; color:var(--ink); display:block;
+  }
+  .vital .l{
+    font-size:6.6pt; letter-spacing:.08em; text-transform:uppercase;
+    color:var(--muted); white-space:nowrap;
+  }
+
+  /* -------------------------------- чек: цепочка П&У (signature) */
+  .receipt{
+    margin:2.2mm 0; padding:1.8mm 0;
+    border-top:1pt dashed var(--rule); border-bottom:1pt dashed var(--rule);
+  }
+  .receipt-label{
+    font-family:"IBM Plex Mono",monospace; font-size:6.6pt;
+    letter-spacing:.16em; text-transform:uppercase; color:var(--muted);
+    margin-bottom:1.2mm;
+  }
+  .chain{ display:flex; align-items:stretch; gap:0; }
+  .link{ flex:1; padding:0 2mm; border-left:.6pt solid var(--rule); }
+  .link:first-child{ border-left:0; padding-left:0; }
+  .link .op{
+    font-family:"IBM Plex Mono",monospace; font-size:9pt; font-weight:600;
+    color:var(--amber); display:block; line-height:1;
+  }
+  .link .t{ font-weight:600; font-size:8pt; display:block; margin:.6mm 0 .3mm; }
+  .link .d{ font-size:7pt; color:var(--muted); line-height:1.25; }
+  .link.total .t{ color:var(--sea); }
+  .link.total{ background:var(--tint); }
+
+  /* ---------------------------------------------- сетка */
+  .cols{ display:flex; gap:3.5mm; margin-bottom:2.1mm; }
+  .col{ flex:1; }
+  .col.wide{ flex:1.22; }
+
+  section{ margin-bottom:2.1mm; }
+  h2{
+    font-family:Oswald,"Arial Narrow",sans-serif;
+    font-size:9pt; font-weight:500; text-transform:uppercase;
+    letter-spacing:.05em; color:var(--sea);
+    padding-bottom:.5mm; margin-bottom:1.1mm;
+    border-bottom:.8pt solid var(--sea);
+  }
+  h2 span{ float:right; font-size:7pt; color:var(--muted); letter-spacing:.02em; text-transform:none; }
+
+  dl{ display:grid; grid-template-columns:auto 1fr; gap:.5mm 2mm; }
+  dt{ font-weight:600; white-space:nowrap; }
+  dd{ color:var(--muted); }
+  dd b{ color:var(--ink); font-weight:600; }
+
+  .num{ font-family:"IBM Plex Mono",monospace; font-weight:500; color:var(--amber); }
+
+  ul{ list-style:none; }
+  li{ padding-left:3mm; position:relative; margin-bottom:.5mm; }
+  li::before{ content:"—"; position:absolute; left:0; color:var(--rule); }
+
+  /* ---------------------------------------------- таблица каналов */
+  table{ width:100%; border-collapse:collapse; }
+  th{
+    text-align:left; font-size:6.6pt; letter-spacing:.07em; text-transform:uppercase;
+    color:var(--muted); font-weight:500; padding:0 1.5mm .8mm 0;
+    border-bottom:.8pt solid var(--ink);
+  }
+  td{ padding:.7mm 1.5mm .7mm 0; border-bottom:.4pt solid var(--rule); vertical-align:top; }
+  td:first-child{ font-weight:600; white-space:nowrap; }
+  tr:last-child td{ border-bottom:0; }
+  .budget{ font-family:"IBM Plex Mono",monospace; color:var(--amber); white-space:nowrap; }
+
+  /* ---------------------------------------------- блок разорения */
+  .fallback{
+    border:1pt solid var(--brick); padding:2mm 2.4mm; margin-bottom:2.1mm;
+  }
+  .fallback h2{ color:var(--brick); border-bottom-color:var(--brick); }
+  .paths{ display:flex; gap:3.5mm; }
+  .path{ flex:1; }
+  .path .name{ font-weight:600; color:var(--brick); display:block; }
+  .back{
+    margin-top:1.6mm; padding-top:1.4mm; border-top:.4pt dashed var(--brick);
+    font-size:7.6pt;
+  }
+
+  /* ---------------------------------------------- подвал */
+  .footnotes{
+    display:flex; gap:4mm; padding-top:1.4mm; border-top:1.6pt solid var(--ink);
+    font-size:7pt;
+  }
+  .footnotes div{ flex:1; }
+  .footnotes b{ display:block; font-family:Oswald,"Arial Narrow",sans-serif;
+    text-transform:uppercase; letter-spacing:.04em; font-weight:500; font-size:8pt; }
+
+  .warn{ color:var(--brick); font-weight:600; }
+
+  @media print{
+    body{ background:#fff; font-size:7.8pt; }
+    .sheet{ width:auto; min-height:0; margin:0; box-shadow:none; }
+  }
+</style>
+</head>
+<body>
+<div class="sheet">
+
+  <header class="masthead">
+    <div>
+      <div class="kicker">Памятка игрока · держите под рукой</div>
+      <h1>Захвати рынок<br>или <em>закрой бизнес</em></h1>
+    </div>
+    <div class="vitals">
+      <div class="vital"><span class="n">12</span><span class="l">месяцев</span></div>
+      <div class="vital"><span class="n">5 мин</span><span class="l">на месяц</span></div>
+      <div class="vital"><span class="n">100 000 ฿</span><span class="l">стартовый капитал</span></div>
+    </div>
+  </header>
+
+  <!-- ============ подпись страницы: как считается ваш месяц ============ -->
+  <div class="receipt">
+    <div class="receipt-label">Из чего складывается ваш месяц</div>
+    <div class="chain">
+      <div class="link">
+        <span class="op">+</span><span class="t">Выручка</span>
+        <span class="d">цена × обслуженных клиентов</span>
+      </div>
+      <div class="link">
+        <span class="op">−</span><span class="t">Себестоимость</span>
+        <span class="d">120 ฿ за блюдо, растёт с качеством</span>
+      </div>
+      <div class="link total">
+        <span class="op">=</span><span class="t">Валовая прибыль</span>
+        <span class="d">то, чем платите за всё остальное</span>
+      </div>
+      <div class="link">
+        <span class="op">−</span><span class="t">Расходы месяца</span>
+        <span class="d">аренда, ФОТ, смены, качество, реклама</span>
+      </div>
+      <div class="link">
+        <span class="op">−</span><span class="t">Проценты банку</span>
+        <span class="d">на остаток долга</span>
+      </div>
+      <div class="link total">
+        <span class="op">=</span><span class="t">Прибыль</span>
+        <span class="d">минус тело кредита = деньги в кассе</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="cols">
+    <!-- ================= левая колонка ================= -->
+    <div class="col wide">
+      <section>
+        <h2>Что вы решаете каждый месяц</h2>
+        <dl>
+          <dt>Цена</dt>
+          <dd>опорная <b class="num">300 ฿</b>, не ниже <span class="num">100 ฿</span>. Выше <b class="num">540 ฿</b> — психологический предел, спрос обваливается резко, а не плавно.</dd>
+
+          <dt>Реклама</dt>
+          <dd>шесть каналов, каждый со своим характером — таблица ниже.</dd>
+
+          <dt>Качество</dt>
+          <dd><b class="num">400 000 ฿</b> = +1 единица, максимум 3. Держать стоит <span class="num">15 000 ฿</span>/мес за единицу, без вложений тает на 5% в месяц. И готовить хорошо дороже: <span class="num">+15%</span> к себестоимости за единицу.</dd>
+
+          <dt>Смены</dt>
+          <dd>±1 за месяц. Смена — это <b class="num">1 000</b> клиентов ёмкости за <span class="num">60 000 ฿</span>/мес. База <b class="num">3 000</b> клиентов.</dd>
+        </dl>
+      </section>
+
+      <section>
+        <h2>Что вычтут в любом случае<span>каждый месяц</span></h2>
+        <dl>
+          <dt>Аренда</dt><dd><span class="num">150 000 ฿</span></dd>
+          <dt>ФОТ</dt><dd><span class="num">220 000 ฿</span></dd>
+          <dt>Итого</dt><dd><b class="num">370 000 ฿</b> — столько нужно заработать, только чтобы выйти в ноль.</dd>
+        </dl>
+      </section>
+    </div>
+
+    <!-- ================= правая колонка ================= -->
+    <div class="col">
+      <section>
+        <h2>Рынок</h2>
+        <ul>
+          <li><b>10 000 клиентов в месяц на всех.</b> Рынок общий и не растёт от числа игроков — это ресурс, за который вы конкурируете.</li>
+          <li>Клиенты делятся по привлекательности: бренд, качество, реклама, цена, репутация.</li>
+          <li>Средняя цена всех игроков двигает общий объём рынка: дешевле у всех — людей приходит больше.</li>
+          <li>Пришло больше вашей ёмкости — лишние просто уходят и <span class="warn">бьют по репутации</span>.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Три показателя, которые копятся</h2>
+        <dl>
+          <dt>Бренд</dt><dd>растёт от довольных клиентов, забывается на 25% в месяц.</dd>
+          <dt>Репутация</dt><dd>падает от отказов, сама восстанавливается медленно. От 0.6 до 1.0.</dd>
+          <dt>Качество</dt><dd>то, что вы купили вложениями. От 0 до 3.</dd>
+        </dl>
+      </section>
+    </div>
+  </div>
+
+  <!-- ================= каналы ================= -->
+  <section>
+    <h2>Каналы рекламы<span>вложили вчетверо больше — эффект вырос вдвое, не вчетверо</span></h2>
+    <table>
+      <thead>
+        <tr><th style="width:24mm">Канал</th><th style="width:24mm">Опорный бюджет</th><th>Как себя ведёт</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>SEO</td><td class="budget">60 000 ฿</td>
+          <td>Долгий разгон: <b>три месяца подряд</b> вложений, и только потом включается. Зато дальше держится почти без подпитки.</td></tr>
+        <tr><td>Промоутеры</td><td class="budget">50 000 ฿</td>
+          <td>Работает <b>только в тот месяц, за который заплачено</b>. Ничего не накапливает — перестали платить, эффект исчез.</td></tr>
+        <tr><td>Google Карты</td><td class="budget">40 000 ฿</td>
+          <td>Эффект приходит <b>со следующего месяца</b>, дальше нарастает и угасает медленно.</td></tr>
+        <tr><td>Соцсети</td><td class="budget">100 000 ฿</td>
+          <td>Действуют сразу, но забываются быстрее всех — <b>нужна регулярность</b>, разовый заход почти бесполезен.</td></tr>
+        <tr><td>Наружная</td><td class="budget">от 40 000 ฿</td>
+          <td>Разовое размещение держит ровно <b>4 месяца</b>, потом обнуляется резко, без затухания.</td></tr>
+        <tr><td>Партнёрка</td><td class="budget">от 20 000 ฿/мес</td>
+          <td><b>Клиентов не приводит.</b> Даёт <b>+12.5% к выручке</b> с уже пришедших, пока платите. Платить сверх минимума бессмысленно — надбавка не растёт.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <div class="cols">
+    <div class="col">
+      <section>
+        <h2>Банк<span>15% годовых, срок 6 месяцев</span></h2>
+        <dl>
+          <dt>Уровень 1</dt><dd>до <span class="num">300 000 ฿</span> — открывается всем после первого месяца.</dd>
+          <dt>Уровень 2</dt><dd>до <span class="num">800 000 ฿</span> — два месяца подряд с плюсовым потоком.</dd>
+          <dt>Уровень 3</dt><dd>до <span class="num">2 000 000 ฿</span> — плюсовой поток и ни одной просрочки.</dd>
+        </dl>
+        <p style="margin-top:1.2mm;color:var(--muted)">Лимит открывается сам, считать ничего не нужно. Тело долга гасится равными долями, проценты — на остаток. Можно погасить досрочно.</p>
+      </section>
+    </div>
+
+    <div class="col wide">
+      <div class="fallback">
+        <h2>Если касса ушла в минус</h2>
+        <p style="margin-bottom:1.4mm">Бизнес закрывается. Выбираете, чем заниматься дальше — уйти можно и добровольно, тогда забираете кассу за вычетом непогашенного кредита.</p>
+        <div class="paths">
+          <div class="path">
+            <span class="name">Госслужба</span>
+            <span class="num">35 000 ฿</span>/мес автоматически за каждый отработанный месяц. Ничего нажимать не надо.
+          </div>
+          <div class="path">
+            <span class="name">Свободное плавание</span>
+            Живёте на переводы от других игроков. Договаривайтесь.
+          </div>
+          <div class="path">
+            <span class="name">Своя профессия</span>
+            Придумываете занятие, предлагаете себя игроку за зарплату. Он одобряет и платит каждый месяц сам.
+          </div>
+        </div>
+        <div class="back">
+          <b>Обратно в игру:</b> накопите <span class="num">100 000 ฿</span> — и открываете новое дело с чистого листа. Бренд, репутация, качество и реклама начинаются с нуля, накопленное становится стартовым капиталом. Между тремя путями можно переключаться в любой момент, накопления при этом сохраняются.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= подвал ================= -->
+  <div class="footnotes">
+    <div>
+      <b>Не успели с решением</b>
+      Возьмётся ваше прошлое решение, ужатое под текущую кассу. Молчание — тоже ход, и обычно плохой.
+    </div>
+    <div>
+      <b>Переводы</b>
+      Любому игроку в пределах вашей кассы. Инструмент сговоров, помощи союзнику и выкупа доли.
+    </div>
+    <div>
+      <b>Табло</b>
+      Капитал и доход видны у всех, включая тех, кто вне бизнеса. Доля рынка, клиенты и бренд — только у тех, кто ведёт дело.
+    </div>
+    <div>
+      <b>Побеждает</b>
+      Тот, у кого к концу 12-го месяца больше денег. Не выручка, не доля рынка — деньги.
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
