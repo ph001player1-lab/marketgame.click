@@ -19,8 +19,18 @@ supabase/functions/game/ Edge Function: API игры
   index.ts                 подключение к Supabase
 supabase/templates/      письмо с кодом входа
 supabase/config.toml     настройки для локального запуска
-web/                     клиент (пока v4.9, переписывается на этапе 2)
+web/                     сайт: без сборки, обычные модули JavaScript
+  index.html               вход, мои игры, игра, пульт, отчёт, рейтинг
+  board/                   табло для проектора: board/?code=КОД
+  report/                  отчёт команды по ссылке: report/?t=…
+  rating/                  рейтинг лиг, открыт без входа
+  assets/js/config.js      адрес проекта Supabase и публичный ключ
+  assets/js/i18n.js        все тексты сайта (английский)
+  assets/js/charts.js      графики на SVG
+  assets/js/vendor/        клиент входа Supabase (npm run vendor)
+  assets/js/views/         разделы: Business, Scoreboard, Guide, Console…
 tests/                   проверки
+  ui/                      сайт в браузере и локальный стенд
 docs/v4.9-ru/            материалы русской версии — исходник для перевода
 ```
 
@@ -55,10 +65,17 @@ npm test               # экономика: эталон v4.9, доллары, 
 npm run test:api       # функция game на чистой базе: целая игра и редкие ветки
 npm run report:teams   # сколько команд переживает первый месяц
 npm run report:balance # как 5.0 меняет выживаемость и капитал
+npm run test:ui        # сайт в Chromium: телефон, планшет, ноутбук, проектор
+npm run site           # локальный сайт с тестовой партией: http://localhost:8080
 ```
 
+`npm run site` поднимает сайт и функцию на локальной базе. Вход тестовый:
+письма не уходят, подходит любой код из шести цифр. Администратор —
+ph001player1@gmail.com, команды тестовой партии — team1@example.com …
+team6@example.com.
+
 GitHub Actions запускает всё это при каждом изменении, плюс проверку типов
-функции в Deno.
+функции в Deno. Скриншоты проверки сайта лежат в артефакте `screens`.
 
 ## Развёртывание в Supabase
 
@@ -100,6 +117,41 @@ GitHub Actions запускает всё это при каждом измене
 
 Отправитель по умолчанию — noreply@marketgame.click; другой — переменная
 репозитория `SMTP_SENDER`.
+
+## Сайт: GitHub Pages и домен
+
+Сайт — папка `web/`, её публикует workflow **Deploy site** при каждом
+изменении в `web/` на основной ветке репозитория.
+
+### Один раз
+
+1. **Pages:** репозиторий → **Settings** → **Pages** → **Build and
+   deployment** → **Source: GitHub Actions**.
+2. **Первая публикация:** **Actions** → **Deploy site** → **Run workflow**.
+   Сайт появится на https://ph001player1-lab.github.io/marketgame.click/.
+3. **Домен в Dynadot:** **My Domains** → marketgame.click → **DNS
+   Settings** → удалить старые записи A/AAAA/CNAME для корня и www (и
+   переадресацию, если включена), добавить:
+
+   | Тип   | Хост | Значение                  |
+   |-------|------|---------------------------|
+   | A     | @    | 185.199.108.153           |
+   | A     | @    | 185.199.109.153           |
+   | A     | @    | 185.199.110.153           |
+   | A     | @    | 185.199.111.153           |
+   | AAAA  | @    | 2606:50c0:8000::153       |
+   | AAAA  | @    | 2606:50c0:8001::153       |
+   | AAAA  | @    | 2606:50c0:8002::153       |
+   | AAAA  | @    | 2606:50c0:8003::153       |
+   | CNAME | www  | ph001player1-lab.github.io |
+
+4. **Домен в GitHub:** **Settings** → **Pages** → **Custom domain:**
+   `marketgame.click` → **Save**. Когда проверка DNS пройдёт (от нескольких
+   минут до суток), включить **Enforce HTTPS**.
+
+Файл `web/CNAME` уже содержит домен. Функция игры принимает запросы с
+marketgame.click, www.marketgame.click и ph001player1-lab.github.io;
+другой список — секрет функции `ALLOWED_ORIGINS`.
 
 ## Локальный запуск
 

@@ -149,7 +149,7 @@ export async function moneyMap(sql: Sql, gameId: string) {
 // ----------------------------------------------------------------- табло
 
 async function timeline(sql: Sql, gameId: string) {
-  const players: Row[] = await sql`select * from players where game_id = ${gameId} order by created_at`;
+  const players: Row[] = await sql`select * from players where game_id = ${gameId} order by created_at, id`;
   const results: Row[] = await sql`select * from results where game_id = ${gameId} order by round_number`;
   const wallets: Row[] = await sql`select * from wallet_entries where game_id = ${gameId} order by round_number`;
 
@@ -159,6 +159,10 @@ async function timeline(sql: Sql, gameId: string) {
       id: String(p.id), restaurant: teamLabel(p), displayName: p.display_name ?? null,
       status: String(p.status),
       location: { kind: p.location_kind ?? null, state: p.location_state ?? null, country: p.location_country ?? null },
+      // Капитал сейчас — по тому же правилу, что и v_standings: касса или
+      // накопления. Штраф или перевод между месяцами виден на табло сразу.
+      capital: Math.round(p.status === 'left' ? 0
+        : ['active', 'bankrupt'].includes(String(p.status)) ? num(p.cash) : num(p.employment_savings)),
       series: [] as Row[]
     });
   }
@@ -176,10 +180,13 @@ async function timeline(sql: Sql, gameId: string) {
   }
   // Месяцы вне бизнеса: капитал и доход реальные, а доли рынка и бренда у
   // человека без заведения нет — честный null, линия на графике рвётся.
+  // Разорившийся, пока не выбрал, чем заняться, ещё не начал копить: у него
+  // долг, а не ноль, поэтому и здесь null.
   for (const w of wallets) {
+    const broke = w.status === 'bankrupt';
     byPlayer.get(String(w.player_id))?.series.push({
       round: num(w.round_number), inBusiness: false, offBusinessStatus: w.status,
-      profit: Math.round(num(w.income)), cash: Math.round(num(w.savings)),
+      profit: broke ? null : Math.round(num(w.income)), cash: broke ? null : Math.round(num(w.savings)),
       marketSharePct: null, served: null, price: null, brand: null, reputation: null,
       quality: null, capacity: null, marketingTotal: null, qualityInvest: null, tax: null, dividends: null
     });
@@ -301,7 +308,7 @@ function decisionOut(d: Row) {
  * чтобы разбирать партию вместе, если ведущий не отключил.
  */
 async function allDecisions(sql: Sql, gameId: string) {
-  const players: Row[] = await sql`select * from players where game_id = ${gameId} order by created_at`;
+  const players: Row[] = await sql`select * from players where game_id = ${gameId} order by created_at, id`;
   const decisions: Row[] = await sql`select * from decisions where game_id = ${gameId} order by round_number`;
   return players.map((p) => ({
     playerId: String(p.id), restaurant: teamLabel(p),

@@ -11,17 +11,23 @@
 
 import { CONFIG } from './config.js';
 
-const SUPABASE_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.1/+esm';
 const TEST_KEY = 'mg-test-email';
 
+// Клиент входа Supabase лежит в самом сайте (npm run vendor), а не
+// грузится с CDN: в сетях, где CDN закрыт, вход не сломается. Он нужен
+// только для входа, поэтому модуль грузится лишь тогда, когда нужен.
 let clientPromise = null;
 
 function supabase() {
   if (!clientPromise) {
-    clientPromise = import(SUPABASE_JS).then(({ createClient }) =>
-      createClient(CONFIG.supabaseUrl, CONFIG.publishableKey, {
-        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, storageKey: 'mg-auth' }
-      }));
+    clientPromise = import('./vendor/supabase-auth.js').then(({ AuthClient }) => ({
+      // Те же заголовки, что ставит supabase-js своему клиенту входа.
+      auth: new AuthClient({
+        url: CONFIG.supabaseUrl + '/auth/v1',
+        headers: { Authorization: 'Bearer ' + CONFIG.publishableKey, apikey: CONFIG.publishableKey },
+        storageKey: 'mg-auth', persistSession: true, autoRefreshToken: true, detectSessionInUrl: false
+      })
+    }));
   }
   return clientPromise;
 }

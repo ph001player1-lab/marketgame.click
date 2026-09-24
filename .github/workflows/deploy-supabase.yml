@@ -3,7 +3,7 @@ name: Deploy Supabase
 # Разворачивает базу и функцию game в проекте Supabase и настраивает вход.
 #
 # Запуск вручную: Actions → Deploy Supabase → Run workflow → выбрать ветку.
-# Автоматически — при изменениях в supabase/ на ветке main.
+# Автоматически — при изменениях в supabase/ на основной ветке репозитория.
 #
 # Секреты репозитория (Settings → Secrets and variables → Actions):
 #   SUPABASE_ACCESS_TOKEN  личный токен Supabase (Account → Access Tokens)
@@ -15,7 +15,6 @@ name: Deploy Supabase
 on:
   workflow_dispatch:
   push:
-    branches: [main]
     paths:
       - 'supabase/**'
       - '.github/workflows/deploy-supabase.yml'
@@ -26,6 +25,8 @@ concurrency:
 
 jobs:
   deploy:
+    # Вручную — с любой ветки; при пуше — только с основной.
+    if: github.event_name == 'workflow_dispatch' || github.ref_name == github.event.repository.default_branch
     runs-on: ubuntu-latest
     env:
       PROJECT_REF: fzchwkwyicnjbtjkqack

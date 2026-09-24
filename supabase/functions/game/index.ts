@@ -10,7 +10,8 @@
 //    ADMIN_EMAILS     администраторы через запятую;
 //                     по умолчанию ph001player1@gmail.com
 //    ALLOWED_ORIGINS  сайты, с которых можно звать функцию; по умолчанию
-//                     marketgame.click и локальная разработка
+//                     marketgame.click, его адрес на github.io и локальная
+//                     разработка
 //    DB_URL           строка подключения к базе, если встроенная
 //                     SUPABASE_DB_URL не подходит
 //    SERVICE_KEY      секретный ключ (sb_secret_…), если встроенного
@@ -46,7 +47,8 @@ Deno.serve(createHandler({
   sql,
   adminEmails: list(env('ADMIN_EMAILS') || 'ph001player1@gmail.com').map((e) => e.toLowerCase()),
   allowedOrigins: list(env('ALLOWED_ORIGINS') ||
-    'https://marketgame.click,https://www.marketgame.click,http://localhost:8080,http://127.0.0.1:8080'),
+    'https://marketgame.click,https://www.marketgame.click,https://ph001player1-lab.github.io,' +
+    'http://localhost:8080,http://127.0.0.1:8080'),
 
   async verifyToken(token: string) {
     const { data, error } = await supabase.auth.getUser(token);

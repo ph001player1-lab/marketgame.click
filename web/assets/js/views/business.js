@@ -9,20 +9,8 @@ import { t, errorText } from '../i18n.js';
 import { h, $, replace, toast, confirmDialog, busy, field, moneyInput, card } from '../dom.js';
 import { usd, usdSigned, int, dec2, pct, pctRaw, parseMoney, dateTime } from '../fmt.js';
 import { act } from '../api.js';
+import { US_STATES } from './common.js';
 
-const US_STATES = [
-  ['AL', 'Alabama'], ['AK', 'Alaska'], ['AZ', 'Arizona'], ['AR', 'Arkansas'], ['CA', 'California'],
-  ['CO', 'Colorado'], ['CT', 'Connecticut'], ['DE', 'Delaware'], ['DC', 'District of Columbia'],
-  ['FL', 'Florida'], ['GA', 'Georgia'], ['HI', 'Hawaii'], ['ID', 'Idaho'], ['IL', 'Illinois'],
-  ['IN', 'Indiana'], ['IA', 'Iowa'], ['KS', 'Kansas'], ['KY', 'Kentucky'], ['LA', 'Louisiana'],
-  ['ME', 'Maine'], ['MD', 'Maryland'], ['MA', 'Massachusetts'], ['MI', 'Michigan'], ['MN', 'Minnesota'],
-  ['MS', 'Mississippi'], ['MO', 'Missouri'], ['MT', 'Montana'], ['NE', 'Nebraska'], ['NV', 'Nevada'],
-  ['NH', 'New Hampshire'], ['NJ', 'New Jersey'], ['NM', 'New Mexico'], ['NY', 'New York'],
-  ['NC', 'North Carolina'], ['ND', 'North Dakota'], ['OH', 'Ohio'], ['OK', 'Oklahoma'], ['OR', 'Oregon'],
-  ['PA', 'Pennsylvania'], ['RI', 'Rhode Island'], ['SC', 'South Carolina'], ['SD', 'South Dakota'],
-  ['TN', 'Tennessee'], ['TX', 'Texas'], ['UT', 'Utah'], ['VT', 'Vermont'], ['VA', 'Virginia'],
-  ['WA', 'Washington'], ['WV', 'West Virginia'], ['WI', 'Wisconsin'], ['WY', 'Wyoming']
-];
 export { US_STATES };
 
 const CHANNELS = ['seo', 'promo', 'maps', 'social', 'outdoor', 'affiliate'];
@@ -44,7 +32,7 @@ export function createBusiness(root, ctx) {
     return busy(button, async () => {
       const res = await act(action, { ...base(), ...params });
       if (res.ok) {
-        if (okText) toast(okText, 'ok');
+        if (okText) toast(typeof okText === 'function' ? okText(res) : okText, 'ok');
         if (res.state) ctx.applyState(res.state);
       } else {
         toast(errorText(res, usd), 'bad', 6000);
@@ -415,10 +403,12 @@ export function createBusiness(root, ctx) {
     const borrowAmt = moneyInput({ placeholder: t('bank.amount'), 'aria-label': t('bank.borrow') });
     const repayAmt = moneyInput({ placeholder: t('bank.amount'), 'aria-label': t('bank.repay') });
     const borrowRow = h('div', { class: 'btn-row' }, h('div', { style: { flex: '1 1 160px' } }, borrowAmt),
-      h('button', { class: 'btn', type: 'button', onclick: (e) => run(e.currentTarget, 'requestLoan', { amount: parseMoney(borrowAmt.value) })
+      h('button', { class: 'btn', type: 'button', onclick: (e) => run(e.currentTarget, 'requestLoan', { amount: parseMoney(borrowAmt.value) },
+          (r) => t('bank.received', { amount: usd(r.received) }))
         .then((res) => { if (res?.ok) borrowAmt.value = ''; }) }, t('bank.borrow')));
     const repayRow = h('div', { class: 'btn-row' }, h('div', { style: { flex: '1 1 160px' } }, repayAmt),
-      h('button', { class: 'btn', type: 'button', onclick: (e) => run(e.currentTarget, 'repayLoan', { amount: parseMoney(repayAmt.value) })
+      h('button', { class: 'btn', type: 'button', onclick: (e) => run(e.currentTarget, 'repayLoan', { amount: parseMoney(repayAmt.value) },
+          (r) => t('bank.repaid', { amount: usd(r.paid) }))
         .then((res) => { if (res?.ok) repayAmt.value = ''; }) }, t('bank.repay')));
     const el = card(h('span', {}, t('bank.title') + ' ', info('bank')),
       h('div', { class: 'table-wrap' }, h('table', { class: 'table' }, table)), note, borrowRow, repayRow,

@@ -77,6 +77,12 @@ export function niceScale(min, max, count) {
   return { lo, hi, ticks, step };
 }
 
+/** Подписи делений: коротко, а если короткие совпали (10k, 10k) — полностью. */
+function tickLabels(ticks, tick, fmt) {
+  const short = ticks.map((v) => tick(v));
+  return new Set(short).size === short.length ? short : ticks.map((v) => fmt(v));
+}
+
 /** Цвет команды по её постоянному номеру в игре. */
 export function seriesColor(index) {
   return index < PALETTE.length ? PALETTE[index] : OTHER;
@@ -96,8 +102,8 @@ function frame(box, cfg, series, hooks) {
   let legendEl = null;
   const legendButtons = [];
   if (series.length >= 2 && cfg.legend !== false) {
-    const colored = series.filter((se) => se.color !== OTHER);
-    const gray = series.filter((se) => se.color === OTHER);
+    const colored = series.filter((se) => !se.other);
+    const gray = series.filter((se) => se.other);
     legendEl = h('div', { class: 'legend', role: 'group', 'aria-label': cfg.legendLabel || 'Legend' },
       colored.map((se) => {
         const b = h('button', {
@@ -258,7 +264,7 @@ export function lineChart(box, cfg) {
     let max = Math.max(...all);
     if (cfg.zero !== false) { min = Math.min(0, min); max = Math.max(0, max); }
     const sc = niceScale(min, max, clamp(Math.round((H - 40) / 55), 2, 6));
-    const tickText = sc.ticks.map((v) => tick(v));
+    const tickText = tickLabels(sc.ticks, tick, fmt);
     const left = Math.ceil(Math.max(...tickText.map((t) => textWidth(t, fs)))) + 12;
 
     const showEnds = cfg.endLabels !== false && series.length >= 2 && series.length <= 4 && W >= 320;
@@ -290,7 +296,7 @@ export function lineChart(box, cfg) {
     svg.append(s('text', { class: 'chart__tick chart__axis-name', x: left - 8, y: baseY, 'text-anchor': 'end' }, cfg.xName || 'Mo'));
 
     // Серые — под цветными, своя команда и выделенная — поверх всех.
-    const rank = (se) => (se.key === f.focus ? 3 : se.emphasis ? 2 : se.color === OTHER ? 0 : 1);
+    const rank = (se) => (se.key === f.focus ? 3 : se.emphasis ? 2 : se.other ? 0 : 1);
     const ordered = [...series].sort((a, b) => rank(a) - rank(b));
     for (const se of ordered) {
       const dim = f.focus && f.focus !== se.key;
@@ -446,7 +452,7 @@ export function barChart(box, cfg) {
     const min = Math.min(0, ...stacks.map((st) => st.neg));
     const max = Math.max(0, ...stacks.map((st) => st.pos));
     const sc = niceScale(min, max, clamp(Math.round((H - 40) / 55), 2, 6));
-    const tickText = sc.ticks.map((v) => tick(v));
+    const tickText = tickLabels(sc.ticks, tick, fmt);
     const left = Math.ceil(Math.max(...tickText.map((t) => textWidth(t, fs)))) + 12;
     const right = 10;
     const top = 12;
@@ -617,12 +623,18 @@ export function sankey(box, cfg) {
       svg.append(r);
     });
 
-    // Подписи: у первых колонок — над узлом, у последней — справа, раздвинутые.
+    // Подписи: первая колонка — справа от узла, поверх светлого потока;
+    // средние — над узлом; последняя — справа, раздвинутые.
     for (const nd of live.filter((x) => x.col < cols - 1)) {
-      const anchorMid = nd.col > 0;
-      const x = anchorMid ? nd.x + nodeW / 2 : nd.x;
-      svg.append(s('text', { x, y: nd.y - fs - 4, 'text-anchor': anchorMid ? 'middle' : 'start', class: 'sankey__name' }, nd.name));
-      svg.append(s('text', { x, y: nd.y - 5, 'text-anchor': anchorMid ? 'middle' : 'start', class: 'sankey__val' }, fmt(value(nd))));
+      if (nd.col === 0) {
+        const y = nd.y + Math.min(nd.h / 2, fs * 1.2);
+        svg.append(s('text', { x: nd.x + nodeW + 6, y: y + fs * 0.35, class: 'sankey__name' },
+          nd.name, s('tspan', { class: 'sankey__val', dx: 6 }, fmt(value(nd)))));
+        continue;
+      }
+      const x = nd.x + nodeW / 2;
+      svg.append(s('text', { x, y: nd.y - fs - 4, 'text-anchor': 'middle', class: 'sankey__name' }, nd.name));
+      svg.append(s('text', { x, y: nd.y - 5, 'text-anchor': 'middle', class: 'sankey__val' }, fmt(value(nd))));
     }
     const items = last.map((nd) => ({ nd, y: nd.y + nd.h / 2 })).sort((a, b) => a.y - b.y);
     const lg = fs + 3;

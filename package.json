@@ -8,10 +8,15 @@
     "test": "npm run build && node tests/golden.mjs && node tests/scale_check.mjs && node tests/v5_check.mjs && node tests/schema_check.mjs",
     "test:api": "npm run build && node tests/api/game_flow.mjs && node tests/api/extras.mjs",
     "report:teams": "npm run build && node tests/teams_check.mjs",
-    "report:balance": "npm run build && node tests/v5_check.mjs --report"
+    "report:balance": "npm run build && node tests/v5_check.mjs --report",
+    "test:ui": "npm run build && node tests/i18n_check.mjs && node tests/ui/screens.mjs",
+    "site": "npm run build && node tests/ui/server.mjs --seed",
+    "vendor": "printf \"export { AuthClient } from '@supabase/auth-js';\\n\" > build/auth-entry.mjs && esbuild build/auth-entry.mjs --bundle --format=esm --minify --platform=browser --target=es2020 --legal-comments=eof --outfile=web/assets/js/vendor/supabase-auth.js"
   },
   "devDependencies": {
+    "@supabase/supabase-js": "^2.117.1",
     "esbuild": "^0.25.0",
+    "playwright": "^1.56.1",
     "postgres": "^3.4.9"
   }
 }

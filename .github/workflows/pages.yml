@@ -1,0 +1,47 @@
+name: Deploy site
+
+# Публикует папку web/ на GitHub Pages — это и есть marketgame.click.
+#
+# Один раз в настройках репозитория:
+#   Settings → Pages → Build and deployment → Source: GitHub Actions
+#   Settings → Pages → Custom domain: marketgame.click, Enforce HTTPS
+# DNS у регистратора (Dynadot) — см. README.
+#
+# Сайт публикуется только с основной ветки репозитория.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'web/**'
+      - '.github/workflows/pages.yml'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    if: github.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v5
+      # Тестовый вход (любой код) не должен попасть на живой сайт.
+      - name: Check the live config
+        run: |
+          grep -q "testAuth: false" web/assets/js/config.js
+          grep -q "apiUrl: 'https://" web/assets/js/config.js
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -58,3 +58,41 @@ jobs:
           deno-version: v2.x
       # Та же проверка типов, что пройдёт функция при развёртывании.
       - run: deno check --node-modules-dir=none supabase/functions/game/index.ts
+
+  site:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Синтаксис всех модулей сайта.
+      - run: find web -name '*.js' -print0 | xargs -0 -n1 node --check
+      - run: npx playwright install --with-deps chromium
+      # Словарь и весь сайт в браузере: телефон, планшет, ноутбук, проектор.
+      - run: npm run test:ui
+        env:
+          SCREENS_DIR: build/screens
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screens
+          path: build/screens
+          retention-days: 7

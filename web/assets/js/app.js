@@ -83,15 +83,24 @@ function parseRoute() {
 
 async function route() {
   stopCurrentGame();
+  const r = parseRoute();
   if (!me) {
     const email = await currentEmail();
+    // Рейтинг открыт всем: на него ссылается marketgame.biz.
+    if (!email && r.name === 'rating') { showPublicRating(); return; }
     if (!email) { showLogin(); return; }
     try { await loadMe(); } catch { return; }
     if (!me) { showLogin(); return; }
   }
-  const r = parseRoute();
   window.scrollTo(0, 0);
-  if (r.name === 'game') { openGame(r.gameId, r.asPlayerId); return; }
+  if (r.name === 'game') {
+    // Игра создана только что или команду добавили минуту назад — списки
+    // в me устарели.
+    const known = me.isAdmin || [...(me.playing || []), ...(me.hosting || [])].some((g) => g.id === r.gameId);
+    if (!known) await loadMe().catch(() => {});
+    openGame(r.gameId, r.asPlayerId);
+    return;
+  }
 
   const page = h('div', { class: 'page' });
   replace(root, topbarSimple(), page);
@@ -103,10 +112,13 @@ async function route() {
     document.title = t('history.title') + ' · ' + t('brand');
     const res = await read('gameReport', { gameId: r.gameId });
     if (!res.ok) replace(page, h('div', { class: 'banner banner--bad' }, errorText(res)));
-    else renderReport(page, res);
+    else {
+      const mine = (me.playing || []).find((g) => g.id === r.gameId);
+      renderReport(page, res, { reportToken: mine?.reportToken || null });
+    }
   } else if (r.name === 'new') {
     document.title = t('host.createTitle') + ' · ' + t('brand');
-    renderCreate(page, (gameId) => { location.hash = '#/g/' + gameId; });
+    renderCreate(page, async (gameId) => { await loadMe(); location.hash = '#/g/' + gameId; });
   } else if (r.name === 'hosts') {
     document.title = t('admin.title') + ' · ' + t('brand');
     renderHosts(page);
@@ -114,6 +126,15 @@ async function route() {
     document.title = t('rating.title') + ' · ' + t('brand');
     renderRatingPage(page);
   }
+}
+
+function showPublicRating() {
+  document.title = t('rating.title') + ' · ' + t('brand');
+  const page = h('div', { class: 'page' });
+  replace(root, h('header', { class: 'topbar' },
+    h('div', { class: 'topbar__title' }, h('div', { class: 'topbar__name' }, t('brand') + ': ' + t('gameName'))),
+    h('a', { class: 'btn btn--small topbar__btn', href: '#/' }, t('login.title'))), page);
+  renderRatingPage(page);
 }
 
 // ----------------------------------------------------------------- меню
@@ -152,6 +173,10 @@ function openGame(gameId, asPlayerId) {
   const tabKey = 'mg-tab-' + gameId + (isHostView ? '-host' : '');
   let tab = sessionStorage.getItem(tabKey) || 'main';
   let side = tab === 'guide' ? 'guide' : 'board';
+  let last = null;
+  let lastRoundKey = '';
+  let boardCode = null;
+  let boardLoadedAt = 0;
 
   // ---- каркас
   const nameEl = h('div', { class: 'topbar__name' }, t('common.loading'));
@@ -183,7 +208,11 @@ function openGame(gameId, asPlayerId) {
     header, impersonation, tabs, h('div', { class: 'panes' }, paneMain, paneBoard, paneGuide));
   replace(root, shell);
 
+  const scrollAt = {};
   function setTab(id) {
+    const phone = window.innerWidth < 768;
+    if (phone && id !== tab) scrollAt[tab] = window.scrollY;
+    const changed = id !== tab;
     tab = id;
     if (id !== 'main') side = id;
     shell.dataset.tab = tab;
@@ -194,6 +223,7 @@ function openGame(gameId, asPlayerId) {
       b.setAttribute('aria-selected', on ? 'true' : 'false');
     }
     if (id === 'board') refreshBoard(true);
+    if (phone && changed) window.scrollTo(0, scrollAt[id] || 0);
   }
   window.addEventListener('resize', onResize);
   function onResize() { setTab(tab); }
@@ -216,7 +246,7 @@ function openGame(gameId, asPlayerId) {
   let clockOffset = 0;
   let deadlineMs = null;
   let firedAtZero = false;
-  const timerId = setInterval(() => {
+  function paintTimer() {
     if (!deadlineMs) { timerEl.hidden = true; return; }
     const left = (deadlineMs - (Date.now() + clockOffset)) / 1000;
     timerEl.hidden = false;
@@ -224,13 +254,10 @@ function openGame(gameId, asPlayerId) {
     timerEl.classList.toggle('is-urgent', left <= 30);
     timerEl.setAttribute('aria-label', t('header.timerOpen') + ' ' + clock(left));
     if (left <= 0 && !firedAtZero) { firedAtZero = true; tick(true); }
-  }, 250);
+  }
+  const timerId = setInterval(paintTimer, 250);
 
-  // ---- состояние
-  let last = null;
-  let lastRoundKey = '';
-  let boardCode = null;
-  let boardLoadedAt = 0;
+  // ---- состояние (объявлено выше: вкладка табло может открыться сразу)
 
   function render(state) {
     if (!state || !state.ok) return;
@@ -239,7 +266,7 @@ function openGame(gameId, asPlayerId) {
     boardCode = g.code;
     if (state.game.serverNow) clockOffset = new Date(state.game.serverNow).getTime() - Date.now();
     const newDeadline = g.deadline ? new Date(g.deadline).getTime() : null;
-    if (newDeadline !== deadlineMs) { deadlineMs = newDeadline; firedAtZero = false; }
+    if (newDeadline !== deadlineMs) { deadlineMs = newDeadline; firedAtZero = false; paintTimer(); }
 
     const leagueLine = g.leagueName + (g.practice ? ' · ' + t('common.practice') : '') + ' · ' +
       (g.roundNumber > 0 ? t('common.monthOf', { n: g.roundNumber, total: g.totalRounds }) : t('common.notStarted'));

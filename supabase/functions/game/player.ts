@@ -143,7 +143,7 @@ export async function dashboard(sql: Sql, game: Row, playerId: string, impersona
     where player_id = ${playerId} and not read order by id`;
   const others: Row[] = await sql`
     select * from players where game_id = ${gameId} and id <> ${playerId} and status <> 'left'
-    order by created_at`;
+    order by created_at, id`;
 
   const base = {
     ok: true, impersonating,
@@ -207,7 +207,7 @@ export async function dashboard(sql: Sql, game: Row, playerId: string, impersona
     where player_id = ${playerId} and round_number = ${round.round_number} and not autoplay`;
   const employees: Row[] = await sql`
     select * from players where employer_id = ${playerId} and status = 'custom_employed'
-    order by created_at`;
+    order by created_at, id`;
 
   const tierLimit = loanLimitFor(num(player.loan_tier), cfg);
   const balance = num(player.loan_balance);

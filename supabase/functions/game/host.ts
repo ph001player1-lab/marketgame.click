@@ -224,7 +224,7 @@ export async function setRoster(sql: Sql, game: Row, actor: string, b: Row,
 export async function monitor(sql: Sql, game: Row) {
   const round = await currentRound(sql, game.id);
   const cfg = activeConfig(game, round);
-  const players: Row[] = await sql`select * from players where game_id = ${game.id} order by created_at`;
+  const players: Row[] = await sql`select * from players where game_id = ${game.id} order by created_at, id`;
   const submitted: Row[] = await sql`
     select player_id from decisions
     where game_id = ${game.id} and round_number = ${round.round_number} and not autoplay`;
@@ -547,7 +547,7 @@ export async function playAgain(sql: Sql, game: Row, actor: string,
   await sql`update games set config = ${sql.json(cfg)}, series_id = ${game.series_id ?? game.id}
             where id = ${newId}`;
   const [fresh] = await sql`select * from games where id = ${newId}`;
-  const players: Row[] = await sql`select email from players where game_id = ${game.id} order by created_at`;
+  const players: Row[] = await sql`select email from players where game_id = ${game.id} order by created_at, id`;
   await setRoster(sql, fresh, actor, { emails: players.map((p) => p.email) }, ensureAuthUser);
   await logHostAction(sql, game.id, actor, 'play_again', { newGameId: newId });
   return { ok: true, gameId: newId, code: created.code };

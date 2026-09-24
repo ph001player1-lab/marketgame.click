@@ -117,6 +117,7 @@ export function createScoreboard(root, opts = {}) {
       return {
         ...p, mine,
         color: i < PALETTE.length ? PALETTE[i] : mine ? INK : OTHER,
+        other: i >= PALETTE.length && !mine,
         label: p.restaurant + (mine ? ' ' + t('board.you') : '')
       };
     });
@@ -169,7 +170,7 @@ export function createScoreboard(root, opts = {}) {
       chart: (box) => lineChart(box, {
         x: months,
         series: list.map((tm) => ({
-          key: tm.id, name: tm.label, color: tm.color, emphasis: tm.mine,
+          key: tm.id, name: tm.label, color: tm.color, emphasis: tm.mine, other: tm.other,
           values: months.map((m) => valueAt(tm, m, M.key))
         })),
         fmt: M.fmt, tick: M.tick, zero: M.zero !== false, big,
@@ -211,10 +212,10 @@ export function createScoreboard(root, opts = {}) {
           h('th', { scope: 'col' }, t('common.team')),
           h('th', { class: 'r', scope: 'col' }, t('board.capital')),
           h('th', { class: 'r', scope: 'col' }, t('board.lastMonth')),
-          h('th', { class: 'r', scope: 'col' }, t('board.share')),
-          h('th', { class: 'r', scope: 'col' }, t('board.metrics.price')),
-          h('th', { class: 'r', scope: 'col' }, t('board.metrics.brand')),
-          h('th', { class: 'r', scope: 'col' }, t('board.metrics.quality')))),
+          h('th', { class: 'r opt2', scope: 'col' }, t('board.share')),
+          h('th', { class: 'r opt', scope: 'col' }, t('board.metrics.price')),
+          h('th', { class: 'r opt', scope: 'col' }, t('board.metrics.brand')),
+          h('th', { class: 'r opt', scope: 'col' }, t('board.metrics.quality')))),
         h('tbody', {}, rows.map((r) => h('tr', { class: r.tm.mine ? 'me' : null },
           h('td', { class: 'r' }, r.tm.status === 'left' ? '—' : r.place),
           h('td', {},
@@ -225,10 +226,10 @@ export function createScoreboard(root, opts = {}) {
             r.tm.displayName ? h('div', { class: 'team-cell__who' }, r.tm.displayName) : null),
           h('td', { class: 'r' }, cell(r.capital, usd)),
           h('td', { class: ['r', (r.last?.profit ?? 0) < 0 ? 'neg' : null] }, cell(r.last?.profit, usd)),
-          h('td', { class: 'r' }, cell(r.last?.marketSharePct, pctRaw)),
-          h('td', { class: 'r' }, cell(r.last?.price, usdc)),
-          h('td', { class: 'r' }, cell(r.last?.brand, dec2)),
-          h('td', { class: 'r' }, cell(r.last?.quality, dec2))))))));
+          h('td', { class: 'r opt2' }, cell(r.last?.marketSharePct, pctRaw)),
+          h('td', { class: 'r opt' }, cell(r.last?.price, usdc)),
+          h('td', { class: 'r opt' }, cell(r.last?.brand, dec2)),
+          h('td', { class: 'r opt' }, cell(r.last?.quality, dec2))))))));
   }
 
   // ----------------------------------------------------------------- экономика

@@ -81,3 +81,35 @@ export function short(v, prefix = '') {
   return sign + prefix + (a < 10 && a % 1 ? trim(a) : Math.round(a));
 }
 export const usdShort = (v) => short(v, '$');
+
+// ----------------------------------------------------------------- часовые пояса
+// Ведущий вводит дату и время игры в её поясе, а сервер хранит момент в UTC.
+
+function tzOffsetMinutes(ms, timeZone) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+    timeZone, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit'
+  }).formatToParts(new Date(ms)).map((p) => [p.type, p.value]));
+  const asUtc = Date.UTC(+parts.year, +parts.month - 1, +parts.day, +parts.hour % 24, +parts.minute, +parts.second);
+  return Math.round((asUtc - ms) / 60000);
+}
+
+/** '2026-10-03T18:30' в поясе America/Chicago → ISO-строка UTC. */
+export function zonedToIso(local, timeZone) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(String(local || ''));
+  if (!m) return null;
+  const guess = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]);
+  let utc = guess - tzOffsetMinutes(guess, timeZone) * 60000;
+  const again = guess - tzOffsetMinutes(utc, timeZone) * 60000;
+  if (again !== utc) utc = again;
+  return new Date(utc).toISOString();
+}
+
+/** ISO-момент → '2026-10-03T18:30' в поясе игры, для поля datetime-local. */
+export function isoToZoned(iso, timeZone) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const local = new Date(d.getTime() + tzOffsetMinutes(d.getTime(), timeZone) * 60000);
+  return local.toISOString().slice(0, 16);
+}
