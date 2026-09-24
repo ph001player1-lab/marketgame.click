@@ -1,14 +1,17 @@
 {
   "name": "marketgame-click",
   "private": true,
-  "description": "Market Game: Capture the Market — web version for the U.S. market",
+  "description": "Market Game: Capture the Market 5.0 — web version for the U.S. market",
   "type": "module",
   "scripts": {
-    "build:engine": "esbuild supabase/functions/game/economy.ts supabase/functions/game/presets.ts --format=esm --outdir=build --out-extension:.js=.mjs --log-level=warning",
-    "test": "npm run build:engine && node tests/golden.mjs && node tests/scale_check.mjs && node tests/v5_check.mjs && node tests/reset_check.mjs",
-    "report:teams": "npm run build:engine && node tests/teams_check.mjs"
+    "build": "esbuild supabase/functions/game/economy.ts supabase/functions/game/presets.ts --format=esm --outdir=build --out-extension:.js=.mjs --log-level=warning && esbuild supabase/functions/game/handler.ts --bundle --format=esm --platform=node --outfile=build/handler.mjs --log-level=warning",
+    "test": "npm run build && node tests/golden.mjs && node tests/scale_check.mjs && node tests/v5_check.mjs && node tests/schema_check.mjs",
+    "test:api": "npm run build && node tests/api/game_flow.mjs && node tests/api/extras.mjs",
+    "report:teams": "npm run build && node tests/teams_check.mjs",
+    "report:balance": "npm run build && node tests/v5_check.mjs --report"
   },
   "devDependencies": {
-    "esbuild": "^0.25.0"
+    "esbuild": "^0.25.0",
+    "postgres": "^3.4.9"
   }
 }

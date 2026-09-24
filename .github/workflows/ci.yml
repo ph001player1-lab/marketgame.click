@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  test:
+  economy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -15,8 +15,46 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      # Эталон экономики (400 сценариев), проверка перехода на доллары
-      # и полнота сброса партии.
+      # Эталон экономики (400 сценариев), переход на доллары, экономика 5.0,
+      # схема базы.
       - run: npm test
-      # Отчёт о выживании команд в первый месяц — для сведения, не падает.
+      # Отчёты для сведения, не падают.
       - run: node tests/teams_check.mjs
+      - run: node tests/v5_check.mjs --report
+
+  api:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Вся функция game на чистой базе: целая игра и редкие ветки.
+      - run: npm run test:api
+
+  deno:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      # Та же проверка типов, что пройдёт функция при развёртывании.
+      - run: deno check --node-modules-dir=none supabase/functions/game/index.ts

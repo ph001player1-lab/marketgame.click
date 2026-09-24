@@ -1,0 +1,118 @@
+name: Deploy Supabase
+
+# Разворачивает базу и функцию game в проекте Supabase и настраивает вход.
+#
+# Запуск вручную: Actions → Deploy Supabase → Run workflow → выбрать ветку.
+# Автоматически — при изменениях в supabase/ на ветке main.
+#
+# Секреты репозитория (Settings → Secrets and variables → Actions):
+#   SUPABASE_ACCESS_TOKEN  личный токен Supabase (Account → Access Tokens)
+#   SUPABASE_DB_PASSWORD   пароль базы проекта
+#   ADMIN_EMAILS           необязательно: администраторы через запятую
+#   SMTP_PASS              необязательно: ключ почтового сервиса (Resend);
+#                          без него Supabase шлёт письма только своей команде
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/**'
+      - '.github/workflows/deploy-supabase.yml'
+
+concurrency:
+  group: deploy-supabase
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      PROJECT_REF: fzchwkwyicnjbtjkqack
+      # Публичный ключ — не секрет: он и так уезжает в браузер каждому игроку.
+      PUBLISHABLE_KEY: sb_publishable_Q7RQ9We4D2h8qEiW1-ISjg_8P_Fq3_p
+      SITE_URL: https://marketgame.click
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      ADMIN_EMAILS: ${{ secrets.ADMIN_EMAILS }}
+      SMTP_PASS: ${{ secrets.SMTP_PASS }}
+      SMTP_HOST: ${{ vars.SMTP_HOST || 'smtp.resend.com' }}
+      SMTP_USER: ${{ vars.SMTP_USER || 'resend' }}
+      SMTP_SENDER: ${{ vars.SMTP_SENDER || 'noreply@marketgame.click' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Secrets are in place
+        run: |
+          missing=0
+          [ -n "$SUPABASE_ACCESS_TOKEN" ] || { echo "::error::Add repository secret SUPABASE_ACCESS_TOKEN"; missing=1; }
+          [ -n "$SUPABASE_DB_PASSWORD" ] || { echo "::error::Add repository secret SUPABASE_DB_PASSWORD"; missing=1; }
+          exit $missing
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Link project
+        run: supabase link --project-ref "$PROJECT_REF"
+
+      - name: Tables before migrations (for the log)
+        run: supabase inspect db table-stats --linked || true
+
+      - name: Database migrations
+        run: supabase db push --linked
+
+      - name: Edge Function
+        run: supabase functions deploy game --project-ref "$PROJECT_REF" --no-verify-jwt --use-api
+
+      - name: Function secrets
+        if: env.ADMIN_EMAILS != ''
+        run: supabase secrets set --project-ref "$PROJECT_REF" ADMIN_EMAILS="$ADMIN_EMAILS"
+
+      # Самостоятельной регистрации нет, письмо несёт 6 цифр вместо ссылки.
+      - name: Sign-in settings
+        run: |
+          body=$(jq -n --rawfile tpl supabase/templates/magic_link.html --arg site "$SITE_URL" '{
+            disable_signup: true,
+            external_email_enabled: true,
+            site_url: $site,
+            uri_allow_list: "https://marketgame.click,https://www.marketgame.click,http://localhost:8080,http://127.0.0.1:8080",
+            mailer_otp_length: 6,
+            mailer_otp_exp: 3600,
+            mailer_subjects_magic_link: "Your Market Game sign-in code",
+            mailer_templates_magic_link_content: $tpl
+          }')
+          code=$(curl -s -o resp.json -w '%{http_code}' -X PATCH \
+            "https://api.supabase.com/v1/projects/$PROJECT_REF/config/auth" \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" -d "$body")
+          echo "HTTP $code"
+          if [ "$code" != "200" ]; then
+            cat resp.json
+            echo "::warning::Sign-in settings were not applied — set them in the dashboard (see README)"
+          fi
+
+      - name: Email sending (custom SMTP)
+        if: env.SMTP_PASS != ''
+        run: |
+          body=$(jq -n --arg host "$SMTP_HOST" --arg user "$SMTP_USER" --arg pass "$SMTP_PASS" --arg from "$SMTP_SENDER" '{
+            smtp_host: $host, smtp_port: "465", smtp_user: $user, smtp_pass: $pass,
+            smtp_admin_email: $from, smtp_sender_name: "Market Game",
+            rate_limit_email_sent: 200
+          }')
+          code=$(curl -s -o resp.json -w '%{http_code}' -X PATCH \
+            "https://api.supabase.com/v1/projects/$PROJECT_REF/config/auth" \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" -d "$body")
+          echo "HTTP $code"
+          [ "$code" = "200" ] || { cat resp.json; exit 1; }
+
+      - name: Smoke test
+        run: |
+          sleep 10
+          out=$(curl -s -X POST "https://$PROJECT_REF.supabase.co/functions/v1/game" \
+            -H "apikey: $PUBLISHABLE_KEY" -H 'content-type: application/json' -d '{"action":"ping"}')
+          echo "$out"
+          echo "$out" | grep -q '"version":"5.0"'
+          out=$(curl -s -X POST "https://$PROJECT_REF.supabase.co/functions/v1/game" \
+            -H "apikey: $PUBLISHABLE_KEY" -H 'content-type: application/json' -d '{"action":"rating"}')
+          echo "$out" | head -c 300; echo
+          echo "$out" | grep -q '"ok":true'

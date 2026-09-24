@@ -140,7 +140,7 @@ export function clampDecisionToCash(d: Partial<Decision>, cash: number, cfg: Con
   let total = 0;
   for (const k of SPEND_KEYS) {
     const v = Math.max(0, Number(d[k]) || 0);
-    (out as Record<string, number>)[k] = v;
+    (out as unknown as Record<string, number>)[k] = v;
     total += v;
   }
 
@@ -148,7 +148,7 @@ export function clampDecisionToCash(d: Partial<Decision>, cash: number, cfg: Con
   if (total > available) {
     const factor = total > 0 ? available / total : 0;
     for (const k of SPEND_KEYS) {
-      (out as Record<string, number>)[k] = Math.floor((out as Record<string, number>)[k] * factor);
+      (out as unknown as Record<string, number>)[k] = Math.floor((out as unknown as Record<string, number>)[k] * factor);
     }
   }
   return out;
