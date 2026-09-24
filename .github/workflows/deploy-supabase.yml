@@ -40,7 +40,7 @@ jobs:
       SMTP_USER: ${{ vars.SMTP_USER || 'resend' }}
       SMTP_SENDER: ${{ vars.SMTP_SENDER || 'noreply@marketgame.click' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Secrets are in place
         run: |
