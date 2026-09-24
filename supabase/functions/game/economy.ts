@@ -8,6 +8,10 @@
 //  Google Sheets, а не выяснять расхождения балансa посреди живой сессии.
 //
 //  Запись в базу происходит снаружи, одной транзакцией.
+//
+//  v5.0 добавляет четыре параметра: страховку, коммунальные платежи, налог
+//  на прибыль и рост рынка от качества. Все четыре по умолчанию равны нулю,
+//  и тогда движок считает бит в бит как v4.9 — это проверяет tests/golden.mjs.
 // ============================================================================
 
 export interface Config {
@@ -32,6 +36,17 @@ export interface Config {
   LOAN_TIER1_LIMIT: number; LOAN_TIER2_LIMIT: number; LOAN_TIER3_LIMIT: number;
   LOAN_RATE_ANNUAL: number; LOAN_TERM_MONTHS: number;
   ROUND_DURATION_MIN: number;
+
+  // v5.0. Постоянные платежи ресторана страховой и коммунальщикам — рядом
+  // с арендой, которая уходит арендодателю.
+  INSURANCE?: number;
+  UTILITIES?: number;
+  // Налог на прибыль, доля: 0.21 = 21%. Платится с прибыли после покрытия
+  // прошлых убытков.
+  PROFIT_TAX_RATE?: number;
+  // Прирост рынка на каждую единицу СРЕДНЕГО качества всех ресторанов:
+  // 0.15 = +15% гостей. Вкладывается один — выигрывают все.
+  MARKET_QUALITY_GAIN?: number;
 }
 
 export interface PlayerState {
@@ -50,6 +65,9 @@ export interface PlayerState {
   loan_tier: number; loan_balance: number; loan_term_left: number; loan_monthly_principal: number;
   cf_positive_streak: number; ever_missed_payment: boolean;
   status: string;
+  // v5.0. Непокрытые убытки прошлых месяцев: пока они есть, налог на
+  // прибыль не берётся.
+  tax_loss_cf?: number;
 }
 
 export interface Decision {
@@ -72,6 +90,9 @@ export interface RoundResult {
   market_share: number; market_total: number;
   seo_spend: number; promo_spend: number; maps_spend: number;
   social_spend: number; outdoor_spend: number; affiliate_spend: number;
+  // v5.0
+  insurance: number; utilities: number;
+  profit_before_tax: number; tax: number;
 }
 
 // ------------------------------------------------------------------ утилиты
@@ -212,9 +233,15 @@ export function calculateRound(input: CalcInput): CalcOutput {
   const avgPrice = prices.reduce((a, b) => a + b, 0) / Math.max(n, 1);
   const catFactor = clamp(Math.pow(avgPrice / cfg.P_REF, -cfg.CAT_ELASTICITY), cfg.CAT_MIN, cfg.CAT_MAX);
 
-  const M = cfg.MARKET_SCALES_WITH_PLAYERS === false
+  // v5.0. Рынок растёт от среднего качества: гости идут туда, где в целом
+  // хорошо кормят. Качество уже учитывает вложения этого месяца (фаза 1),
+  // как и в привлекательности ниже.
+  const avgQuality = players.reduce((a, p) => a + (Number(p.quality) || 0), 0) / Math.max(n, 1);
+  const qualityFactor = 1 + (cfg.MARKET_QUALITY_GAIN ?? 0) * avgQuality;
+
+  const M = (cfg.MARKET_SCALES_WITH_PLAYERS === false
     ? cfg.MARKET_SIZE_PER_PLAYER * catFactor
-    : cfg.MARKET_SIZE_PER_PLAYER * n * catFactor;
+    : cfg.MARKET_SIZE_PER_PLAYER * n * catFactor) * qualityFactor;
 
   const attr: Record<string, number> = {};
   const marketingEffect: Record<string, number> = {};
@@ -275,11 +302,31 @@ export function calculateRound(input: CalcInput): CalcOutput {
       + (Number(d.maps_spend) || 0) + (Number(d.social_spend) || 0)
       + (Number(d.outdoor_spend) || 0) + (Number(d.affiliate_spend) || 0);
 
-    const ebit = grossProfit - cfg.RENT - cfg.PAYROLL_BASE - shiftCost
+    const insurance = cfg.INSURANCE ?? 0;
+    const utilities = cfg.UTILITIES ?? 0;
+
+    const ebit = grossProfit - cfg.RENT - insurance - utilities - cfg.PAYROLL_BASE - shiftCost
       - qualityUpkeep - qualityInvestSpend - marketingTotal;
 
     const interest = p.loan_balance * (cfg.LOAN_RATE_ANNUAL / 12);
-    const profit = ebit - interest;
+    const profitBeforeTax = ebit - interest;
+
+    // v5.0. Налог на прибыль с переносом убытков, как в жизни: сначала
+    // прибыль гасит непокрытые убытки прошлых месяцев, налог — только с
+    // остатка. Убытки копятся всегда, даже при нулевой ставке: ведущий может
+    // ввести налог посреди игры, и тогда прошлые потери уже учтены.
+    let tax = 0;
+    let lossCf = Number(p.tax_loss_cf) || 0;
+    if (profitBeforeTax > 0) {
+      const offset = Math.min(lossCf, profitBeforeTax);
+      lossCf -= offset;
+      tax = (profitBeforeTax - offset) * (cfg.PROFIT_TAX_RATE ?? 0);
+    } else {
+      lossCf += -profitBeforeTax;
+    }
+    p.tax_loss_cf = lossCf;
+
+    const profit = profitBeforeTax - tax;
     const principalPaid = Math.min(p.loan_balance, p.loan_monthly_principal || 0);
     const cashFlow = profit - principalPaid;
     const cashAfter = p.cash + cashFlow;
@@ -316,7 +363,8 @@ export function calculateRound(input: CalcInput): CalcOutput {
       market_share: M > 0 ? served / M : 0, market_total: Math.round(M),
       seo_spend: Number(d.seo_spend) || 0, promo_spend: Number(d.promo_spend) || 0,
       maps_spend: Number(d.maps_spend) || 0, social_spend: Number(d.social_spend) || 0,
-      outdoor_spend: Number(d.outdoor_spend) || 0, affiliate_spend: Number(d.affiliate_spend) || 0
+      outdoor_spend: Number(d.outdoor_spend) || 0, affiliate_spend: Number(d.affiliate_spend) || 0,
+      insurance, utilities, profit_before_tax: profitBeforeTax, tax
     });
   }
 
