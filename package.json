@@ -1,0 +1,14 @@
+{
+  "name": "marketgame-click",
+  "private": true,
+  "description": "Market Game: Capture the Market — web version for the U.S. market",
+  "type": "module",
+  "scripts": {
+    "build:engine": "esbuild functions/game/economy.ts --format=esm --outfile=build/economy.mjs --log-level=warning",
+    "test": "npm run build:engine && node tests/golden.mjs && node tests/scale_check.mjs && node tests/reset_check.mjs",
+    "report:teams": "npm run build:engine && node tests/teams_check.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}
