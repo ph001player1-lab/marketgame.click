@@ -116,3 +116,16 @@ jobs:
             -H "apikey: $PUBLISHABLE_KEY" -H 'content-type: application/json' -d '{"action":"rating"}')
           echo "$out" | head -c 300; echo
           echo "$out" | grep -q '"ok":true'
+          # Вход: почту администратора функция пускает и заводит в Supabase
+          # Auth, случайную — нет. Письмо здесь не отправляется.
+          admin=$(echo "${ADMIN_EMAILS:-ph001player1@gmail.com}" | cut -d, -f1 | tr -d ' ')
+          out=$(curl -s -X POST "https://$PROJECT_REF.supabase.co/functions/v1/game" \
+            -H "apikey: $PUBLISHABLE_KEY" -H 'content-type: application/json' \
+            -d "{\"action\":\"preflightLogin\",\"email\":\"$admin\"}")
+          echo "admin sign-in: $out"
+          echo "$out" | grep -q '"ok":true'
+          out=$(curl -s -X POST "https://$PROJECT_REF.supabase.co/functions/v1/game" \
+            -H "apikey: $PUBLISHABLE_KEY" -H 'content-type: application/json' \
+            -d '{"action":"preflightLogin","email":"nobody@example.com"}')
+          echo "stranger sign-in: $out"
+          echo "$out" | grep -q '"not_registered"'
