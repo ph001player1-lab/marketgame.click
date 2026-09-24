@@ -116,16 +116,19 @@ GitHub Actions запускает всё это при каждом измене
    North Virginia (us-east-1). Resend покажет 3–4 DNS-записи.
 3. **Записи в Dynadot:** **My Domains** → marketgame.click → **DNS
    Settings** (режим *Dynadot DNS*) → раздел **Subdomain Records** — по
-   строке на каждую запись Resend, значения копировать из Resend как есть:
+   строке на каждую запись Resend, значения копировать из Resend как есть.
+   Сейчас (2026) Resend просит такие:
 
-   | Subdomain           | Тип | Значение                                  | Приоритет |
-   |---------------------|-----|-------------------------------------------|-----------|
-   | `send`              | MX  | `feedback-smtp.us-east-1.amazonses.com`   | 10        |
-   | `send`              | TXT | `v=spf1 include:amazonses.com ~all`       |           |
-   | `resend._domainkey` | TXT | длинный ключ `p=…` из Resend               |           |
-   | `_dmarc`            | TXT | `v=DMARC1; p=none;` (по желанию)          |           |
+   | Subdomain           | Тип   | Значение                               |
+   |---------------------|-------|----------------------------------------|
+   | `resend._domainkey` | TXT   | длинный ключ `p=…` из Resend            |
+   | `send`              | CNAME | `send.forge.rmta.net`                  |
+   | `rsend`             | CNAME | `rsend.forge.rmta.net`                 |
+   | `_dmarc`            | TXT   | `v=DMARC1; p=none;` (по желанию)       |
 
-   Записи сайта (A и CNAME) не трогать.
+   CNAME не уживается с другими записями того же имени: если у `send`
+   остались старые MX и TXT (прежний формат Resend через amazonses.com),
+   их нужно удалить. Записи сайта (A, AAAA и CNAME `www`) не трогать.
 4. **Проверка:** в Resend у домена **Verify DNS Records**; статус
    **Verified** — обычно через несколько минут, иногда до суток.
 5. **Ключ:** **API Keys** → **Create API Key** → имя `supabase`,
