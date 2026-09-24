@@ -2,7 +2,7 @@
 // табло. Его разбирают дома или сразу после игры вместе с другими командами.
 // Тот же отчёт открывается по ссылке для напарников — без входа.
 
-import { t } from '../i18n.js';
+import { t, tn } from '../i18n.js';
 import { h, replace } from '../dom.js';
 import { usd, usdc, int, dec2, pctRaw } from '../fmt.js';
 import { createScoreboard } from './scoreboard.js';
@@ -114,7 +114,7 @@ export function renderReport(page, data, opts = {}) {
       h('h2', { class: 'card__title' }, t('history.allDecisions')),
       h('p', { class: 'muted small' }, t('history.allDecisionsLead')),
       data.allDecisions.map((x) => h('details', { class: 'details' },
-        h('summary', {}, x.restaurant + ' · ' + t('history.decisionsCount', { n: x.decisions.length })),
+        h('summary', {}, x.restaurant + ' · ' + tn('history.decisionsCount', x.decisions.length)),
         x.decisions.length ? simpleTable(decisionHead(), decisionRows(x.decisions), { numeric: [1, 2, 3, 4, 5, 6, 7, 8, 9] })
           : h('p', { class: 'muted' }, '—')))));
   } else if (team) {

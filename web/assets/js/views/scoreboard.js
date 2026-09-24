@@ -4,7 +4,7 @@
 // на телефоне), на проекторе (board/) и в отчёте после игры. Почт здесь нет:
 // команда видна по названию ресторана и имени.
 
-import { t } from '../i18n.js';
+import { t, tn } from '../i18n.js';
 import { h, replace } from '../dom.js';
 import { usd, usdc, int, dec2, pctRaw, usdShort, short } from '../fmt.js';
 import { read } from '../api.js';
@@ -147,7 +147,7 @@ export function createScoreboard(root, opts = {}) {
     body.append(h('p', { class: 'board-line' },
       months.length ? t('board.afterMonth', { n: lastMonth }) : t('board.beforeStart'),
       market ? ' · ' + t('board.market', { guests: int(market) }) : '',
-      ' · ' + t('board.teamsCount', { n: list.filter((p) => p.status !== 'left').length })));
+      ' · ' + tn('board.teamsCount', list.filter((p) => p.status !== 'left').length)));
 
     body.append(standings(list, lastMonth));
 

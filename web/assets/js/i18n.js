@@ -285,6 +285,7 @@ const EN = {
     beforeStart: 'Before month 1',
     market: 'market {guests} guests',
     teamsCount: '{n} teams',
+    teamsCount_one: '{n} team',
     empty: 'No results yet — the scoreboard fills in after the first month.',
     standings: 'Standings',
     capital: 'Capital',
@@ -367,6 +368,7 @@ const EN = {
     multistate: 'Across the U.S.',
     international: 'International',
     gamesList: '{n} games',
+    gamesList_one: '{n} game',
     gameLine: 'place {place} of {rivals}, {capital}, ×{mult}',
     columns: { team: 'Team', where: 'Where', games: 'Games', wins: 'Wins', mult: 'Avg ×', place: 'Place score', share: 'Avg share', score: 'Score' },
     empty: 'No rated games in this league yet.'
@@ -507,6 +509,7 @@ const EN = {
     allDecisions: 'Every team\'s decisions',
     allDecisionsLead: 'Open after the final so teams can go through the game together.',
     decisionsCount: '{n} months',
+    decisionsCount_one: '{n} month',
     hidden: 'Other teams\' decisions open after the final.',
     closedBook: 'The host kept other teams\' decisions private.',
     log: 'Money log',
@@ -811,6 +814,12 @@ export function t(path, vars) {
   if (v === undefined) v = path;
   if (typeof v !== 'string') return v;
   return fill(v, vars);
+}
+
+/** Число с существительным: tn('rating.gamesList', 1) берёт ключ gamesList_one, если он есть. */
+export function tn(path, n, vars = {}) {
+  const one = t(path + '_one', { n, ...vars });
+  return n === 1 && one !== path + '_one' ? one : t(path, { n, ...vars });
 }
 
 /** Текст ошибки сервера по её коду и подробностям. */

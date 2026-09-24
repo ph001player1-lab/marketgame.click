@@ -1,7 +1,7 @@
 // Рейтинг: все засчитанные игры лиги. Открыт без входа — на него ссылается
 // marketgame.biz, а игроки хвастаются местом.
 
-import { t } from '../i18n.js';
+import { t, tn } from '../i18n.js';
 import { h, replace } from '../dom.js';
 import { dec2, pctRaw, usd, dateOnly } from '../fmt.js';
 import { read } from '../api.js';
@@ -15,16 +15,18 @@ const locOf = (p) => ({ kind: p.location_kind, state: p.location_state, country:
 export function ratingTable(players, { limit = 50 } = {}) {
   const rows = players.slice(0, limit);
   const num = (text) => h('td', { class: 'r' }, text);
-  return h('div', { class: 'table-wrap' }, h('table', { class: 'table table--rating' },
+  const opt = (text) => h('td', { class: 'r opt' }, text);
+  // На узком экране — только место, команда, где, приумножение и балл.
+  return h('div', { class: 'table-wrap table-wrap--cq' }, h('table', { class: 'table table--rating' },
     h('thead', {}, h('tr', {},
       h('th', { class: 'r', scope: 'col' }, '#'),
       h('th', { scope: 'col' }, t('rating.columns.team')),
       h('th', { scope: 'col' }, t('rating.columns.where')),
-      h('th', { class: 'r', scope: 'col' }, t('rating.columns.games')),
-      h('th', { class: 'r', scope: 'col' }, t('rating.columns.wins')),
+      h('th', { class: 'r opt', scope: 'col' }, t('rating.columns.games')),
+      h('th', { class: 'r opt', scope: 'col' }, t('rating.columns.wins')),
       h('th', { class: 'r', scope: 'col' }, t('rating.columns.mult')),
-      h('th', { class: 'r', scope: 'col' }, t('rating.columns.place')),
-      h('th', { class: 'r', scope: 'col' }, t('rating.columns.share')),
+      h('th', { class: 'r opt', scope: 'col' }, t('rating.columns.place')),
+      h('th', { class: 'r opt', scope: 'col' }, t('rating.columns.share')),
       h('th', { class: 'r', scope: 'col' }, t('rating.columns.score')))),
     h('tbody', {}, rows.map((p, i) => h('tr', {},
       num(i + 1),
@@ -32,13 +34,13 @@ export function ratingTable(players, { limit = 50 } = {}) {
         h('div', { class: 'team-cell__name' }, p.restaurant || '—'),
         p.display_name ? h('div', { class: 'team-cell__who' }, p.display_name) : null,
         Array.isArray(p.history) && p.history.length ? h('details', { class: 'rating-history' },
-          h('summary', {}, t('rating.gamesList', { n: p.history.length })),
+          h('summary', {}, tn('rating.gamesList', p.history.length)),
           h('ul', {}, p.history.map((g) => h('li', {},
             g.title + (g.organizer ? ' · ' + g.organizer : '') + ' · ' + dateOnly(g.finishedAt) + ': ' +
             t('rating.gameLine', { place: g.place, rivals: g.rivals, capital: usd(g.capital), mult: dec2(g.multiplier) }))))) : null),
       h('td', {}, locationText(locOf(p), true) || '—'),
-      num(p.games), num(p.wins), num('×' + dec2(p.avg_multiplier)), num(dec2(p.avg_place_score)),
-      num(pctRaw(p.avg_share_pct)), h('td', { class: 'r' }, h('b', {}, dec2(p.score))))))));
+      opt(p.games), opt(p.wins), num('×' + dec2(p.avg_multiplier)), opt(dec2(p.avg_place_score)),
+      opt(pctRaw(p.avg_share_pct)), h('td', { class: 'r' }, h('b', {}, dec2(p.score))))))));
 }
 
 /** Страница рейтинга: вкладки лиг и фильтр по месту. */

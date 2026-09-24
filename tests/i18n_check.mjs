@@ -24,7 +24,7 @@ function files(dir, ext) {
 // 1. t('literal') во всех модулях сайта.
 for (const file of files(join(root, 'web/assets/js'), '.js').filter((f) => !f.endsWith('i18n.js'))) {
   const src = readFileSync(file, 'utf8');
-  for (const m of src.matchAll(/\bt\(\s*'([a-zA-Z0-9_.]+)'/g)) {
+  for (const m of src.matchAll(/\btn?\(\s*'([a-zA-Z0-9_.]+)'/g)) {
     if (m[1].endsWith('.')) continue;          // префикс, к нему приклеивают часть ключа
     check(m[1], file.replace(root, ''));
   }

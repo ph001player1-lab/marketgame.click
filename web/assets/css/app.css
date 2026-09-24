@@ -345,7 +345,9 @@ select.input.input--inline,.input.input--inline{width:auto;max-width:100%;min-he
 .rating-history{font-size:13px;margin-top:2px}
 .rating-history summary{cursor:pointer;color:var(--mute)}
 .rating-history ul{margin:4px 0 0;padding-left:18px}
-.topbar__home{color:inherit;text-decoration:none}
+.topbar__home{display:block;color:inherit;text-decoration:none}
+.table-wrap--cq{container-type:inline-size}
+@container (max-width:560px){.table--rating .opt{display:none}}
 .topbar__btn{background:transparent;color:var(--paper);border-color:#5A5A62}
 .topbar__btn:hover{background:#2A2A31}
 
