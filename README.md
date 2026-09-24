@@ -127,9 +127,14 @@ GitHub Actions запускает всё это при каждом измене
 
 1. **Pages:** репозиторий → **Settings** → **Pages** → **Build and
    deployment** → **Source: GitHub Actions**.
-2. **Первая публикация:** **Actions** → **Deploy site** → **Run workflow**.
+2. **Кому можно публиковать:** **Settings** → **Environments** →
+   **github-pages** → **Deployment branches and tags** → добавить основную
+   ветку репозитория (сейчас это `claude/blissful-mayer-3hluhu`) или
+   выбрать **No restriction**. Иначе публикация падает с ошибкой
+   *Branch … is not allowed to deploy to github-pages*.
+3. **Первая публикация:** **Actions** → **Deploy site** → **Run workflow**.
    Сайт появится на https://ph001player1-lab.github.io/marketgame.click/.
-3. **Домен в Dynadot:** **My Domains** → marketgame.click → **DNS
+4. **Домен в Dynadot:** **My Domains** → marketgame.click → **DNS
    Settings** → удалить старые записи A/AAAA/CNAME для корня и www (и
    переадресацию, если включена), добавить:
 
@@ -145,7 +150,7 @@ GitHub Actions запускает всё это при каждом измене
    | AAAA  | @    | 2606:50c0:8003::153       |
    | CNAME | www  | ph001player1-lab.github.io |
 
-4. **Домен в GitHub:** **Settings** → **Pages** → **Custom domain:**
+5. **Домен в GitHub:** **Settings** → **Pages** → **Custom domain:**
    `marketgame.click` → **Save**. Когда проверка DNS пройдёт (от нескольких
    минут до суток), включить **Enforce HTTPS**.
 
