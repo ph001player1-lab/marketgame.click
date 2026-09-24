@@ -40,13 +40,14 @@ export async function startServer({ port = 8080, db = 'mg_ui_test', admins = [AD
       if (url.pathname === '/api') {
         const chunks = [];
         for await (const c of req) chunks.push(c);
-        const r = await handler(new Request('http://localhost/api', {
+        const r = await handler(new Request('http://localhost/api' + url.search, {
           method: req.method,
           headers: { 'content-type': 'application/json', authorization: req.headers.authorization || '' },
           body: req.method === 'POST' ? Buffer.concat(chunks) : undefined
         }));
         res.writeHead(r.status, Object.fromEntries(r.headers));
-        res.end(await r.text());
+        // Байтами, а не текстом: логотип — картинка.
+        res.end(Buffer.from(await r.arrayBuffer()));
         return;
       }
       let path = decodeURIComponent(url.pathname);

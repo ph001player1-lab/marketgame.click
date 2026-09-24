@@ -81,6 +81,10 @@ export function createHandler(deps: Deps) {
   return async (req: Request): Promise<Response> => {
     const cors = corsHeaders(req.headers.get('origin'), deps.allowedOrigins);
     if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
+    if (req.method === 'GET') {
+      const logo = new URL(req.url).searchParams.get('logo');
+      if (logo) return await logoResponse(deps, logo);
+    }
     if (req.method !== 'POST') return json({ ok: true, service: 'marketgame', version: VERSION }, 200, cors);
 
     let body: Row;
@@ -102,6 +106,26 @@ export function createHandler(deps: Deps) {
       return json({ ok: false, error: 'server_error' }, 500, cors);
     }
   };
+}
+
+/**
+ * Логотип спонсора, загруженный файлом, — обычной картинкой для <img>.
+ * В ссылке есть номер версии, поэтому кешировать можно надолго.
+ */
+async function logoResponse(deps: Deps, gameId: string): Promise<Response> {
+  const headers = { 'Access-Control-Allow-Origin': '*', 'Cross-Origin-Resource-Policy': 'cross-origin' };
+  const notFound = () => new Response('not found', { status: 404, headers });
+  if (!/^[0-9a-f-]{36}$/i.test(gameId)) return notFound();
+  const [row] = await deps.sql`select data from game_logos where game_id = ${gameId}`;
+  const m = row ? /^data:(image\/(?:png|jpeg|webp));base64,(.+)$/.exec(String(row.data)) : null;
+  if (!m) return notFound();
+  const bin = atob(m[2]);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Response(bytes, {
+    status: 200,
+    headers: { ...headers, 'Content-Type': m[1], 'Cache-Control': 'public, max-age=31536000, immutable' }
+  });
 }
 
 // ----------------------------------------------------------------- маршруты

@@ -4,6 +4,7 @@ import { t, errorText } from '../i18n.js';
 import { h, replace, toast, busy, field } from '../dom.js';
 import { zonedToIso, isoToZoned } from '../fmt.js';
 import { act } from '../api.js';
+import { directImageUrl, logoSrc } from './common.js';
 
 const LEAGUES = [['start', 12], ['growth', 24], ['elite', 36]];
 
@@ -17,6 +18,166 @@ export const TIME_ZONES = [
   ['Europe/London', 'London'], ['Europe/Berlin', 'Berlin'], ['Asia/Dubai', 'Dubai'],
   ['Asia/Bangkok', 'Bangkok'], ['Asia/Tokyo', 'Tokyo'], ['Australia/Sydney', 'Sydney'], ['UTC', 'UTC']
 ];
+
+// ----------------------------------------------------------------- логотип
+
+const LOGO_MAX_W = 600;
+const LOGO_MAX_H = 240;
+
+function loadImage(src, timeoutMs = 10000) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const timer = setTimeout(() => reject(new Error('timeout')), timeoutMs);
+    img.onload = () => { clearTimeout(timer); resolve(img); };
+    img.onerror = () => { clearTimeout(timer); reject(new Error('load')); };
+    img.referrerPolicy = 'no-referrer';
+    img.src = src;
+  });
+}
+
+/** Границы непрозрачной части картинки: пустые поля по краям обрезаем. */
+function opaqueBox(ctx, w, hh) {
+  const d = ctx.getImageData(0, 0, w, hh).data;
+  let x0 = w;
+  let y0 = hh;
+  let x1 = -1;
+  let y1 = -1;
+  for (let y = 0; y < hh; y++) {
+    for (let x = 0; x < w; x++) {
+      if (d[(y * w + x) * 4 + 3] > 8) {
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
+      }
+    }
+  }
+  return x1 < 0 ? null : { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+}
+
+/**
+ * Файл логотипа → небольшая картинка data:image/png: без пустых прозрачных
+ * полей, не больше 600×240. Любой размер и формат, который понимает
+ * браузер (PNG, JPG, WebP, SVG, GIF); SVG превращается в PNG.
+ */
+export async function prepareLogo(file) {
+  if (!file || !/^image\//.test(file.type)) throw new Error('type');
+  if (file.size > 20 * 1024 * 1024) throw new Error('size');
+  const src = URL.createObjectURL(file);
+  try {
+    const img = await loadImage(src);
+    // У SVG без размеров naturalWidth бывает 0 — рисуем его в 600 px.
+    let w = img.naturalWidth || 600;
+    let hh = img.naturalHeight || 200;
+    // Огромные картинки сначала уменьшаем: телефон не потянет холст 8000×8000.
+    const pre = Math.min(1, Math.sqrt(16e6 / (w * hh)));
+    w = Math.max(1, Math.round(w * pre));
+    hh = Math.max(1, Math.round(hh * pre));
+    const c = document.createElement('canvas');
+    c.width = w;
+    c.height = hh;
+    const g = c.getContext('2d', { willReadFrequently: true });
+    g.drawImage(img, 0, 0, w, hh);
+    const box = opaqueBox(g, w, hh) || { x: 0, y: 0, w, h: hh };
+    const k = Math.min(1, LOGO_MAX_W / box.w, LOGO_MAX_H / box.h);
+    const out = document.createElement('canvas');
+    out.width = Math.max(1, Math.round(box.w * k));
+    out.height = Math.max(1, Math.round(box.h * k));
+    const o = out.getContext('2d');
+    o.imageSmoothingQuality = 'high';
+    o.drawImage(c, box.x, box.y, box.w, box.h, 0, 0, out.width, out.height);
+    let data = out.toDataURL('image/png');
+    if (data.length > 600000) data = out.toDataURL('image/webp', 0.9);
+    if (data.length > 600000) throw new Error('size');
+    return data;
+  } finally {
+    URL.revokeObjectURL(src);
+  }
+}
+
+/**
+ * Поле логотипа: загрузить файл или вставить ссылку, с предпросмотром.
+ * change() — есть ли изменения для сохранения: { sponsorLogoData | sponsorLogoUrl }.
+ */
+function logoField(values, onChange) {
+  let state = { mode: 'keep' };
+  const preview = h('div', { class: 'logo-preview' });
+  const status = h('div', { class: 'field__hint', role: 'status' });
+  const fileInput = h('input', { class: 'sr', type: 'file', accept: 'image/png,image/jpeg,image/webp,image/svg+xml,image/gif',
+    'aria-label': t('host.logoUpload'), onchange: onFile });
+  const link = h('input', { class: 'input', type: 'url', maxlength: 500, placeholder: 'https://…',
+    value: values.sponsor?.logoRev ? '' : (values.sponsor?.logoUrl || ''), onchange: onLink });
+  const upload = h('button', { class: 'btn btn--small', type: 'button', onclick: () => fileInput.click() }, t('host.logoUpload'));
+  const remove = h('button', { class: 'btn btn--ghost btn--small', type: 'button', onclick: () => {
+    state = { mode: 'none' };
+    link.value = '';
+    show(null);
+    say('');
+    onChange();
+  } }, t('host.logoRemove'));
+
+  function say(text, kind) {
+    status.textContent = text;
+    status.classList.toggle('is-ok', kind === 'ok');
+    status.classList.toggle('is-error', kind === 'bad');
+  }
+  function show(src) {
+    replace(preview, src
+      ? h('img', { src, alt: t('host.logoPreviewAlt'), referrerpolicy: 'no-referrer',
+          onerror: () => { replace(preview, h('span', { class: 'muted small' }, t('host.logoNone'))); } })
+      : h('span', { class: 'muted small' }, t('host.logoNone')));
+    remove.hidden = !src;
+  }
+  async function onFile() {
+    const file = fileInput.files[0];
+    fileInput.value = '';
+    if (!file) return;
+    say(t('host.logoWorking'));
+    try {
+      const data = await prepareLogo(file);
+      state = { mode: 'file', data };
+      link.value = '';
+      show(data);
+      say(t('host.logoReady'), 'ok');
+      onChange();
+    } catch {
+      say(t('host.logoFileBad'), 'bad');
+    }
+  }
+  async function onLink() {
+    const raw = link.value.trim();
+    onChange();
+    if (!raw) { state = { mode: 'none' }; show(null); say(''); return; }
+    state = { mode: 'link', url: raw };
+    if (!/^https:\/\//i.test(raw)) { say(t('errors.bad_url'), 'bad'); return; }
+    const direct = directImageUrl(raw);
+    say(t('host.logoChecking'));
+    try {
+      await loadImage(direct);
+      show(direct);
+      say(t('host.logoOk'), 'ok');
+    } catch {
+      show(null);
+      say(t('host.logoBad'), 'bad');
+    }
+  }
+
+  show(logoSrc(values.sponsor, values.id));
+  return {
+    el: h('div', { class: 'field' },
+      h('div', { class: 'field__label' }, t('host.logo')),
+      h('div', { class: 'logo-field' }, preview, h('div', { class: 'logo-field__actions' }, upload, remove), fileInput),
+      field(t('host.logoLink'), link),
+      status,
+      h('p', { class: 'field__hint' }, t('host.logoHint'))),
+    change() {
+      if (state.mode === 'file') return { sponsorLogoData: state.data, sponsorLogoUrl: '' };
+      if (state.mode === 'link') return { sponsorLogoUrl: state.url, sponsorLogoData: '' };
+      if (state.mode === 'none') return { sponsorLogoUrl: '', sponsorLogoData: '' };
+      return {};
+    }
+  };
+}
 
 function guessZone() {
   try {
@@ -47,8 +208,7 @@ export function gameForm(values = {}, { withLeague = true, lockPractice = false 
   const openBook = h('input', { type: 'checkbox', checked: values.openBook !== false, onchange: mark });
   const practice = h('input', { type: 'checkbox', checked: !!values.practice, disabled: lockPractice, onchange: mark });
   const sponsorName = h('input', { class: 'input', maxlength: 120, value: values.sponsor?.name || '', oninput: mark });
-  const sponsorLogo = h('input', { class: 'input', type: 'url', maxlength: 500, value: values.sponsor?.logoUrl || '', oninput: mark,
-    placeholder: 'https://' });
+  const logo = logoField(values, mark);
   const sponsorUrl = h('input', { class: 'input', type: 'url', maxlength: 500, value: values.sponsor?.url || '', oninput: mark,
     placeholder: 'https://' });
 
@@ -73,7 +233,7 @@ export function gameForm(values = {}, { withLeague = true, lockPractice = false 
       h('summary', {}, t('host.sponsorTitle')),
       h('p', { class: 'muted small' }, t('host.sponsorLead')),
       field(t('host.sponsorName'), sponsorName),
-      field(t('host.sponsorLogo'), sponsorLogo),
+      logo.el,
       field(t('host.sponsorUrl'), sponsorUrl)));
 
   return {
@@ -85,7 +245,8 @@ export function gameForm(values = {}, { withLeague = true, lockPractice = false 
       return {
         title: title.value.trim(), league, practice: practice.checked, organizer: organizer.value.trim(),
         timezone: zone.value, scheduledAt, openBook: openBook.checked,
-        sponsorName: sponsorName.value.trim(), sponsorLogoUrl: sponsorLogo.value.trim(), sponsorUrl: sponsorUrl.value.trim()
+        sponsorName: sponsorName.value.trim(), sponsorUrl: sponsorUrl.value.trim(),
+        ...logo.change()
       };
     }
   };

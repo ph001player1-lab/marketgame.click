@@ -137,9 +137,13 @@ GitHub Actions запускает всё это при каждом измене
 6. **Секрет в GitHub:** **Settings** → **Secrets and variables** →
    **Actions** → **New repository secret** → Name `SMTP_PASS`, Secret —
    ключ → **Add secret**.
-7. **Развёртывание:** **Actions** → **Deploy Supabase** → **Run workflow**.
-   Шаг *Email sending (custom SMTP)* подключит почту: smtp.resend.com,
-   порт 465, пользователь `resend`, отправитель noreply@marketgame.click.
+7. **Развёртывание:** **Actions** → **Deploy Supabase** → **Run workflow**
+   (именно вручную: при обычных пушах почту не трогаем). Сначала уходит
+   пробное письмо администратору через Resend; если Resend отказал (домен
+   не подтверждён, ключ не тот), шаг падает, а вход работает по-старому.
+   Если письмо ушло, шаг *Email sending (custom SMTP)* подключает почту:
+   smtp.resend.com, порт 465, пользователь `resend`, отправитель
+   noreply@marketgame.click.
 
 Проверка: войти на сайт со своей почтой — код придёт от
 noreply@marketgame.click. Другой отправитель — переменная репозитория

@@ -9,6 +9,7 @@ import { mkdirSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { startServer, ADMIN } from './server.mjs';
 import { seedGame, TEAMS } from './seed.mjs';
+import { TEST_LOGO_PNG_B64 } from '../fixtures/logo.mjs';
 
 async function loadPlaywright() {
   try { return await import('playwright'); } catch { /* нет в проекте — берём глобальный */ }
@@ -250,14 +251,31 @@ try {
     await p.close();
   });
 
-  await step('create a game', async () => {
+  await step('create a game with an uploaded sponsor logo', async () => {
     const p = await page(browser, 'laptop', ADMIN);
     await p.goto(base + '#/new');
     await p.getByLabel('Game title').fill('Houston Chamber · Winter');
     await p.getByText('Growth · 24 months').click();
+    await p.getByText('Sponsor (optional)').click();
+    await p.getByLabel('Sponsor name').fill('Lone Star Coffee Roasters');
+    await p.getByLabel('Upload logo file').setInputFiles({
+      name: 'logo.png', mimeType: 'image/png', buffer: Buffer.from(TEST_LOGO_PNG_B64, 'base64')
+    });
+    await p.getByText('Logo ready').waitFor();
+    const size = await p.locator('.logo-preview img').evaluate((img) => [img.naturalWidth, img.naturalHeight]);
+    assert.deepEqual(size, [101, 51], 'empty transparent edges are trimmed');
     await shot(p, 'host-06-create');
     await p.getByRole('button', { name: 'Create game' }).click();
     await p.getByText('Ready to start').waitFor();
+    const code = (await p.locator('.code').first().textContent()).trim();
+    // Логотип на табло проектора — картинкой от функции игры.
+    const b = await page(browser, 'projector');
+    await b.goto(base + 'board/?code=' + code);
+    await b.waitForFunction(() => {
+      const img = document.querySelector('.sponsor img');
+      return img && img.complete && img.naturalWidth === 101;
+    });
+    await b.close();
     await p.close();
   });
 

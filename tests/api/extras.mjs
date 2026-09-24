@@ -7,6 +7,7 @@
 
 import assert from 'node:assert/strict';
 import { freshDatabase, makeApi, moneyInvariants } from './harness.mjs';
+import { TEST_LOGO_PNG_B64 } from '../fixtures/logo.mjs';
 import { createHandler } from '../../build/handler.mjs';
 
 const ADMIN = 'admin@test.com';
@@ -201,6 +202,48 @@ await step('поправка ведущего после финала сразу
   const after = (await call(null, 'rating', { league: 'start' })).leagues[0].players;
   const bob2 = after.find((p) => p.restaurant === 'Rest B');
   assert.equal(Math.round(bob2.avg_capital - bob.avg_capital), 50000);
+});
+
+await step('логотип спонсора: файл, ссылка Google Drive, картинка по GET', async () => {
+  const m = await call(HOST, 'monitor', { gameId });
+  const board = async () => (await call(null, 'board', { code: m.game.code })).game.sponsor;
+  const handler = createHandler({ sql, adminEmails: [], allowedOrigins: [], verifyToken: async () => null,
+    ensureAuthUser: async () => {} });
+  const getLogo = () => handler(new Request('http://x/game?logo=' + gameId));
+
+  ok(await call(HOST, 'updateGame', { gameId, sponsorName: 'Acme Coffee',
+    sponsorLogoData: 'data:image/png;base64,' + TEST_LOGO_PNG_B64 }));
+  let s = await board();
+  assert.equal(s.logoRev, 1);
+  assert.equal(s.logoUrl, null);
+  const res = await getLogo();
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('content-type'), 'image/png');
+  assert.match(res.headers.get('cache-control'), /max-age=31536000/);
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  assert.deepEqual([...bytes.slice(0, 4)], [0x89, 0x50, 0x4e, 0x47], 'отдаётся PNG');
+
+  // Ссылка «поделиться» Google Drive превращается в прямую ссылку на картинку.
+  ok(await call(HOST, 'updateGame', { gameId,
+    sponsorLogoUrl: 'https://drive.google.com/file/d/1AbCdEfGhIjKlMnOpQrStUvWxYz012345/view?usp=sharing', sponsorLogoData: '' }));
+  s = await board();
+  assert.equal(s.logoUrl, 'https://drive.google.com/thumbnail?id=1AbCdEfGhIjKlMnOpQrStUvWxYz012345&sz=w1000');
+  assert.equal(s.logoRev, null);
+  assert.equal((await getLogo()).status, 404, 'файл удалён, когда логотип стал ссылкой');
+
+  ok(await call(HOST, 'updateGame', { gameId, sponsorLogoUrl: 'https://www.dropbox.com/s/abc/logo.png?dl=0' }));
+  assert.equal((await board()).logoUrl, 'https://www.dropbox.com/s/abc/logo.png?raw=1');
+
+  err(await call(HOST, 'updateGame', { gameId, sponsorLogoData: 'data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=' }), 'bad_logo');
+  err(await call(HOST, 'updateGame', { gameId, title: 'Renamed', sponsorLogoData: 'not an image' }), 'bad_logo');
+  assert.notEqual((await call(HOST, 'monitor', { gameId })).game.title, 'Renamed', 'плохой логотип не сохранил и остальное');
+
+  ok(await call(HOST, 'updateGame', { gameId, sponsorLogoUrl: '', sponsorLogoData: '' }));
+  s = await board();
+  assert.equal(s.logoUrl, null);
+  assert.equal(s.logoRev, null);
+  const [log] = await sql`select count(*) as n from host_actions where game_id = ${gameId} and payload::text like '%base64%'`;
+  assert.equal(Number(log.n), 0, 'сам файл в журнал ведущего не попадает');
 });
 
 await step('CORS: только разрешённые сайты', async () => {

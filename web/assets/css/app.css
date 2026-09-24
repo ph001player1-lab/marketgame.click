@@ -219,7 +219,13 @@ table.table{width:100%;border-collapse:collapse;font-size:15px}
   margin:var(--gap) 0 0;background:#fff}
 .sponsor__label{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--mute)}
 .sponsor__name{font-weight:800}
-.sponsor img{max-height:40px;width:auto}
+.sponsor img{max-height:48px;max-width:200px;width:auto;height:auto}
+.board--big .sponsor img{max-height:72px;max-width:280px}
+.logo-field{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 8px}
+.logo-preview{display:flex;align-items:center;justify-content:center;min-width:140px;height:68px;padding:6px 12px;
+  border:1.5px dashed var(--line);border-radius:10px;background:#fff}
+.logo-preview img{max-height:54px;max-width:220px;width:auto;height:auto}
+.logo-field__actions{display:flex;gap:8px;flex-wrap:wrap}
 .sponsor__note{flex-basis:100%;font-size:12px;color:var(--mute)}
 
 /* ------------------------------------------------------------ памятка */

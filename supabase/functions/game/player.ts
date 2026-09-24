@@ -7,7 +7,7 @@ import { EDITABLE_CONFIG, LEAGUES, type League } from './presets.ts';
 import {
   type Sql, type Row, fail, num, cents, round2, currentRound, accountingRound, activeConfig,
   businessReset, addLedger, addNotice, moneyTarget, available, OFF_BUSINESS, usd, teamLabel,
-  INSTITUTIONS, type RoundRow
+  INSTITUTIONS, directImageUrl, type RoundRow
 } from './lib.ts';
 
 // ----------------------------------------------------------------- общее
@@ -26,8 +26,14 @@ export function gameMeta(game: Row, round: RoundRow) {
     organizer: game.organizer ?? null,
     timezone: String(game.timezone), scheduledAt: game.scheduled_at ?? null,
     openBook: !!game.open_book,
+    // Загруженный логотип отдаёт сама функция: GET ?logo=<id>&v=<logoRev>.
+    // Ссылку, сохранённую до перевода Drive-ссылок в прямые, переводим здесь.
     sponsor: game.sponsor_name
-      ? { name: String(game.sponsor_name), logoUrl: game.sponsor_logo_url ?? null, url: game.sponsor_url ?? null }
+      ? {
+          name: String(game.sponsor_name), url: game.sponsor_url ?? null,
+          logoRev: num(game.sponsor_logo_rev) > 0 ? num(game.sponsor_logo_rev) : null,
+          logoUrl: num(game.sponsor_logo_rev) > 0 || !game.sponsor_logo_url ? null : directImageUrl(String(game.sponsor_logo_url))
+        }
       : null
   };
 }

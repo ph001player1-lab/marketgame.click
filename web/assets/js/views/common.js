@@ -1,6 +1,7 @@
 // Общие куски разделов: где работает команда, значки статуса, плашка
 // спонсора, карточка «график или таблица», выгрузка CSV.
 
+import { CONFIG } from '../config.js';
 import { t } from '../i18n.js';
 import { h, replace, toast } from '../dom.js';
 
@@ -45,13 +46,38 @@ export function swatch(color) {
 }
 
 /**
+ * Прямая ссылка на картинку — как на сервере (lib.ts directImageUrl):
+ * ссылка «поделиться» Google Drive и Dropbox ведёт на страницу, а не на файл.
+ */
+export function directImageUrl(u) {
+  const drive = /^https:\/\/drive\.google\.com\/(?:file\/d\/|open\?id=|uc\?(?:[^#]*&)?id=|thumbnail\?(?:[^#]*&)?id=)([A-Za-z0-9_-]{20,})/.exec(u);
+  if (drive) return 'https://drive.google.com/thumbnail?id=' + drive[1] + '&sz=w1000';
+  if (/^https:\/\/(?:www\.)?dropbox\.com\//.test(u)) {
+    const noDl = u.replace(/([?&])dl=[01]&?/, '$1').replace(/[?&]$/, '');
+    return /[?&]raw=1/.test(noDl) ? noDl : noDl + (noDl.includes('?') ? '&' : '?') + 'raw=1';
+  }
+  return u;
+}
+
+/** Откуда брать логотип: загруженный файл отдаёт функция игры, ссылка — как есть. */
+export function logoSrc(sponsor, gameId) {
+  if (!sponsor) return null;
+  if (sponsor.logoRev && gameId) {
+    return CONFIG.apiUrl + '?logo=' + encodeURIComponent(gameId) + '&v=' + encodeURIComponent(sponsor.logoRev);
+  }
+  return sponsor.logoUrl || null;
+}
+
+/**
  * Плашка спонсора. Спонсор — реклама, а не участник игры: банк в игре
  * вымышленный и безымянный, поэтому рядом всегда стоит оговорка.
+ * Картинка не загрузилась — прячем её, а не показываем битую иконку.
  */
-export function sponsorBanner(sponsor) {
+export function sponsorBanner(sponsor, gameId) {
   if (!sponsor || !sponsor.name) return null;
-  const logo = sponsor.logoUrl
-    ? h('img', { src: sponsor.logoUrl, alt: sponsor.name, loading: 'lazy', referrerpolicy: 'no-referrer' })
+  const src = logoSrc(sponsor, gameId);
+  const logo = src
+    ? h('img', { src, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer', onerror: (e) => e.currentTarget.remove() })
     : null;
   const name = sponsor.url
     ? h('a', { class: 'sponsor__name', href: sponsor.url, target: '_blank', rel: 'sponsored noopener noreferrer' }, sponsor.name)

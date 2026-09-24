@@ -416,7 +416,10 @@ export function createConsole(root, ctx) {
       const p = form.read();
       if (!p.title) { toast(t('errors.empty_title'), 'bad'); return; }
       const params = { title: p.title, organizer: p.organizer, timezone: p.timezone, scheduledAt: p.scheduledAt,
-        openBook: p.openBook, sponsorName: p.sponsorName, sponsorLogoUrl: p.sponsorLogoUrl, sponsorUrl: p.sponsorUrl };
+        openBook: p.openBook, sponsorName: p.sponsorName, sponsorUrl: p.sponsorUrl };
+      // Логотип — только если его меняли: файл, ссылка или «убрать».
+      if ('sponsorLogoData' in p) params.sponsorLogoData = p.sponsorLogoData;
+      if ('sponsorLogoUrl' in p) params.sponsorLogoUrl = p.sponsorLogoUrl;
       if (m && m.game.roundNumber === 0) params.practice = p.practice;
       const res = await run(detailsBtn, 'updateGame', params, t('host.saved'));
       if (res?.ok) { form.clean(); formKey = ''; }

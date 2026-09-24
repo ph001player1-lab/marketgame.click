@@ -95,7 +95,7 @@ export function createScoreboard(root, opts = {}) {
   function render() {
     destroyCards();
     buttons.forEach((b, i) => b.setAttribute('aria-pressed', VIEWS[i] === view ? 'true' : 'false'));
-    replace(sponsorBox, data ? sponsorBanner(data.game.sponsor) : null);
+    replace(sponsorBox, data ? sponsorBanner(data.game.sponsor, data.game.id) : null);
     if (!data) { replace(body, h('div', { class: 'spinner', role: 'status' })); return; }
     replace(body);
     if (view === 'teams') renderTeams();

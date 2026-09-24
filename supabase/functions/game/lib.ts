@@ -114,6 +114,21 @@ export { defaultDecision };
  * разогретую рекламу и прошлые убытки для налога.
  */
 /**
+ * Прямая ссылка на картинку. Ссылка «поделиться» Google Drive и Dropbox
+ * открывает страницу просмотра, а не файл, — тег <img> её не покажет.
+ * Для файла, открытого всем по ссылке, превращаем её в адрес самой картинки.
+ */
+export function directImageUrl(u: string): string {
+  const drive = /^https:\/\/drive\.google\.com\/(?:file\/d\/|open\?id=|uc\?(?:[^#]*&)?id=|thumbnail\?(?:[^#]*&)?id=)([A-Za-z0-9_-]{20,})/.exec(u);
+  if (drive) return 'https://drive.google.com/thumbnail?id=' + drive[1] + '&sz=w1000';
+  if (/^https:\/\/(?:www\.)?dropbox\.com\//.test(u)) {
+    const noDl = u.replace(/([?&])dl=[01]&?/, '$1').replace(/[?&]$/, '');
+    return /[?&]raw=1/.test(noDl) ? noDl : noDl + (noDl.includes('?') ? '&' : '?') + 'raw=1';
+  }
+  return u;
+}
+
+/**
  * Стартовый кредит: у нового ресторана лимит первого уровня открыт сразу,
  * а не после первого месяца, как в v4.9. Настоящему ресторану дают
  * кредит на открытие (в США — займы SBA), а без него команды разорялись в

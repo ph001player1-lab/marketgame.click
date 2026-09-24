@@ -14,7 +14,7 @@ import {
 import {
   type Sql, type Row, fail, num, cents, round2, normEmail, isEmail, currentRound, accountingRound,
   activeConfig, addLedger, addCity, addNotice, logHostAction, moneyTarget, available,
-  OFF_BUSINESS, INSTITUTIONS, isInstitution, usd, teamLabel, STARTUP_LOAN_TIER
+  OFF_BUSINESS, INSTITUTIONS, isInstitution, usd, teamLabel, STARTUP_LOAN_TIER, directImageUrl
 } from './lib.ts';
 import { gameMeta, rulesFor, upcomingChanges } from './player.ts';
 import { cityBudget, institutionsState } from './board.ts';
@@ -73,6 +73,40 @@ function url(v: unknown): string | null {
   return s;
 }
 
+/** Ссылка на картинку логотипа: https, ссылки Drive и Dropbox — прямые. */
+function imageUrl(v: unknown): string | null {
+  const s = url(v);
+  return s ? directImageUrl(s) : null;
+}
+
+// Логотип файлом: браузер уже уменьшил его и прислал PNG, JPEG или WebP.
+// SVG не принимаем — в нём может быть код; браузер переводит его в PNG.
+const LOGO_DATA = /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/;
+
+function logoData(v: unknown): string | null {
+  const s = String(v ?? '').trim();
+  if (!s) return null;
+  if (s.length > 700000 || !LOGO_DATA.test(s)) fail('bad_logo');
+  return s;
+}
+
+/**
+ * Логотип спонсора: файл, ссылка или ничего. Прислан файл — он заменяет
+ * ссылку; прислана ссылка — заменяет файл; оба пустые — логотипа нет.
+ * Ни одного поля — логотип не трогаем.
+ */
+async function saveLogo(tx: Sql, game: Row, b: Row): Promise<Row> {
+  if (b.sponsorLogoData === undefined && b.sponsorLogoUrl === undefined) return {};
+  const data = logoData(b.sponsorLogoData);
+  if (data) {
+    await tx`insert into game_logos (game_id, data) values (${game.id}, ${data})
+             on conflict (game_id) do update set data = excluded.data, updated_at = now()`;
+    return { sponsor_logo_url: null, sponsor_logo_rev: num(game.sponsor_logo_rev) + 1 };
+  }
+  await tx`delete from game_logos where game_id = ${game.id}`;
+  return { sponsor_logo_url: imageUrl(b.sponsorLogoUrl), sponsor_logo_rev: 0 };
+}
+
 function validTimezone(v: unknown): string {
   const tz = String(v ?? 'America/New_York');
   try {
@@ -102,12 +136,13 @@ export async function createGame(sql: Sql, hostEmail: string, b: Row) {
     const [game] = await tx`insert into games ${tx({
       code, title, league, total_rounds: LEAGUES[league].months, practice: !!b.practice,
       host_email: hostEmail, organizer: text(b.organizer, 120),
-      sponsor_name: text(b.sponsorName, 120), sponsor_logo_url: url(b.sponsorLogoUrl),
+      sponsor_name: text(b.sponsorName, 120),
       sponsor_url: url(b.sponsorUrl), timezone: validTimezone(b.timezone),
       scheduled_at: scheduledAt, open_book: b.openBook === undefined ? true : !!b.openBook,
       config: tx.json(cfg)
     })} returning *`;
-    await tx`update games set series_id = id where id = ${game.id}`;
+    const logo = await saveLogo(tx, game, b);
+    await tx`update games set ${tx({ series_id: game.id, ...logo })} where id = ${game.id}`;
     await tx`insert into institutions ${tx(INSTITUTIONS.map((kind) => ({
       game_id: game.id, kind, city_pct: DEFAULT_CITY_SHARE_PCT
     })))}`;
@@ -121,7 +156,6 @@ export async function updateGame(sql: Sql, game: Row, actor: string, b: Row) {
   if (b.title !== undefined) { upd.title = text(b.title, 80); if (!upd.title) fail('empty_title'); }
   if (b.organizer !== undefined) upd.organizer = text(b.organizer, 120);
   if (b.sponsorName !== undefined) upd.sponsor_name = text(b.sponsorName, 120);
-  if (b.sponsorLogoUrl !== undefined) upd.sponsor_logo_url = url(b.sponsorLogoUrl);
   if (b.sponsorUrl !== undefined) upd.sponsor_url = url(b.sponsorUrl);
   if (b.timezone !== undefined) upd.timezone = validTimezone(b.timezone);
   if (b.scheduledAt !== undefined) {
@@ -136,10 +170,19 @@ export async function updateGame(sql: Sql, game: Row, actor: string, b: Row) {
     if (num(game.current_round) > 0) fail('game_started');
     upd.practice = !!b.practice;
   }
-  if (!Object.keys(upd).length) return { ok: true };
-  await sql`update games set ${sql(upd)} where id = ${game.id}`;
-  await logHostAction(sql, game.id, actor, 'update_game', upd);
-  return { ok: true };
+  // Проверяем всё до записи: плохой файл логотипа не должен оставить
+  // полсохранённые данные игры.
+  logoData(b.sponsorLogoData);
+  if (b.sponsorLogoUrl !== undefined) imageUrl(b.sponsorLogoUrl);
+  return await sql.begin(async (tx: Sql) => {
+    Object.assign(upd, await saveLogo(tx, game, b));
+    if (!Object.keys(upd).length) return { ok: true };
+    await tx`update games set ${tx(upd)} where id = ${game.id}`;
+    // Сам файл в журнал не пишем — только отметку, что его заменили.
+    const logged = b.sponsorLogoData ? { ...upd, sponsor_logo: 'uploaded' } : upd;
+    await logHostAction(tx, game.id, actor, 'update_game', logged);
+    return { ok: true };
+  });
 }
 
 export async function deleteGame(sql: Sql, game: Row, actor: string) {
@@ -537,9 +580,11 @@ export async function finishGame(sql: Sql, game: Row, actor: string) {
 /** Сыграть ещё раз: новая игра с теми же настройками и составом. */
 export async function playAgain(sql: Sql, game: Row, actor: string,
                                 ensureAuthUser: (e: string) => Promise<void>) {
+  const [logo] = await sql`select data from game_logos where game_id = ${game.id}`;
   const created = await createGame(sql, String(game.host_email), {
     title: game.title, league: game.league, practice: game.practice, organizer: game.organizer,
     sponsorName: game.sponsor_name, sponsorLogoUrl: game.sponsor_logo_url, sponsorUrl: game.sponsor_url,
+    sponsorLogoData: logo?.data ?? null,
     timezone: game.timezone, openBook: game.open_book
   });
   const newId = created.gameId;

@@ -92,8 +92,32 @@ jobs:
             echo "::warning::Sign-in settings were not applied — set them in the dashboard (see README)"
           fi
 
+      # Сначала пробное письмо через Resend: если домен ещё не подтверждён
+      # или ключ неверный, Resend откажет — и почту Supabase мы не трогаем,
+      # вход по коду продолжает работать как раньше. Письмо придёт первому
+      # администратору. Только при ручном запуске: письмо на каждый пуш ни к чему.
+      - name: Email service check (test email via Resend)
+        if: env.SMTP_PASS != '' && github.event_name == 'workflow_dispatch' && env.SMTP_HOST == 'smtp.resend.com'
+        run: |
+          to="${ADMIN_EMAILS:-ph001player1@gmail.com}"; to="${to%%,*}"; to="$(echo "$to" | xargs)"
+          body=$(jq -n --arg from "Market Game <$SMTP_SENDER>" --arg to "$to" '{
+            from: $from, to: [$to],
+            subject: "Market Game: sign-in emails are connected",
+            text: "This test message confirms that Market Game can send sign-in codes from marketgame.click through Resend. No action needed."
+          }')
+          code=$(curl -s -o resp.json -w '%{http_code}' -X POST https://api.resend.com/emails \
+            -H "Authorization: Bearer $SMTP_PASS" -H 'Content-Type: application/json' -d "$body")
+          echo "HTTP $code"; cat resp.json; echo
+          if [ "$code" != "200" ]; then
+            echo "::error::Resend refused the test email. Check that the domain is Verified in Resend and that SMTP_PASS is a Sending access key for marketgame.click. Supabase email settings were not changed."
+            exit 1
+          fi
+
+      # Почту Supabase переключаем только при ручном запуске, после
+      # удачного пробного письма. Настройка сохраняется в Supabase, повторять
+      # её на каждом пуше не нужно.
       - name: Email sending (custom SMTP)
-        if: env.SMTP_PASS != ''
+        if: env.SMTP_PASS != '' && github.event_name == 'workflow_dispatch'
         run: |
           body=$(jq -n --arg host "$SMTP_HOST" --arg user "$SMTP_USER" --arg pass "$SMTP_PASS" --arg from "$SMTP_SENDER" '{
             smtp_host: $host, smtp_port: "465", smtp_user: $user, smtp_pass: $pass,
@@ -130,3 +154,9 @@ jobs:
             -d '{"action":"preflightLogin","email":"nobody@example.com"}')
           echo "stranger sign-in: $out"
           echo "$out" | grep -q '"not_registered"'
+          # Логотип спонсора браузер берёт обычным <img> — без ключей и
+          # заголовков. Несуществующий логотип: 404 от функции, а не 401.
+          code=$(curl -s -o /dev/null -w '%{http_code}' \
+            "https://$PROJECT_REF.supabase.co/functions/v1/game?logo=00000000-0000-0000-0000-000000000000")
+          echo "logo without keys: HTTP $code"
+          [ "$code" = "404" ]
