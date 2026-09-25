@@ -6,7 +6,7 @@
 
 const EN = {
   brand: 'Market Game',
-  gameName: 'Capture the Market',
+  tagline: 'Into new waters — not into a fight',
 
   common: {
     loading: 'Loading…',
@@ -150,7 +150,8 @@ const EN = {
     shiftsPlus: 'Add one shift',
     shiftsHint: 'One shift = {cap} guests of capacity for {cost}/mo. Now: {shifts} extra shift(s), capacity {capacity}.',
     quality: 'Invest in quality (one time)',
-    qualityHint: '{unit} buys +1 quality point (max 3). Upkeep {upkeep}/mo per point.',
+    qualityHint: '{unit} buys +1 quality point (max 3). Upkeep {upkeep}/mo per point. Better food also grows the whole market — the blue-ocean move.',
+    priceWarTip: 'Below the reference price each guest earns you less. If every restaurant cuts, nobody gains guests and the whole town loses money — see “Red ocean or blue ocean” in the Guide.',
     totalSpend: 'Spending this month: {total} of {cash} in cash',
     overCash: 'That is more than your cash.',
     submit: 'Send decision',
@@ -333,6 +334,54 @@ const EN = {
     fullscreen: 'Full screen',
     rotate: 'Rotate views every 20 seconds',
     decisionsOpen: 'decisions open'
+  },
+
+  ocean: {
+    title: 'Red ocean or blue ocean?',
+    lead: 'Red water: the restaurants in town lose money together — usually from a price war, an ad race or too many restaurants for the guests. Blue water: they earn together. The winner is still the team with the most capital, but in blue water there is more capital to win.',
+    water: { red: 'Red water', choppy: 'Choppy water', blue: 'Blue water' },
+    earned: 'Town earned', lost: 'Town lost',
+    summary: {
+      earned: 'Month {n}: the restaurants together earned {amount} on {revenue} of sales ({pct}).',
+      lost: 'Month {n}: the restaurants together lost {amount} on {revenue} of sales ({pct}).'
+    },
+    driversTitle: 'What moved the water',
+    driver: {
+      priceWar: 'Price war: the average price was {avg}, below the {ref} reference — every guest earned less for everyone.',
+      priceOk: 'No price war: the average price was {avg} (reference {ref}).',
+      adRace: 'Ad race: advertising took {share} of sales — ads mostly move guests between restaurants.',
+      adOk: 'Advertising took {share} of sales.',
+      crowded: 'Too crowded: {n} restaurants, but at a fair price this market feeds about {feeds}.',
+      roomy: '{n} restaurants for a market that feeds about {feeds} at a fair price.',
+      quality: 'Quality grew the market by {boost} — more guests for everyone.',
+      noQuality: 'Nobody has invested in quality yet — it is the lever that grows the market for everyone.'
+    },
+    chartTitle: 'Operating result of all restaurants by month',
+    guideHint: 'How to turn the water blue — see “Red ocean or blue ocean” in the Guide.',
+    columns: {
+      restaurants: 'Restaurants', feeds: 'Market feeds', avgPrice: 'Avg price', adShare: 'Ads / sales',
+      quality: 'Avg quality', result: 'Operating result', margin: 'Margin', water: 'Water'
+    },
+    debriefTitle: 'Debrief after month {n}',
+    questionsTitle: 'Questions for the teams',
+    questions: {
+      red: [
+        'What turned the water red this month: prices, ads or too many restaurants?',
+        'Who gained from the price cuts — and who paid for them?',
+        'What could the teams do together so that the whole town earns next month?'
+      ],
+      choppy: [
+        'The town barely breaks even. What would tip it to red — or to blue?',
+        'Is anyone starting a price war or an ad race?',
+        'What could the teams do together so that the whole town earns more?'
+      ],
+      blue: [
+        'What kept the water blue this month?',
+        'What could turn it red next month — and how do we avoid that?',
+        'Where else can we grow the market instead of fighting over it?'
+      ]
+    },
+    empty: 'The color of the water appears after the first month.'
   },
 
   money: {
@@ -559,9 +608,27 @@ const EN = {
         body: [
           'You run a restaurant. The other teams run restaurants in the same town and compete for the same guests. Every month you set your price, advertising, staff and quality; the host calculates the month, and everyone sees the results on the scoreboard.',
           'The winner is the team with the most **money** at the end — not revenue, not market share. Your result is your capital multiplier: money at the end ÷ your starting capital of {startCapital}.',
+          '> The bigger lesson is where the money comes from. A fight over the same guests turns the water red; better food, fair prices and smart deals turn it blue. See “Red ocean or blue ocean”.',
           'This game: {league} league, {total} months, about {minutes} minutes per month.'
         ],
         practice: 'This is a practice game: it doesn\'t count in the rating.'
+      },
+      ocean: {
+        title: 'Red ocean or blue ocean',
+        body: [
+          'In most markets everyone fights for the same customers, and the water turns red: prices fall, ad budgets grow and businesses lose money together. In Market Game you can see it in one evening — the Economy view of the scoreboard shows the color of the water every month.',
+          '**What turns the water red**',
+          '- **Price war.** Cutting below {pRef} takes guests from rivals, but every guest then earns less. When everyone cuts, nobody gains guests — the whole town just loses margin.',
+          '- **Ad race.** Ads mostly move guests between restaurants. When everyone doubles the budget, shares stay the same and everyone pays more.',
+          '- **Too many restaurants.** {marketBase} guests feed about {feeds} restaurants at a fair price. More restaurants than that — and everyone loses money.',
+          '**What turns it blue**',
+          '- **Quality grows the whole market:** +{gain} guests for every point of average quality in town. It is the one lever that makes the pie bigger for everyone.',
+          '- **A fair price for good food** keeps every guest profitable and grows your brand.',
+          '- **Leave red water in time:** close before losses eat your capital, sell your skills to another team, or buy a stake in the landlord, insurer, utilities or bank — they earn from the whole market.',
+          '- **Make blue water together:** talk to other teams between months. Invest in quality together, run joint promotions, merge — one team joins another for a salary or a share of the profit. When the whole town earns, every team earns.',
+          '> In the game you may negotiate anything. In real U.S. business, agreeing on prices with competitors is illegal (antitrust law). The legal way to blue water is to be different, to be better and to grow the market.',
+          'The bigger goal: after a few games you see when and why the water turns red — and learn to turn it blue.'
+        ]
       },
       month: {
         title: 'How a month goes',

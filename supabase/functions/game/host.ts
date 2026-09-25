@@ -17,7 +17,7 @@ import {
   OFF_BUSINESS, INSTITUTIONS, isInstitution, usd, teamLabel, STARTUP_LOAN_TIER, directImageUrl
 } from './lib.ts';
 import { gameMeta, rulesFor, upcomingChanges } from './player.ts';
-import { cityBudget, institutionsState } from './board.ts';
+import { cityBudget, institutionsState, oceanByMonth } from './board.ts';
 
 const INSTITUTION_NAMES: Record<string, string> = {
   landlord: 'the landlord', bank: 'the bank', insurer: 'the insurer', utility: 'the utility company'
@@ -298,7 +298,8 @@ export async function monitor(sql: Sql, game: Row) {
       };
     }),
     city: await cityBudget(sql, game.id),
-    institutions: await institutionsState(sql, game.id)
+    institutions: await institutionsState(sql, game.id),
+    ocean: await oceanByMonth(sql, game.id)
   };
 }
 

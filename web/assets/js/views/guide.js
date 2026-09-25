@@ -10,7 +10,7 @@ import { t, fill } from '../i18n.js';
 import { h, replace } from '../dom.js';
 import { usd, usdc, int, pct } from '../fmt.js';
 
-const SECTIONS = ['goal', 'month', 'pnl', 'market', 'choice', 'price', 'capacity', 'quality', 'marketing',
+const SECTIONS = ['goal', 'ocean', 'month', 'pnl', 'market', 'choice', 'price', 'capacity', 'quality', 'marketing',
   'brand', 'costs', 'tax', 'bank', 'cash', 'deals', 'owners', 'city', 'board', 'scoring', 'leagues'];
 const CHANNELS = ['seo', 'promo', 'maps', 'social', 'outdoor', 'affiliate'];
 
@@ -56,6 +56,8 @@ function varsFor(rules, game) {
     startCapital: usd(r.startCapital), league: t('leagues.' + (game?.league || 'start')), total,
     minutes: r.roundMinutes, fixedTotal: usd(r.fixedTotal), pRef: money(r.pRef),
     margin: money(margin), breakEven: int(Math.ceil(r.fixedTotal / margin)),
+    // Сколько ресторанов рынок кормит по справедливой цене — как в табло.
+    feeds: Math.max(1, Math.floor((r.marketBase * margin) / r.fixedTotal)),
     floor: money(r.priceFloor), ceiling: money(r.priceCeiling), softCap: money(r.priceSoftCap),
     cogs: money(r.cogsPerMeal), qadd: pct(r.qualityCogsAdd),
     marketBase: int(r.marketBase), gain: pct(r.marketQualityGain), catMin: r.marketPriceMin, catMax: r.marketPriceMax,

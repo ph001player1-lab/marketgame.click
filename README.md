@@ -1,4 +1,4 @@
-# marketgame.click — Market Game: Capture the Market 5.0
+# marketgame.click — Market Game 5.0
 
 Веб-версия деловой игры для американского рынка. Все решения по продукту —
 в [CONCEPT.md](CONCEPT.md); сначала правится он, потом код.

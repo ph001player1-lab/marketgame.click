@@ -311,7 +311,9 @@ export function createBusiness(root, ctx) {
       if (!Number.isFinite(v.price) || v.price < r.priceFloor || v.price > r.priceCeiling) {
         setHint('price', t('errors.price_too_low', { min: usd(r.priceFloor), max: usd(r.priceCeiling) }), 'error'); ok = false;
       } else {
-        setHint('price', t('decision.priceHint', { min: usd(r.priceFloor), max: usd(r.priceCeiling), soft: usd(r.priceSoftCap) }),
+        // Цена заметно ниже опорной — подсказка про ценовую войну.
+        const war = v.price < r.pRef * 0.9 ? ' ' + t('decision.priceWarTip') : '';
+        setHint('price', t('decision.priceHint', { min: usd(r.priceFloor), max: usd(r.priceCeiling), soft: usd(r.priceSoftCap) }) + war,
           v.price > r.priceSoftCap ? 'error' : null);
       }
       for (const ch of CHANNELS) {

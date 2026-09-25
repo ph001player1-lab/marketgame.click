@@ -10,6 +10,7 @@ import { act } from '../api.js';
 import { locationBadge, statusBadge, copyText, siteBase } from './common.js';
 import { OWNER_COLORS } from './scoreboard.js';
 import { gameForm } from './create.js';
+import { debriefCard } from './ocean.js';
 
 const SUBTABS = ['run', 'teams', 'city', 'settings'];
 const INSTITUTIONS = ['landlord', 'bank', 'insurer', 'utility'];
@@ -69,7 +70,8 @@ export function createConsole(root, ctx) {
   function runPart() {
     const codeBox = h('div', {});
     const monthBox = h('div', {});
-    const el = h('div', {}, card(null, codeBox), card(null, monthBox));
+    const debriefBox = h('div', {});
+    const el = h('div', {}, card(null, codeBox), card(null, monthBox), debriefBox);
 
     function codeBlock(g) {
       const site = siteBase();
@@ -138,6 +140,8 @@ export function createConsole(root, ctx) {
         }
       }
       replace(monthBox, blocks);
+      // Разбор последнего рассчитанного месяца: цвет воды и вопросы командам.
+      replace(debriefBox, debriefCard(s.ocean));
     }
 
     async function finish(btn, early, total) {

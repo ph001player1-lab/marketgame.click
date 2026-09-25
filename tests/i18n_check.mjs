@@ -47,12 +47,15 @@ const dynamic = {
   'host.': ['run', 'teams', 'cityTab', 'settings', 'sell', 'buyback', 'deal'],
   'guide.channels.': ['seo', 'promo', 'maps', 'social', 'outdoor', 'affiliate'],
   'money.': ['suppliers', 'staff', 'advertising', 'quality', 'landlord', 'insurer', 'utility', 'bank', 'cityTax', 'kept'],
-  'rating.': ['how1', 'how2', 'how3', 'how4']
+  'rating.': ['how1', 'how2', 'how3', 'how4'],
+  'ocean.water.': ['red', 'choppy', 'blue'],
+  'ocean.questions.': ['red', 'choppy', 'blue'],
+  'ocean.summary.': ['earned', 'lost']
 };
 for (const c of ['seo', 'promo', 'maps', 'social', 'outdoor', 'affiliate']) {
   dynamic['channels.' + c + '.'] = ['name', 'blurb'];
 }
-for (const s of ['goal', 'month', 'pnl', 'market', 'choice', 'price', 'capacity', 'quality', 'marketing', 'brand',
+for (const s of ['goal', 'ocean', 'month', 'pnl', 'market', 'choice', 'price', 'capacity', 'quality', 'marketing', 'brand',
   'costs', 'tax', 'bank', 'cash', 'deals', 'owners', 'city', 'board', 'scoring', 'leagues']) {
   dynamic['guide.s.' + s + '.'] = ['title', 'body'];
 }

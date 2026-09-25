@@ -21,7 +21,8 @@ function askCode() {
   const input = h('input', { class: 'input', autocapitalize: 'characters', autocomplete: 'off', maxlength: 8,
     placeholder: 'ABC123', style: { fontSize: '28px', letterSpacing: '4px', textTransform: 'uppercase' } });
   replace(root, h('main', { class: 'login' },
-    h('div', { class: 'login__brand' }, t('brand'), h('span', {}, t('gameName'))),
+    h('div', { class: 'login__brand' }, t('brand')),
+    h('p', { class: 'login__tagline' }, t('tagline')),
     h('div', { style: { height: '18px' } }),
     h('form', { class: 'card', onsubmit: (e) => {
       e.preventDefault();

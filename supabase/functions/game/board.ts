@@ -92,6 +92,54 @@ export async function institutionsState(sql: Sql, gameId: string) {
   });
 }
 
+// ----------------------------------------------------------------- красный или голубой океан
+
+/**
+ * «Цвет воды» по месяцам — метацель игры из «Стратегии голубого океана»:
+ * участники видят, когда и от чего рынок краснеет.
+ *
+ * Вода — это операционный результат всех ресторанов города вместе:
+ * заработали — голубая, потеряли — красная, около нуля — неспокойная.
+ * Причины считаем из тех же итогов: ценовая война (средняя цена ниже
+ * опорной), гонка рекламы (доля рекламы в выручке), теснота (ресторанов
+ * больше, чем рынок кормит по справедливой цене) и качество, которое
+ * растит рынок для всех. Правила месяца — из его снимка в rounds.config.
+ */
+export async function oceanByMonth(sql: Sql, gameId: string) {
+  const rows: Row[] = await sql`
+    select r.round_number, count(*)::int as restaurants,
+           sum(r.revenue) as revenue, sum(r.ebit) as ebit, sum(r.marketing_total) as ads,
+           avg(r.price) as avg_price, avg(r.quality) as avg_quality, max(r.market_total) as market,
+           (select rd.config from rounds rd
+             where rd.game_id = r.game_id and rd.round_number = r.round_number) as cfg
+    from results r where r.game_id = ${gameId}
+    group by r.game_id, r.round_number order by r.round_number`;
+  return rows.map((m) => {
+    const cfg = (m.cfg ?? {}) as Row;
+    const pRef = num(cfg.P_REF, 30);
+    const cogs = pRef * num(cfg.COGS_PCT, 0.4);
+    const fixed = num(cfg.RENT) + num(cfg.INSURANCE) + num(cfg.UTILITIES) + num(cfg.PAYROLL_BASE);
+    const revenue = num(m.revenue);
+    const ebit = num(m.ebit);
+    const margin = revenue > 0 ? ebit / revenue : (ebit < 0 ? -1 : 0);
+    const market = num(m.market);
+    const avgQuality = num(m.avg_quality);
+    return {
+      round: num(m.round_number), restaurants: num(m.restaurants),
+      revenue: cents(revenue), ebit: cents(ebit), margin: Math.round(margin * 10000) / 10000,
+      water: margin < 0 ? 'red' : margin < 0.05 ? 'choppy' : 'blue',
+      avgPrice: round2(num(m.avg_price)), pRef,
+      adShare: revenue > 0 ? Math.round((num(m.ads) / revenue) * 1000) / 1000 : 0,
+      avgQuality: round2(avgQuality),
+      qualityBoost: Math.round(num(cfg.MARKET_QUALITY_GAIN) * avgQuality * 1000) / 1000,
+      market: Math.round(market),
+      // Сколько ресторанов этот рынок кормит по справедливой цене: каждый
+      // гость приносит «цена − продукты», а постоянные расходы надо покрыть.
+      feeds: fixed > 0 ? Math.floor((market * (pRef - cogs)) / fixed) : null
+    };
+  });
+}
+
 // ----------------------------------------------------------------- «Куда ушли деньги»
 
 /**
@@ -212,7 +260,8 @@ export async function boardData(sql: Sql, game: Row) {
     ...(await timeline(sql, game.id)),
     institutions: await institutionsState(sql, game.id),
     city: await cityBudget(sql, game.id),
-    moneyMap: await moneyMap(sql, game.id)
+    moneyMap: await moneyMap(sql, game.id),
+    ocean: await oceanByMonth(sql, game.id)
   };
 }
 

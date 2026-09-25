@@ -151,6 +151,10 @@ try {
     await p.locator('.tab--guide').click();
     await p.getByRole('heading', { name: 'How to win' }).waitFor();
     await shot(p, 'phone-07-guide');
+    await p.locator('.guide__toc').getByText('Red ocean or blue ocean').click();
+    await p.getByRole('heading', { name: 'Red ocean or blue ocean', exact: true }).waitFor();
+    await p.waitForTimeout(600);
+    await shot(p, 'phone-07b-guide-ocean');
     // Кнопка «i» у цены открывает нужный раздел памятки.
     await p.locator('.tab--main').click();
     await p.locator('button.info').first().click();
@@ -229,6 +233,10 @@ try {
     await p.locator('dialog').getByRole('button', { name: /Calculate month 5/ }).click();
     await p.getByText('Month 5 is calculated').first().waitFor();
     await p.getByRole('button', { name: 'Open month 6' }).waitFor();
+    // Разбор месяца для ведущего: цвет воды и вопросы командам.
+    await p.getByText('Debrief after month 5').waitFor();
+    await p.getByText('Questions for the teams').waitFor();
+    await shot(p, 'host-08-debrief', true);
     await p.close();
   });
 
@@ -347,6 +355,8 @@ try {
     await shot(p, 'projector-01-teams');
     await p.getByRole('button', { name: 'Economy' }).click();
     await p.getByText('City budget').first().waitFor();
+    await p.getByRole('heading', { name: 'Red ocean or blue ocean?' }).waitFor();
+    await p.locator('.ocean-now .water').first().waitFor();
     await p.waitForTimeout(300);
     await shot(p, 'projector-02-economy');
     await p.getByRole('button', { name: 'Where the money went' }).click();

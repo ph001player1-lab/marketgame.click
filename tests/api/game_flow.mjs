@@ -200,6 +200,28 @@ await step('месяц 1: решения, автоход за Dan, расчёт'
   assert.equal(d.loan.tier, 1, 'после первого месяца кредит на том же уровне');
 });
 
+await step('цвет воды: итог всех ресторанов месяца и его причины', async () => {
+  const b = await call(null, 'board', { code });
+  assert.equal(b.ocean.length, 1);
+  const o = b.ocean[0];
+  const [sums] = await sql`
+    select count(*)::int as n, sum(revenue) as revenue, sum(ebit) as ebit, avg(price) as price,
+           max(market_total) as market
+    from results where game_id = ${gameId} and round_number = 1`;
+  assert.equal(o.round, 1);
+  assert.equal(o.restaurants, sums.n);
+  assert.ok(Math.abs(o.revenue - sums.revenue) < 0.01 && Math.abs(o.ebit - sums.ebit) < 0.01);
+  const margin = sums.ebit / sums.revenue;
+  assert.equal(o.water, margin < 0 ? 'red' : margin < 0.05 ? 'choppy' : 'blue');
+  // Рынок кормит столько ресторанов, сколько покрывают постоянные расходы
+  // при опорной цене: гость приносит $30 − $12 = $18, расходы — $37,000.
+  assert.equal(o.feeds, Math.floor((sums.market * 18) / 37000));
+  assert.equal(o.pRef, 30);
+  assert.ok(Math.abs(o.avgPrice - sums.price) < 0.01);
+  const m = await call(HOST, 'monitor', { gameId });
+  assert.deepEqual(m.ocean, b.ocean, 'ведущий видит ту же воду для разбора');
+});
+
 await step('кредит, досрочное погашение, лимит', async () => {
   err(await call(ANN, 'requestLoan', { gameId, amount: 999999 }), 'over_limit');
   const r = await call(ANN, 'requestLoan', { gameId, amount: 20000, requestId: uuid() });

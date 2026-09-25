@@ -132,7 +132,7 @@ function showPublicRating() {
   document.title = t('rating.title') + ' · ' + t('brand');
   const page = h('div', { class: 'page' });
   replace(root, h('header', { class: 'topbar' },
-    h('div', { class: 'topbar__title' }, h('div', { class: 'topbar__name' }, t('brand') + ': ' + t('gameName'))),
+    h('div', { class: 'topbar__title' }, h('div', { class: 'topbar__name' }, t('brand'))),
     h('a', { class: 'btn btn--small topbar__btn', href: '#/' }, t('login.title'))), page);
   renderRatingPage(page);
 }
@@ -160,7 +160,7 @@ function topbarSimple() {
   return h('header', { class: 'topbar' },
     h('button', { class: 'topbar__menu', type: 'button', 'aria-label': t('common.menu'), onclick: openMenu }, '☰'),
     h('div', { class: 'topbar__title' },
-      h('div', { class: 'topbar__name' }, t('brand') + ': ' + t('gameName'))));
+      h('div', { class: 'topbar__name' }, t('brand'))));
 }
 
 // ----------------------------------------------------------------- экран игры

@@ -13,6 +13,7 @@ import {
   locationBadge, statusBadge, swatch, sponsorBanner, chartCard, simpleTable
 } from './common.js';
 import { ratingTable } from './rating.js';
+import { waterChip, oceanCard } from './ocean.js';
 
 // Что можно показать на графике команд. zero: false — ось не от нуля (цена).
 const METRICS = [
@@ -80,7 +81,7 @@ export function createScoreboard(root, opts = {}) {
     if (!d || !d.ok) return;
     if (last?.player?.id) myId = last.player.id;
     data = d;
-    const next = JSON.stringify([d.players, d.marketTotals, d.institutions, d.city, d.moneyMap,
+    const next = JSON.stringify([d.players, d.marketTotals, d.institutions, d.city, d.moneyMap, d.ocean,
       d.game.roundNumber, d.game.roundStatus, d.game.status, d.game.sponsor, myId]);
     if (next === sig) return;
     sig = next;
@@ -148,7 +149,8 @@ export function createScoreboard(root, opts = {}) {
     body.append(h('p', { class: 'board-line' },
       months.length ? t('board.afterMonth', { n: lastMonth }) : t('board.beforeStart'),
       market ? ' · ' + t('board.market', { guests: int(market) }) : '',
-      ' · ' + tn('board.teamsCount', list.filter((p) => p.status !== 'left').length)));
+      ' · ' + tn('board.teamsCount', list.filter((p) => p.status !== 'left').length),
+      data.ocean?.length ? [' · ', waterChip(data.ocean[data.ocean.length - 1].water)] : null));
 
     body.append(standings(list, lastMonth));
 
@@ -239,6 +241,13 @@ export function createScoreboard(root, opts = {}) {
     const mt = data.marketTotals || {};
     const mMonths = Object.keys(mt).map(Number).sort((a, b) => a - b);
     const rules = data.rules || {};
+
+    // Первым — цвет воды: главный вывод экономики города.
+    if (data.ocean?.length) add(oceanCard(data.ocean, { big }));
+    else {
+      body.append(h('section', { class: 'card' }, h('h3', { class: 'card__title' }, t('ocean.title')),
+        h('p', { class: 'muted small' }, t('ocean.lead')), h('p', { class: 'muted' }, t('ocean.empty'))));
+    }
 
     if (mMonths.length) {
       add(chartCard({

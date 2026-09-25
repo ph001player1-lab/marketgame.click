@@ -13,8 +13,7 @@ export function renderLogin(root, { onSignedIn }) {
   stepEmail('');
 
   function brand() {
-    return h('div', { class: 'login__brand', 'aria-label': t('brand') + ': ' + t('gameName') },
-      t('brand'), h('span', {}, t('gameName')));
+    return h('div', {}, h('div', { class: 'login__brand' }, t('brand')), h('p', { class: 'login__tagline' }, t('tagline')));
   }
 
   function stepEmail(prefill) {
