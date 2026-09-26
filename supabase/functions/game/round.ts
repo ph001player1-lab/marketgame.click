@@ -215,12 +215,14 @@ export async function calculateMonth(sql: Sql, gameId: string) {
 
       ledger.push({
         game_id: gameId, player_id: pid, round_number: rn, kind: 'month_cash_flow',
-        amount: r.cash_flow, target: 'cash', reason: 'Month ' + rn + ' cash flow', actor: 'system'
+        amount: r.cash_flow, target: 'cash', reason: 'Month ' + rn + ' cash flow', actor: 'system',
+        params: { code: 'month_cash_flow', n: rn }
       });
       if (div > 0) {
         ledger.push({
           game_id: gameId, player_id: pid, round_number: rn, kind: 'dividend',
-          amount: div, target: 'cash', reason: 'Dividends from your stakes', actor: 'system'
+          amount: div, target: 'cash', reason: 'Dividends from your stakes', actor: 'system',
+          params: { code: 'dividends' }
         });
       }
       city.push({
@@ -230,11 +232,13 @@ export async function calculateMonth(sql: Sql, gameId: string) {
 
       if (tier > num(old.loan_tier)) {
         notices.push({ player_id: pid, kind: 'credit',
-          message: 'Your credit limit is now ' + usd(loanLimitFor(tier, cfg)) + '.' });
+          message: 'Your credit limit is now ' + usd(loanLimitFor(tier, cfg)) + '.',
+          params: { code: 'credit', amount: loanLimitFor(tier, cfg) } });
       }
       if (status === 'bankrupt') {
         notices.push({ player_id: pid, kind: 'bankrupt',
-          message: 'Your restaurant ran out of cash and closed. Choose what to do next.' });
+          message: 'Your restaurant ran out of cash and closed. Choose what to do next.',
+          params: { code: 'bankrupt' } });
       }
     }
     if (resultRows.length) await tx`insert into results ${tx(resultRows)}`;
@@ -263,7 +267,8 @@ export async function calculateMonth(sql: Sql, gameId: string) {
           ledger.push({
             game_id: gameId, player_id: pid, round_number: rn, kind: 'civil_salary',
             amount: pay, target: 'savings',
-            reason: 'Government job salary' + (months > 1 ? ' (' + months + ' months)' : ''), actor: 'system'
+            reason: 'Government job salary' + (months > 1 ? ' (' + months + ' months)' : ''), actor: 'system',
+            params: { code: 'civil_salary', months }
           });
           city.push({
             game_id: gameId, round_number: rn, kind: 'civil_salary', amount: -pay,
@@ -277,7 +282,8 @@ export async function calculateMonth(sql: Sql, gameId: string) {
         savings = cents(savings + div);
         ledger.push({
           game_id: gameId, player_id: pid, round_number: rn, kind: 'dividend',
-          amount: div, target: 'savings', reason: 'Dividends from your stakes', actor: 'system'
+          amount: div, target: 'savings', reason: 'Dividends from your stakes', actor: 'system',
+          params: { code: 'dividends' }
         });
       }
 
@@ -296,7 +302,9 @@ export async function calculateMonth(sql: Sql, gameId: string) {
     await addLedger(tx, ledger);
     await addCity(tx, city);
     if (notices.length) {
-      await tx`insert into notices ${tx(notices.map((n) => ({ game_id: gameId, round_number: rn, ...n })))}`;
+      await tx`insert into notices ${tx(notices.map((n) => ({
+        game_id: gameId, round_number: rn, ...n, params: n.params ? tx.json(n.params) : null
+      })))}`;
     }
 
     // ---- Месяц закрыт. Последний месяц лиги закрывает игру: она сразу

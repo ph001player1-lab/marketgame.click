@@ -98,7 +98,7 @@ await step('ведущий создаёт игру лиги Start', async () => 
   const r = await call(HOST, 'createGame', {
     title: 'Austin Chamber Night', league: 'start', organizer: 'Austin Chamber of Commerce',
     sponsorName: 'Example Bank', sponsorLogoUrl: 'https://example.com/logo.png',
-    timezone: 'America/Chicago'
+    timezone: 'America/Chicago', language: 'es'
   });
   ok(r);
   gameId = r.gameId; code = r.code;
@@ -107,6 +107,12 @@ await step('ведущий создаёт игру лиги Start', async () => 
   ok(m);
   assert.equal(m.game.totalRounds, 12);
   assert.equal(m.game.leagueName, 'Start');
+  assert.equal(m.game.language, 'es', 'язык игры — как выбрал ведущий');
+  err(await call(HOST, 'updateGame', { gameId, language: 'de' }), 'bad_language');
+  ok(await call(HOST, 'updateGame', { gameId, language: 'ru' }));
+  assert.equal((await call(HOST, 'monitor', { gameId })).game.language, 'ru');
+  ok(await call(HOST, 'updateGame', { gameId, language: 'en' }));
+  assert.equal((await call(HOST, 'me')).hosting.find((g) => g.id === gameId).language, 'en');
   assert.equal(m.rules.rent, 7500);
   assert.equal(m.institutions.length, 4);
   assert.ok(m.institutions.every((i) => i.ownership.cityPct === 50));
@@ -118,8 +124,8 @@ await step('состав — вставленный список почт', asyn
   });
   ok(r);
   assert.deepEqual(r.added.sort(), [...TEAMS].sort());
-  assert.equal(r.skipped['junk'], 'not an email');
-  assert.ok(r.skipped[HOST]);
+  assert.equal(r.skipped['junk'], 'not_email');
+  assert.equal(r.skipped[HOST], 'host');
   assert.ok(TEAMS.every((e) => authUsers.has(e)), 'почты команд заведены в Auth');
   ok(await call(null, 'preflightLogin', { email: BOB }));
 });
@@ -167,12 +173,29 @@ await step('стартовый кредит открыт ещё до перво�
   await moneyInvariants(sql, gameId);
 });
 
-await step('табло по коду открыто без входа и без почт', async () => {
-  const b = await call(null, 'board', { code });
+await step('табло видят только участники, ведущий игры и администратор', async () => {
+  err(await call(null, 'board', { code }), 'auth_required');
+  err(await call(null, 'board', { gameId }), 'auth_required');
+  err(await call('eve@test.com', 'board', { code }), 'not_in_game');
+  err(await call('eve@test.com', 'board', { gameId }), 'not_in_game');
+  err(await call('eve@test.com', 'gameReport', { gameId }), 'not_in_game');
+  const b = await call(ANN, 'board', { gameId });
   ok(b);
   assert.equal(b.players.length, 4);
   assert.ok(!JSON.stringify(b).includes('@test.com'), 'в табло утекли почты');
-  err(await call(null, 'board', { code: 'NOPE00' }), 'game_not_found');
+  ok(await call(BOB, 'board', { code: code.toLowerCase() }));
+  ok(await call(HOST, 'board', { code }));
+  ok(await call(ADMIN, 'board', { gameId }));
+  err(await call(ANN, 'board', { code: 'NOPE00' }), 'game_not_found');
+  err(await call(ANN, 'board', {}), 'bad_code');
+  // Другой ведущий чужую игру не видит — ни табло, ни в списке своих игр.
+  ok(await call(ADMIN, 'addHost', { email: 'host2@test.com' }));
+  err(await call('host2@test.com', 'board', { gameId }), 'not_in_game');
+  assert.ok(!(await call('host2@test.com', 'me')).hosting.some((g) => g.id === gameId));
+  // Игрок видит в своих играх только те, где играет.
+  const me = await call(ANN, 'me');
+  assert.deepEqual(me.playing.map((g) => g.id), [gameId]);
+  assert.deepEqual(me.hosting, []);
 });
 
 // ---------------------------------------------------------------- месяцы
@@ -201,7 +224,7 @@ await step('месяц 1: решения, автоход за Dan, расчёт'
 });
 
 await step('цвет воды: итог всех ресторанов месяца и его причины', async () => {
-  const b = await call(null, 'board', { code });
+  const b = await call(ANN, 'board', { gameId });
   assert.equal(b.ocean.length, 1);
   const o = b.ocean[0];
   const [sums] = await sql`
@@ -216,6 +239,10 @@ await step('цвет воды: итог всех ресторанов месяц
   // Рынок кормит столько ресторанов, сколько покрывают постоянные расходы
   // при опорной цене: гость приносит $30 − $12 = $18, расходы — $37,000.
   assert.equal(o.feeds, Math.floor((sums.market * 18) / 37000));
+  // Слагаемые для пояснения на табло: $37,000 ÷ $18 ≈ 2,056 гостей на ресторан.
+  assert.equal(o.fixed, 37000);
+  assert.equal(o.perGuest, 18);
+  assert.equal(o.breakEven, 2056);
   assert.equal(o.pRef, 30);
   assert.ok(Math.abs(o.avgPrice - sums.price) < 0.01);
   const m = await call(HOST, 'monitor', { gameId });
@@ -275,7 +302,11 @@ await step('доля в страховой: покупка у города и д
   assert.equal(insurer.ownership.playersPct, 10);
   const d = await dash(ANN, gameId);
   assert.equal(d.stakes[0].kind, 'insurer');
-  assert.ok(d.notices.some((n) => n.kind === 'stake'));
+  // Новость — кодом с подробностями: сайт напишет её на языке читателя.
+  const n = d.notices.find((x) => x.kind === 'stake');
+  assert.equal(n.params.code, 'stake_bought_city');
+  assert.equal(n.params.inst, 'insurer');
+  assert.equal(n.params.pct, 10);
   await moneyInvariants(sql, gameId);
 
   await playMonth(gameId);   // месяц 3: страховка уже $1,500
@@ -304,6 +335,9 @@ await step('штраф, налог со всех, грант — в бюджет
   assert.equal(m2.city.balance - before, 500 + 400, 'штраф и налог между месяцами не потерялись');
   const d = await dash(DAN, gameId);
   assert.ok(d.notices.some((n) => n.kind === 'fine' && n.message.includes('Health inspection')));
+  const fine = d.notices.find((n) => n.kind === 'fine');
+  assert.deepEqual(fine.params, { code: 'fine', amount: 500, reason: 'Health inspection' });
+  assert.ok(d.notices.some((n) => n.params?.code === 'city_tax' && n.params.amount === 100));
   await moneyInvariants(sql, gameId);
 });
 
@@ -378,6 +412,12 @@ await step('история: My games, открытые решения, отчё�
   assert.ok(g && g.rated && g.standing && g.standing.rivals === 4);
   const rep = await call(ANN, 'gameReport', { gameId });
   assert.ok(Array.isArray(rep.allDecisions) && rep.allDecisions.length === 4, 'после финала решения открыты');
+  // Примечания журнала денег — кодами: сайт пишет их на языке читателя.
+  const log = rep.team.moneyLog;
+  assert.deepEqual(log.find((l) => l.kind === 'start_capital').note, { code: 'start_capital' });
+  assert.deepEqual(log.find((l) => l.kind === 'month_cash_flow').note, { code: 'month_cash_flow', n: 1 });
+  assert.ok(log.filter((l) => l.kind !== 'fine' && l.kind !== 'grant' && l.kind !== 'city_tax')
+    .every((l) => l.note && l.note.code), 'у каждой записи системы есть код примечания');
   const pub = await call(null, 'report', { token: g.reportToken });
   ok(pub);
   assert.equal(pub.teamName, 'Ann’s Diner');

@@ -39,6 +39,8 @@ const sql = postgres(env('DB_URL') || env('SUPABASE_DB_URL'), {
   }
 });
 
+const verified = new Map<string, { email: string; until: number }>();
+
 const supabase = createClient(env('SUPABASE_URL'), env('SERVICE_KEY') || env('SUPABASE_SERVICE_ROLE_KEY'), {
   auth: { persistSession: false, autoRefreshToken: false }
 });
@@ -50,10 +52,21 @@ Deno.serve(createHandler({
     'https://marketgame.click,https://www.marketgame.click,https://ph001player1-lab.github.io,' +
     'http://localhost:8080,http://127.0.0.1:8080'),
 
+  // Подпись токена проверяется на месте по открытым ключам проекта
+  // (getClaims), без похода в Auth; для старых ключей getClaims сам спросит
+  // Auth. Проверенный токен помним до пяти минут: опрос каждые восемь
+  // секунд не должен каждый раз проверять его заново.
   async verifyToken(token: string) {
-    const { data, error } = await supabase.auth.getUser(token);
-    if (error || !data?.user?.email) return null;
-    return data.user.email;
+    const now = Date.now();
+    const hit = verified.get(token);
+    if (hit && hit.until > now) return hit.email;
+    const { data, error } = await supabase.auth.getClaims(token);
+    const email = data?.claims?.email;
+    if (error || typeof email !== 'string' || !email) return null;
+    const exp = Number(data.claims.exp) * 1000;
+    if (verified.size >= 1000) verified.clear();
+    verified.set(token, { email, until: Math.min(Number.isFinite(exp) ? exp : now, now + 5 * 60_000) });
+    return email;
   },
 
   // Самостоятельной регистрации нет: код входа высылается только тем, кого

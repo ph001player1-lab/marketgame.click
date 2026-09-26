@@ -2,8 +2,12 @@
 //  Табло, бюджет города, участники экономики, «Куда ушли деньги», рейтинг,
 //  история игр и отчёт команды.
 //
-//  Табло открыто всем по коду игры: оно и так висит на проекторе. Почт здесь
-//  нет нигде — команда видна по названию ресторана и имени.
+//  Табло видят только участники игры, её ведущий и администраторы (проверка —
+//  в handler.ts). Почт здесь нет нигде — команда видна по названию ресторана
+//  и имени.
+//
+//  Запросы одного ответа независимы и идут разом (Promise.all): база в
+//  Калифорнии, и каждый лишний круг до неё заметен.
 // ============================================================================
 
 import { type Config } from './economy.ts';
@@ -53,13 +57,14 @@ export async function cityBudget(sql: Sql, gameId: string) {
 // ----------------------------------------------------------------- участники экономики
 
 export async function institutionsState(sql: Sql, gameId: string) {
-  const insts: Row[] = await sql`select * from institutions where game_id = ${gameId} order by kind`;
-  const stakes: Row[] = await sql`
-    select s.kind, s.pct, p.id, p.restaurant_name, p.display_name
-    from stakes s join players p on p.id = s.player_id
-    where s.game_id = ${gameId} order by s.pct desc`;
-  const months: Row[] = await sql`
-    select * from institution_months where game_id = ${gameId} order by round_number`;
+  const [insts, stakes, months]: Row[][] = await Promise.all([
+    sql`select * from institutions where game_id = ${gameId} order by kind`,
+    sql`
+      select s.kind, s.pct, p.id, p.restaurant_name, p.display_name
+      from stakes s join players p on p.id = s.player_id
+      where s.game_id = ${gameId} order by s.pct desc`,
+    sql`select * from institution_months where game_id = ${gameId} order by round_number`
+  ]);
 
   const order = (k: string) => (INSTITUTIONS as readonly string[]).indexOf(k);
   return insts.sort((a, b) => order(a.kind) - order(b.kind)).map((inst) => {
@@ -124,6 +129,7 @@ export async function oceanByMonth(sql: Sql, gameId: string) {
     const margin = revenue > 0 ? ebit / revenue : (ebit < 0 ? -1 : 0);
     const market = num(m.market);
     const avgQuality = num(m.avg_quality);
+    const perGuest = pRef - cogs;
     return {
       round: num(m.round_number), restaurants: num(m.restaurants),
       revenue: cents(revenue), ebit: cents(ebit), margin: Math.round(margin * 10000) / 10000,
@@ -131,11 +137,15 @@ export async function oceanByMonth(sql: Sql, gameId: string) {
       avgPrice: round2(num(m.avg_price)), pRef,
       adShare: revenue > 0 ? Math.round((num(m.ads) / revenue) * 1000) / 1000 : 0,
       avgQuality: round2(avgQuality),
+      qualityGain: num(cfg.MARKET_QUALITY_GAIN),
       qualityBoost: Math.round(num(cfg.MARKET_QUALITY_GAIN) * avgQuality * 1000) / 1000,
       market: Math.round(market),
       // Сколько ресторанов этот рынок кормит по справедливой цене: каждый
       // гость приносит «цена − продукты», а постоянные расходы надо покрыть.
-      feeds: fixed > 0 ? Math.floor((market * (pRef - cogs)) / fixed) : null
+      // Для пояснения на табло — и сами слагаемые.
+      fixed: cents(fixed), perGuest: cents(perGuest),
+      breakEven: fixed > 0 && perGuest > 0 ? Math.ceil(fixed / perGuest) : null,
+      feeds: fixed > 0 ? Math.floor((market * perGuest) / fixed) : null
     };
   });
 }
@@ -147,7 +157,7 @@ export async function oceanByMonth(sql: Sql, gameId: string) {
  * платят, → владельцы. Строится из записанных итогов, экономику не трогает.
  */
 export async function moneyMap(sql: Sql, gameId: string) {
-  const [r] = await sql`
+  const [[r], inst, [c], [t]]: Row[][] = await Promise.all([sql`
     select coalesce(sum(revenue), 0) as revenue, coalesce(sum(cogs_total), 0) as suppliers,
            coalesce(sum(payroll + shift_cost), 0) as staff,
            coalesce(sum(marketing_total), 0) as advertising,
@@ -155,21 +165,18 @@ export async function moneyMap(sql: Sql, gameId: string) {
            coalesce(sum(rent), 0) as landlord, coalesce(sum(insurance), 0) as insurer,
            coalesce(sum(utilities), 0) as utility, coalesce(sum(interest), 0) as bank,
            coalesce(sum(tax), 0) as tax, coalesce(sum(profit), 0) as kept
-    from results where game_id = ${gameId}`;
-  const inst: Row[] = await sql`
+    from results where game_id = ${gameId}`, sql`
     select kind, sum(income) as income, sum(write_offs) as write_offs,
            sum(to_city) as to_city, sum(to_players) as to_players, sum(to_private) as to_private
-    from institution_months where game_id = ${gameId} group by kind`;
-  const [c] = await sql`
+    from institution_months where game_id = ${gameId} group by kind`, sql`
     select coalesce(sum(amount) filter (where kind = 'grant'), 0)         as grants,
            coalesce(sum(amount) filter (where kind = 'civil_salary'), 0)  as civil,
            coalesce(sum(amount) filter (where kind = 'fine'), 0)          as fines,
            coalesce(sum(amount) filter (where kind = 'city_tax'), 0)      as city_taxes,
            coalesce(sum(amount) filter (where kind = 'stake_sale'), 0)    as stake_sales,
            coalesce(sum(amount) filter (where kind = 'stake_buyback'), 0) as buybacks
-    from city_ledger where game_id = ${gameId}`;
-  const [t] = await sql`
-    select coalesce(sum(amount), 0) as transfers from transfers where game_id = ${gameId}`;
+    from city_ledger where game_id = ${gameId}`, sql`
+    select coalesce(sum(amount), 0) as transfers from transfers where game_id = ${gameId}`]);
 
   return {
     guestsToRestaurants: cents(num(r.revenue)),
@@ -197,9 +204,11 @@ export async function moneyMap(sql: Sql, gameId: string) {
 // ----------------------------------------------------------------- табло
 
 async function timeline(sql: Sql, gameId: string) {
-  const players: Row[] = await sql`select * from players where game_id = ${gameId} order by created_at, id`;
-  const results: Row[] = await sql`select * from results where game_id = ${gameId} order by round_number`;
-  const wallets: Row[] = await sql`select * from wallet_entries where game_id = ${gameId} order by round_number`;
+  const [players, results, wallets]: Row[][] = await Promise.all([
+    sql`select * from players where game_id = ${gameId} order by created_at, id`,
+    sql`select * from results where game_id = ${gameId} order by round_number`,
+    sql`select * from wallet_entries where game_id = ${gameId} order by round_number`
+  ]);
 
   const byPlayer = new Map<string, Row>();
   for (const p of players) {
@@ -251,26 +260,16 @@ async function timeline(sql: Sql, gameId: string) {
 }
 
 export async function boardData(sql: Sql, game: Row) {
-  const round = await currentRound(sql, game.id);
-  const cfg = activeConfig(game, round);
+  const [round, tl, institutions, city, money, ocean] = await Promise.all([
+    currentRound(sql, game.id), timeline(sql, game.id), institutionsState(sql, game.id),
+    cityBudget(sql, game.id), moneyMap(sql, game.id), oceanByMonth(sql, game.id)
+  ]);
   return {
     ok: true,
     game: gameMeta(game, round),
-    rules: rulesFor(cfg),
-    ...(await timeline(sql, game.id)),
-    institutions: await institutionsState(sql, game.id),
-    city: await cityBudget(sql, game.id),
-    moneyMap: await moneyMap(sql, game.id),
-    ocean: await oceanByMonth(sql, game.id)
+    rules: rulesFor(activeConfig(game, round)),
+    ...tl, institutions, city, moneyMap: money, ocean
   };
-}
-
-export async function board(sql: Sql, b: Row) {
-  const code = String(b.code ?? '').trim().toUpperCase();
-  if (!code) fail('bad_code');
-  const [game] = await sql`select * from games where code = ${code}`;
-  if (!game) fail('game_not_found');
-  return await boardData(sql, game);
 }
 
 // ----------------------------------------------------------------- рейтинг
@@ -296,41 +295,43 @@ async function standing(sql: Sql, gameId: string, playerId: string) {
 
 /** Игры почты: где она играла и какие ведёт. Для экрана My games. */
 export async function myGames(sql: Sql, email: string, isAdmin: boolean) {
-  const playing: Row[] = await sql`
-    select g.*, p.id as player_id, p.restaurant_name, p.report_token, game_is_rated(g.id) as rated
-    from players p join games g on g.id = p.game_id
-    where p.email = ${email} order by g.created_at desc`;
-  const hosting: Row[] = isAdmin
-    ? await sql`select * from games order by created_at desc limit 200`
-    : await sql`select * from games where host_email = ${email} order by created_at desc`;
+  const [playing, hosting]: Row[][] = await Promise.all([
+    sql`
+      select g.*, p.id as player_id, p.restaurant_name, p.report_token, game_is_rated(g.id) as rated
+      from players p join games g on g.id = p.game_id
+      where p.email = ${email} order by g.created_at desc`,
+    isAdmin
+      ? sql`select * from games order by created_at desc limit 200`
+      : sql`select * from games where host_email = ${email} order by created_at desc`
+  ]);
 
   const short = (g: Row) => ({
     id: String(g.id), code: String(g.code), title: String(g.title), league: String(g.league),
     totalRounds: num(g.total_rounds), currentRound: num(g.current_round), status: String(g.status),
     practice: !!g.practice, organizer: g.organizer ?? null, createdAt: g.created_at,
+    language: String(g.language ?? 'en'),
     finishedAt: g.finished_at ?? null, scheduledAt: g.scheduled_at ?? null, timezone: String(g.timezone)
   });
 
-  const out = [];
-  for (const g of playing) {
-    out.push({
-      ...short(g), playerId: String(g.player_id), restaurant: g.restaurant_name ?? null,
-      rated: !!g.rated, reportToken: String(g.report_token),
-      standing: await standing(sql, g.id, g.player_id)
-    });
-  }
+  const standings = await Promise.all(playing.map((g) => standing(sql, g.id, g.player_id)));
+  const out = playing.map((g, i) => ({
+    ...short(g), playerId: String(g.player_id), restaurant: g.restaurant_name ?? null,
+    rated: !!g.rated, reportToken: String(g.report_token), standing: standings[i]
+  }));
   return { playing: out, hosting: hosting.map((g) => ({ ...short(g), hostEmail: String(g.host_email) })) };
 }
 
 /** Всё о команде в одной игре: помесячный отчёт, решения, движения денег, доли. */
 async function teamDetail(sql: Sql, playerId: string) {
-  const results: Row[] = await sql`select * from results where player_id = ${playerId} order by round_number`;
-  const decisions: Row[] = await sql`select * from decisions where player_id = ${playerId} order by round_number`;
-  const ledger: Row[] = await sql`
-    select round_number, kind, amount, target, reason, created_at
-    from ledger where player_id = ${playerId} order by id`;
-  const wallets: Row[] = await sql`select * from wallet_entries where player_id = ${playerId} order by round_number`;
-  const stakes: Row[] = await sql`select kind, pct from stakes where player_id = ${playerId}`;
+  const [results, decisions, ledger, wallets, stakes]: Row[][] = await Promise.all([
+    sql`select * from results where player_id = ${playerId} order by round_number`,
+    sql`select * from decisions where player_id = ${playerId} order by round_number`,
+    sql`
+      select round_number, kind, amount, target, reason, params, created_at
+      from ledger where player_id = ${playerId} order by id`,
+    sql`select * from wallet_entries where player_id = ${playerId} order by round_number`,
+    sql`select kind, pct from stakes where player_id = ${playerId}`
+  ]);
   return {
     results: results.map(formatResult),
     decisions: decisions.map(decisionOut),
@@ -339,7 +340,7 @@ async function teamDetail(sql: Sql, playerId: string) {
     })),
     moneyLog: ledger.map((l) => ({
       round: num(l.round_number), kind: l.kind, amount: num(l.amount), target: l.target,
-      reason: l.reason, at: l.created_at
+      reason: l.reason, note: l.params ?? null, at: l.created_at
     })),
     stakes: stakes.map((s) => ({ kind: s.kind, pct: num(s.pct) }))
   };
@@ -361,8 +362,10 @@ function decisionOut(d: Row) {
  * чтобы разбирать партию вместе, если ведущий не отключил.
  */
 async function allDecisions(sql: Sql, gameId: string) {
-  const players: Row[] = await sql`select * from players where game_id = ${gameId} order by created_at, id`;
-  const decisions: Row[] = await sql`select * from decisions where game_id = ${gameId} order by round_number`;
+  const [players, decisions]: Row[][] = await Promise.all([
+    sql`select * from players where game_id = ${gameId} order by created_at, id`,
+    sql`select * from decisions where game_id = ${gameId} order by round_number`
+  ]);
   return players.map((p) => ({
     playerId: String(p.id), restaurant: teamLabel(p),
     decisions: decisions.filter((d) => String(d.player_id) === String(p.id)).map(decisionOut)
@@ -371,14 +374,17 @@ async function allDecisions(sql: Sql, gameId: string) {
 
 /** Отчёт по игре для участника или ведущего. */
 export async function gameReport(sql: Sql, game: Row, playerId: string | null, isHost: boolean) {
-  const data = await boardData(sql, game);
   const open = isHost || (game.status === 'finished' && !!game.open_book);
+  const [data, place, detail, all] = await Promise.all([
+    boardData(sql, game),
+    playerId ? standing(sql, game.id, playerId) : null,
+    playerId ? teamDetail(sql, playerId) : null,
+    open ? allDecisions(sql, game.id) : null
+  ]);
   return {
     ...data,
-    team: playerId ? {
-      playerId, standing: await standing(sql, game.id, playerId), ...(await teamDetail(sql, playerId))
-    } : null,
-    allDecisions: open ? await allDecisions(sql, game.id) : null
+    team: playerId ? { playerId, standing: place, ...detail } : null,
+    allDecisions: all
   };
 }
 

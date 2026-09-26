@@ -277,7 +277,7 @@ try {
     await p.getByText('Ready to start').waitFor();
     const code = (await p.locator('.code').first().textContent()).trim();
     // Логотип на табло проектора — картинкой от функции игры.
-    const b = await page(browser, 'projector');
+    const b = await page(browser, 'projector', ADMIN);
     await b.goto(base + 'board/?code=' + code);
     await b.waitForFunction(() => {
       const img = document.querySelector('.sponsor img');
@@ -346,9 +346,19 @@ try {
     await p.close();
   });
 
-  await step('projector scoreboard', async () => {
+  await step('projector scoreboard: sign in first, then only this game\'s people see it', async () => {
     const p = await page(browser, 'projector');
     await p.goto(base + 'board/?code=' + live.code);
+    await p.getByText('The scoreboard is only for this game').waitFor();
+    await shot(p, 'projector-00-sign-in');
+    // Чужая почта: вход есть, а табло — нет.
+    await p.evaluate(() => localStorage.setItem('mg-test-email', 'host2@example.com'));
+    await p.reload();
+    await p.getByText('You are not on this game\'s roster').waitFor();
+    await p.getByRole('button', { name: 'Use another email' }).click();
+    await p.getByLabel('Email').fill(ADMIN);
+    await p.getByRole('button', { name: 'Send me a code' }).click();
+    await p.getByLabel('Code from the email').fill('123456');
     await p.locator('.table--standings').waitFor();
     await p.locator('.chart__svg').first().waitFor();
     await p.waitForTimeout(400);
@@ -388,6 +398,56 @@ try {
     await p.goto(base + 'rating/');
     await p.locator('.table--rating').waitFor();
     await shot(p, 'phone-10-rating', true);
+    await p.close();
+  });
+
+  await step('languages: a Spanish game opens in Spanish, the menu switches to Russian', async () => {
+    // Игра на испанском: игрок видит её по-испански без всяких настроек.
+    const es = await seedGame(server.sql, { months: 2, title: 'Juego de Miami', language: 'es', sponsor: false });
+    await es.call(ADMIN, 'openRound', { gameId: es.gameId });
+    const p = await page(browser, 'laptop', TEAMS[0].email);
+    await p.goto(base + '#/g/' + es.gameId);
+    await p.getByRole('button', { name: 'Enviar decisión' }).or(p.getByRole('button', { name: 'Actualizar decisión' })).waitFor();
+    assert.equal(await p.evaluate(() => document.documentElement.lang), 'es');
+    await p.locator('.chart__svg').first().waitFor();
+    await p.waitForTimeout(400);
+    await shot(p, 'lang-es-01-game');
+    // Меню → Настройки → Язык: русский — и сайт, и игра по-русски.
+    await p.getByRole('button', { name: 'Menú' }).click();
+    await p.getByLabel('Idioma').selectOption('ru');
+    await p.getByRole('button', { name: 'Отправить решение' }).or(p.getByRole('button', { name: 'Обновить решение' })).waitFor();
+    const money = await p.locator('.topbar__money b').textContent();
+    assert.match(money, /\$$/, 'Russian money: 12 340 $');
+    await p.locator('.tab--board').click();
+    await p.getByRole('button', { name: 'Экономика' }).click();
+    await p.getByRole('heading', { name: 'Красный или голубой океан?' }).waitFor();
+    await p.getByText('Как считаем').first().waitFor();
+    await p.waitForTimeout(400);
+    await shot(p, 'lang-ru-01-economy');
+    await p.locator('.tab--guide').click();
+    await p.getByRole('heading', { name: 'Как победить' }).waitFor();
+    await shot(p, 'lang-ru-02-guide');
+    await p.goto(base + '#/');
+    await p.getByRole('heading', { name: 'Мои игры' }).waitFor();
+    // «Автоматически»: игра — снова на своём языке, остальной сайт — на языке браузера.
+    await p.getByRole('button', { name: 'Меню' }).click();
+    await p.getByLabel('Язык').selectOption('auto');
+    await p.getByRole('heading', { name: 'My games' }).waitFor();
+    await p.goto(base + '#/g/' + es.gameId);
+    await p.getByText('Tus decisiones para el mes').waitFor();
+    await p.close();
+  });
+
+  await step('languages: Portuguese host console and a new game in the host\'s language', async () => {
+    const p = await page(browser, 'laptop', ADMIN);
+    await p.addInitScript(() => localStorage.setItem('mg-lang', 'pt'));
+    await p.goto(base + '#/g/' + live.gameId);
+    await p.getByText('Pronto para começar').or(p.getByText(/O mês \d+ (de \d+ )?(está aberto|foi calculado)/)).first().waitFor();
+    await p.waitForTimeout(300);
+    await shot(p, 'lang-pt-01-console');
+    await p.goto(base + '#/new');
+    await p.getByRole('heading', { name: 'Criar um jogo' }).waitFor();
+    assert.equal(await p.getByLabel('Idioma do jogo').inputValue(), 'pt', 'the game language defaults to the host\'s language');
     await p.close();
   });
 

@@ -46,10 +46,10 @@ async function ok(p, what) {
 
 /** Партия: months — сколько месяцев рассчитать; finish — закрыть игру. */
 export async function seedGame(sql, { months = 4, finish = false, title = 'Austin Chamber · Fall session',
-                                      league = 'start', teams = TEAMS, sponsor = true } = {}) {
+                                      league = 'start', teams = TEAMS, sponsor = true, language = 'en' } = {}) {
   const { call } = makeApi(sql, { admins: [ADMIN] });
   const created = await ok(call(ADMIN, 'createGame', {
-    title, league, organizer: 'Austin Chamber of Commerce', timezone: 'America/Chicago',
+    title, league, organizer: 'Austin Chamber of Commerce', timezone: 'America/Chicago', language,
     ...(sponsor ? { sponsorName: 'Lone Star Coffee Roasters', sponsorUrl: 'https://example.com' } : {})
   }), 'createGame');
   const gameId = created.gameId;

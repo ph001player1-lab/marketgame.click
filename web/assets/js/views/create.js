@@ -1,6 +1,6 @@
 // Новая игра и форма её данных — та же форма стоит в настройках пульта.
 
-import { t, errorText } from '../i18n.js';
+import { t, tn, errorText, LANGUAGES, language } from '../i18n.js';
 import { h, replace, toast, busy, field } from '../dom.js';
 import { zonedToIso, isoToZoned } from '../fmt.js';
 import { act } from '../api.js';
@@ -8,15 +8,15 @@ import { directImageUrl, logoSrc } from './common.js';
 
 const LEAGUES = [['start', 12], ['growth', 24], ['elite', 36]];
 
-// Пояса США и несколько частых для международных игр.
+// Пояса США и несколько частых для международных игр. Подписи — в словаре
+// (tz.<ключ>): города по-русски и по-испански называются по-своему.
 export const TIME_ZONES = [
-  ['America/New_York', 'Eastern (New York)'], ['America/Chicago', 'Central (Chicago)'],
-  ['America/Denver', 'Mountain (Denver)'], ['America/Phoenix', 'Arizona (Phoenix)'],
-  ['America/Los_Angeles', 'Pacific (Los Angeles)'], ['America/Anchorage', 'Alaska (Anchorage)'],
-  ['Pacific/Honolulu', 'Hawaii (Honolulu)'], ['America/Puerto_Rico', 'Atlantic (Puerto Rico)'],
-  ['America/Toronto', 'Toronto'], ['America/Mexico_City', 'Mexico City'], ['America/Sao_Paulo', 'São Paulo'],
-  ['Europe/London', 'London'], ['Europe/Berlin', 'Berlin'], ['Asia/Dubai', 'Dubai'],
-  ['Asia/Bangkok', 'Bangkok'], ['Asia/Tokyo', 'Tokyo'], ['Australia/Sydney', 'Sydney'], ['UTC', 'UTC']
+  ['America/New_York', 'eastern'], ['America/Chicago', 'central'], ['America/Denver', 'mountain'],
+  ['America/Phoenix', 'arizona'], ['America/Los_Angeles', 'pacific'], ['America/Anchorage', 'alaska'],
+  ['Pacific/Honolulu', 'hawaii'], ['America/Puerto_Rico', 'atlantic'], ['America/Toronto', 'toronto'],
+  ['America/Mexico_City', 'mexicoCity'], ['America/Sao_Paulo', 'saoPaulo'], ['Europe/London', 'london'],
+  ['Europe/Berlin', 'berlin'], ['Asia/Dubai', 'dubai'], ['Asia/Bangkok', 'bangkok'], ['Asia/Tokyo', 'tokyo'],
+  ['Australia/Sydney', 'sydney'], ['UTC', 'utc']
 ];
 
 // ----------------------------------------------------------------- логотип
@@ -202,8 +202,12 @@ export function gameForm(values = {}, { withLeague = true, lockPractice = false 
   const organizer = h('input', { class: 'input', maxlength: 120, value: values.organizer || '', oninput: mark,
     placeholder: t('host.organizerPlaceholder') });
   const zone = h('select', { class: 'input', onchange: mark },
-    [...TIME_ZONES, ...(TIME_ZONES.some(([z]) => z === tz) ? [] : [[tz, tz]])]
+    [...TIME_ZONES.map(([z, key]) => [z, t('tz.' + key)]), ...(TIME_ZONES.some(([z]) => z === tz) ? [] : [[tz, tz]])]
       .map(([z, label]) => h('option', { value: z, selected: z === tz }, label)));
+  // Язык игры: по умолчанию — язык, на котором сейчас сайт у ведущего.
+  const lang = values.language || language();
+  const gameLanguage = h('select', { class: 'input', onchange: mark },
+    LANGUAGES.map((l) => h('option', { value: l.code, selected: l.code === lang, lang: l.code }, l.name)));
   const when = h('input', { class: 'input', type: 'datetime-local', value: isoToZoned(values.scheduledAt, tz), oninput: mark });
   const openBook = h('input', { type: 'checkbox', checked: values.openBook !== false, onchange: mark });
   const practice = h('input', { type: 'checkbox', checked: !!values.practice, disabled: lockPractice, onchange: mark });
@@ -218,11 +222,12 @@ export function gameForm(values = {}, { withLeague = true, lockPractice = false 
     h('div', { class: 'radio-list' }, LEAGUES.map(([id, months]) => h('label', { class: 'radio' },
       h('input', { type: 'radio', name: 'league', value: id, checked: id === league,
         onchange: () => { league = id; mark(); } }),
-      h('span', {}, h('b', {}, t('leagues.' + id) + ' · ' + t('rating.months', { n: months })),
+      h('span', {}, h('b', {}, t('leagues.' + id) + ' · ' + tn('rating.months', months)),
         h('span', { class: 'muted small', style: { display: 'block' } }, t('leagues.' + id + 'Who'))))))) : null;
 
   const el = h('div', {},
     field(t('host.title'), title),
+    field(t('host.language'), gameLanguage, t('host.languageHint')),
     leagueBox,
     h('label', { class: 'check' }, practice, h('span', {}, t('host.practiceLabel'),
       lockPractice ? h('span', { class: 'muted small', style: { display: 'block' } }, t('host.practiceLocked')) : null)),
@@ -244,7 +249,7 @@ export function gameForm(values = {}, { withLeague = true, lockPractice = false 
       const scheduledAt = when.value ? zonedToIso(when.value, zone.value) : null;
       return {
         title: title.value.trim(), league, practice: practice.checked, organizer: organizer.value.trim(),
-        timezone: zone.value, scheduledAt, openBook: openBook.checked,
+        timezone: zone.value, scheduledAt, openBook: openBook.checked, language: gameLanguage.value,
         sponsorName: sponsorName.value.trim(), sponsorUrl: sponsorUrl.value.trim(),
         ...logo.change()
       };

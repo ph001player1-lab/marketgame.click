@@ -18,6 +18,7 @@ export function gameMeta(game: Row, round: RoundRow) {
   return {
     id: String(game.id), code: String(game.code), title: String(game.title),
     league, leagueName: LEAGUES[league]?.name ?? league, totalRounds: total,
+    language: String(game.language ?? 'en'),
     practice: !!game.practice, status: String(game.status),
     roundNumber: num(round.round_number), roundStatus: round.status,
     deadline: round.status === 'open' ? round.deadline : null,
@@ -137,20 +138,31 @@ async function myStakes(sql: Sql, gameId: string, playerId: string) {
 
 export async function dashboard(sql: Sql, game: Row, playerId: string, impersonating = false) {
   const gameId = String(game.id);
-  const [player] = await sql`select * from players where id = ${playerId}`;
+  // Независимые запросы — разом: каждый круг до базы на счету.
+  const [[player], round, [last], notices, others, stakes, [myDecision], employees]: [
+    Row[], RoundRow, Row[], Row[], Row[], Row[], Row[], Row[]
+  ] = await Promise.all([
+    sql`select * from players where id = ${playerId}`,
+    currentRound(sql, gameId),
+    sql`select * from results where player_id = ${playerId} order by round_number desc limit 1`,
+    sql`
+      select id, kind, message, params, round_number from notices
+      where player_id = ${playerId} and not read order by id`,
+    sql`
+      select * from players where game_id = ${gameId} and id <> ${playerId} and status <> 'left'
+      order by created_at, id`,
+    myStakes(sql, gameId, playerId),
+    // Решение открытого месяца: номер месяца — из той же таблицы rounds.
+    sql`
+      select d.* from decisions d
+      where d.player_id = ${playerId} and not d.autoplay
+        and d.round_number = (select coalesce(max(round_number), 0) from rounds where game_id = ${gameId})`,
+    sql`
+      select * from players where employer_id = ${playerId} and status = 'custom_employed'
+      order by created_at, id`
+  ]);
   if (!player) fail('player_not_found');
-  const round = await currentRound(sql, gameId);
   const cfg = activeConfig(game, round);
-
-  const [last] = await sql`
-    select * from results where player_id = ${playerId}
-    order by round_number desc limit 1`;
-  const notices: Row[] = await sql`
-    select id, kind, message, round_number from notices
-    where player_id = ${playerId} and not read order by id`;
-  const others: Row[] = await sql`
-    select * from players where game_id = ${gameId} and id <> ${playerId} and status <> 'left'
-    order by created_at, id`;
 
   const base = {
     ok: true, impersonating,
@@ -169,9 +181,11 @@ export async function dashboard(sql: Sql, game: Row, playerId: string, impersona
     // каждой новой игре: название ресторана часто меняют.
     needsProfile: !player.joined_at || !player.display_name || !player.restaurant_name || !player.location_kind,
     lastResult: formatResult(last),
-    notices: notices.map((n) => ({ id: num(n.id), kind: n.kind, message: n.message, roundNumber: num(n.round_number) })),
+    notices: notices.map((n) => ({
+      id: num(n.id), kind: n.kind, message: n.message, params: n.params ?? null, roundNumber: num(n.round_number)
+    })),
     others: others.filter((o) => o.restaurant_name).map(publicPlayer),
-    stakes: await myStakes(sql, gameId, playerId),
+    stakes,
     careerOptions: { civilServiceSalary: cfg.CIVIL_SERVICE_SALARY, reopenThreshold: cfg.REOPEN_THRESHOLD },
     reportToken: impersonating ? null : String(player.report_token)
   };
@@ -209,13 +223,6 @@ export async function dashboard(sql: Sql, game: Row, playerId: string, impersona
   }
 
   // --- работающий ресторан
-  const [myDecision] = await sql`
-    select * from decisions
-    where player_id = ${playerId} and round_number = ${round.round_number} and not autoplay`;
-  const employees: Row[] = await sql`
-    select * from players where employer_id = ${playerId} and status = 'custom_employed'
-    order by created_at, id`;
-
   const tierLimit = loanLimitFor(num(player.loan_tier), cfg);
   const balance = num(player.loan_balance);
   return {
@@ -376,7 +383,7 @@ export async function requestLoan(sql: Sql, game: Row, playerId: string, b: Row,
     })} where id = ${playerId}`;
     await addLedger(tx, [{
       game_id: game.id, player_id: playerId, round_number: accountingRound(round),
-      kind: 'loan_out', amount, target: 'cash', reason: 'Loan received', actor
+      kind: 'loan_out', amount, target: 'cash', reason: 'Loan received', actor, params: { code: 'loan_out' }
     }]);
     return { ok: true, received: amount, balance, available: Math.max(0, loanLimitFor(tier, cfg) - balance) };
   });
@@ -400,7 +407,8 @@ export async function repayLoan(sql: Sql, game: Row, playerId: string, b: Row, a
     })} where id = ${playerId}`;
     await addLedger(tx, [{
       game_id: game.id, player_id: playerId, round_number: accountingRound(round),
-      kind: 'loan_repay', amount: -pay, target: 'cash', reason: 'Early loan repayment', actor
+      kind: 'loan_repay', amount: -pay, target: 'cash', reason: 'Early loan repayment', actor,
+      params: { code: 'loan_repay' }
     }]);
     return { ok: true, paid: pay, balance };
   });
@@ -439,12 +447,14 @@ export async function transferMoney(sql: Sql, game: Row, playerId: string, b: Ro
              values (${game.id}, ${from.id}, ${to.id}, ${amount}, ${rn})`;
     await addLedger(tx, [
       { game_id: game.id, player_id: from.id, round_number: rn, kind: 'transfer_out',
-        amount: -amount, target: fromT, reason: 'Transfer to ' + teamLabel(to), actor },
+        amount: -amount, target: fromT, reason: 'Transfer to ' + teamLabel(to), actor,
+        params: { code: 'transfer_to', team: teamLabel(to) } },
       { game_id: game.id, player_id: to.id, round_number: rn, kind: 'transfer_in',
-        amount, target: toT, reason: 'Transfer from ' + teamLabel(from), actor }
+        amount, target: toT, reason: 'Transfer from ' + teamLabel(from), actor,
+        params: { code: 'transfer_from', team: teamLabel(from) } }
     ]);
     await addNotice(tx, game.id, to.id, rn, 'transfer',
-      teamLabel(from) + ' sent you ' + usd(amount) + '.');
+      teamLabel(from) + ' sent you ' + usd(amount) + '.', { code: 'transfer', team: teamLabel(from), amount });
     return { ok: true, sent: amount, to: teamLabel(to), available: cents(have - amount) };
   });
 }
@@ -479,16 +489,22 @@ export async function chooseCareerPath(sql: Sql, game: Row, playerId: string, b:
 
     if (status === 'active' || status === 'bankrupt') {
       if (cash < 0) {
-        entries.push({ kind: 'bankruptcy', amount: -cash, target: 'cash', reason: 'Unpaid bills written off' });
+        entries.push({ kind: 'bankruptcy', amount: -cash, target: 'cash', reason: 'Unpaid bills written off',
+          params: { code: 'unpaid_written_off' } });
         writeOff = loan;
       } else {
         const payoff = Math.min(cash, loan);
         const rest = cents(cash - payoff);
         writeOff = cents(loan - payoff);
-        if (payoff > 0) entries.push({ kind: 'loan_repay', amount: -payoff, target: 'cash', reason: 'Loan repaid on closing' });
+        if (payoff > 0) {
+          entries.push({ kind: 'loan_repay', amount: -payoff, target: 'cash', reason: 'Loan repaid on closing',
+            params: { code: 'loan_repay_closing' } });
+        }
         if (rest > 0) {
-          entries.push({ kind: 'settlement', amount: -rest, target: 'cash', reason: 'Business closed' });
-          entries.push({ kind: 'settlement', amount: rest, target: 'savings', reason: 'Cash kept after closing' });
+          entries.push({ kind: 'settlement', amount: -rest, target: 'cash', reason: 'Business closed',
+            params: { code: 'business_closed' } });
+          entries.push({ kind: 'settlement', amount: rest, target: 'savings', reason: 'Cash kept after closing',
+            params: { code: 'cash_kept' } });
           savings = cents(savings + rest);
         }
       }
@@ -509,7 +525,10 @@ export async function chooseCareerPath(sql: Sql, game: Row, playerId: string, b:
     };
 
     if (path === 'end') {
-      if (savings > 0) entries.push({ kind: 'settlement', amount: -savings, target: 'savings', reason: 'Left the game' });
+      if (savings > 0) {
+        entries.push({ kind: 'settlement', amount: -savings, target: 'savings', reason: 'Left the game',
+          params: { code: 'left_game' } });
+      }
       await tx`update players set ${tx({
         ...common, employment_savings: 0, status: 'left', custom_profession_name: null,
         service_since_round: 0, last_salary_round: 0, savings_last_round: 0
@@ -563,9 +582,11 @@ export async function reopenBusiness(sql: Sql, game: Row, playerId: string, acto
     const rn = accountingRound(round);
     await addLedger(tx, [
       { game_id: game.id, player_id: playerId, round_number: rn, kind: 'reopen',
-        amount: -savings, target: 'savings', reason: 'New business opened', actor },
+        amount: -savings, target: 'savings', reason: 'New business opened', actor,
+        params: { code: 'new_business' } },
       { game_id: game.id, player_id: playerId, round_number: rn, kind: 'reopen',
-        amount: savings, target: 'cash', reason: 'Starting cash of the new business', actor }
+        amount: savings, target: 'cash', reason: 'Starting cash of the new business', actor,
+        params: { code: 'new_business_cash' } }
     ]);
     return { ok: true, cash: savings };
   });
@@ -587,7 +608,8 @@ export async function proposeEmployment(sql: Sql, game: Row, playerId: string, b
     const round = await currentRound(tx, game.id);
     await addNotice(tx, game.id, employerId, accountingRound(round), 'employment',
       (me.display_name || 'A player') + ' offers to work for you as ' +
-      (me.custom_profession_name || 'an employee') + ' for ' + usd(salary) + ' a month.');
+      (me.custom_profession_name || 'an employee') + ' for ' + usd(salary) + ' a month.',
+      { code: 'employment', name: me.display_name || '', job: me.custom_profession_name || '', salary });
     return { ok: true };
   });
 }
@@ -631,9 +653,11 @@ export async function paySalary(sql: Sql, game: Row, playerId: string, b: Row, a
     const rn = accountingRound(round);
     await addLedger(tx, [
       { game_id: game.id, player_id: playerId, round_number: rn, kind: 'employer_salary',
-        amount: -salary, target: 'cash', reason: 'Salary to ' + (emp.display_name || 'employee'), actor },
+        amount: -salary, target: 'cash', reason: 'Salary to ' + (emp.display_name || 'employee'), actor,
+        params: { code: 'salary_to', name: emp.display_name || '' } },
       { game_id: game.id, player_id: employeeId, round_number: rn, kind: 'employer_salary',
-        amount: salary, target: 'savings', reason: 'Salary from ' + teamLabel(employer), actor }
+        amount: salary, target: 'savings', reason: 'Salary from ' + teamLabel(employer), actor,
+        params: { code: 'salary_from', team: teamLabel(employer) } }
     ]);
     return { ok: true, paid: salary };
   });

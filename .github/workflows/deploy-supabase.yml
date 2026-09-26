@@ -80,7 +80,7 @@ jobs:
             uri_allow_list: "https://marketgame.click,https://www.marketgame.click,http://localhost:8080,http://127.0.0.1:8080",
             mailer_otp_length: 6,
             mailer_otp_exp: 3600,
-            mailer_subjects_magic_link: "Your Market Game sign-in code",
+            mailer_subjects_magic_link: "Market Game: sign-in code · código · код входа",
             mailer_templates_magic_link_content: $tpl
           }')
           code=$(curl -s -o resp.json -w '%{http_code}' -X PATCH \
@@ -160,3 +160,39 @@ jobs:
             "https://$PROJECT_REF.supabase.co/functions/v1/game?logo=00000000-0000-0000-0000-000000000000")
           echo "logo without keys: HTTP $code"
           [ "$code" = "404" ]
+          # Табло видят только участники игры: без входа — auth_required.
+          out=$(curl -s -X POST "https://$PROJECT_REF.supabase.co/functions/v1/game" \
+            -H "apikey: $PUBLISHABLE_KEY" -H 'content-type: application/json' -d '{"action":"board","code":"ABC123"}')
+          echo "board without sign-in: $out"
+          echo "$out" | grep -q '"auth_required"'
+
+      - name: Function runs next to the database
+        run: |
+          # Сайт просит запускать функцию в регионе базы (config.js,
+          # functionRegion): иначе из Азии каждый запрос к базе идёт через океан.
+          region=$(grep -o "functionRegion: '[a-z0-9-]*'" web/assets/js/config.js | cut -d"'" -f2)
+          db=$(curl -s "https://api.supabase.com/v1/projects/$PROJECT_REF" \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" | jq -r '.region // empty')
+          echo "database region: ${db:-unknown}; the site asks for: ${region:-none}"
+          if [ -n "$db" ] && [ "$db" != "$region" ]; then
+            echo "::warning::Set functionRegion: '$db' in web/assets/js/config.js — the database is in $db"
+          fi
+          url="https://$PROJECT_REF.supabase.co/functions/v1/game?forceFunctionRegion=$region"
+          ran=$(curl -s -D - -o /dev/null -X POST "$url" -H "apikey: $PUBLISHABLE_KEY" \
+            -H 'content-type: application/json' -d '{"action":"ping"}' | tr -d '\r' \
+            | awk -F': ' 'tolower($1) == "x-sb-edge-region" { print $2 }')
+          echo "the function ran in: ${ran:-unknown}"
+          if [ -n "$ran" ] && [ "$ran" != "$region" ]; then
+            echo "::warning::The function ran in $ran instead of $region"
+          fi
+          # Разрешение браузера на POST запоминается на сутки: опрос табло —
+          # один запрос, а не два.
+          curl -s -D - -o /dev/null -X OPTIONS "$url" -H 'Origin: https://marketgame.click' \
+            -H 'Access-Control-Request-Method: POST' \
+            -H 'Access-Control-Request-Headers: apikey, authorization, content-type' \
+            | tr -d '\r' | grep -i '^access-control-max-age' || echo "::warning::no Access-Control-Max-Age"
+          # Время ответа из GitHub (США) — для сравнения между запусками.
+          for i in 1 2 3; do
+            curl -s -o /dev/null -w 'ping: %{time_total}s\n' -X POST "$url" -H "apikey: $PUBLISHABLE_KEY" \
+              -H 'content-type: application/json' -d '{"action":"ping"}'
+          done

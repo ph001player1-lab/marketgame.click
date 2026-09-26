@@ -7,7 +7,8 @@ import { h, replace, field, busy } from '../dom.js';
 import { read } from '../api.js';
 import { requestCode, verifyCode } from '../auth.js';
 
-export function renderLogin(root, { onSignedIn }) {
+/** note — пояснение над формой: например, зачем входить на проекторе. */
+export function renderLogin(root, { onSignedIn, note = null }) {
   const box = h('main', { class: 'login' });
   replace(root, box);
   stepEmail('');
@@ -32,6 +33,7 @@ export function renderLogin(root, { onSignedIn }) {
       });
     } },
       h('h1', { class: 'card__title' }, t('login.title')),
+      note ? h('p', { class: 'banner banner--warn small' }, note) : null,
       h('p', { class: 'muted' }, t('login.lead')),
       field(t('login.email'), email),
       msg, btn);

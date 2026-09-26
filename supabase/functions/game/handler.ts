@@ -2,8 +2,11 @@
 //  Маршрутизация запросов функции game.
 //
 //  Все запросы — POST с JSON: { action, gameId?, ...параметры }. Вход — токен
-//  Supabase Auth в заголовке Authorization. Табло, рейтинг, отчёт по ссылке и
-//  проверка почты перед входом открыты без токена.
+//  Supabase Auth в заголовке Authorization. Без токена открыты только рейтинг
+//  лиги, отчёт команды по её ссылке и проверка почты перед входом.
+//
+//  Кто что видит: команда — только игры, где она играет; ведущий — свои игры;
+//  администратор — все. Табло игры тоже только для них.
 //
 //  Действие возвращает уже пересчитанное состояние (поле state): клиенту не
 //  нужен второй запрос, а значит нет гонки с фоновым опросом — как в v4.9.
@@ -67,6 +70,10 @@ function corsHeaders(origin: string | null, allowed: string[]): Record<string, s
     'Access-Control-Allow-Origin': allow,
     'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info',
     'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
+    // Браузер спрашивает разрешение перед каждым POST, если ответ не
+    // запомнить. Сутки (Chrome держит до двух часов) — и опрос каждые
+    // восемь секунд идёт одним запросом, а не двумя.
+    'Access-Control-Max-Age': '86400',
     'Vary': 'Origin'
   };
 }
@@ -154,13 +161,29 @@ async function preflightLogin(deps: Deps, b: Row) {
   return { ok: true };
 }
 
+/** Игра запроса: по id, а табло проектора — и по коду игры. */
+async function findGame(sql: Deps['sql'], b: Row, action: string): Promise<Row | null> {
+  const gameId = String(b.gameId ?? '');
+  if (/^[0-9a-f-]{36}$/i.test(gameId)) {
+    const [game] = await sql`select * from games where id = ${gameId}`;
+    return game ?? null;
+  }
+  const code = String(b.code ?? '').trim().toUpperCase();
+  if (action === 'board' && /^[A-Z0-9]{3,12}$/.test(code)) {
+    const [game] = await sql`select * from games where code = ${code}`;
+    return game ?? null;
+  }
+  return null;
+}
+
+const GAME_FREE = new Set(['me', 'listHosts', 'addHost', 'removeHost', 'createGame']);
+
 async function route(deps: Deps, b: Row, token: string): Promise<Row> {
   const { sql } = deps;
   const action = b.action as string;
 
   switch (action) {
     case 'ping': return { ok: true, version: VERSION };
-    case 'board': return await B.board(sql, b);
     case 'rating': return await B.rating(sql, b);
     case 'report': return await B.publicReport(sql, b);
     case 'preflightLogin': return await preflightLogin(deps, b);
@@ -168,7 +191,17 @@ async function route(deps: Deps, b: Row, token: string): Promise<Row> {
 
   const email = token ? await deps.verifyToken(token) : null;
   if (!email) fail('auth_required');
-  const me = await identity(deps, normEmail(email));
+  const myEmail = normEmail(email);
+  // Кто вошёл, какая игра и есть ли в ней его команда — независимые запросы:
+  // идут разом, а не друг за другом.
+  const inGame = !GAME_FREE.has(action);
+  const [me, game, mine] = await Promise.all([
+    identity(deps, myEmail),
+    inGame ? findGame(sql, b, action) : Promise.resolve(null),
+    inGame && /^[0-9a-f-]{36}$/i.test(String(b.gameId ?? ''))
+      ? sql`select id from players where game_id = ${String(b.gameId)} and email = ${myEmail}`.then((r: Row[]) => r[0] ?? null)
+      : Promise.resolve(null)
+  ]);
 
   switch (action) {
     case 'me':
@@ -191,16 +224,27 @@ async function route(deps: Deps, b: Row, token: string): Promise<Row> {
   }
 
   // ---- всё остальное — внутри конкретной игры
-  const gameId = String(b.gameId ?? '');
-  if (!/^[0-9a-f-]{36}$/i.test(gameId)) fail('bad_game');
-  const [game] = await sql`select * from games where id = ${gameId}`;
-  if (!game) fail('game_not_found');
+  if (!game) {
+    if (action === 'board' && !b.gameId) fail(b.code ? 'game_not_found' : 'bad_code');
+    if (!/^[0-9a-f-]{36}$/i.test(String(b.gameId ?? ''))) fail('bad_game');
+    fail('game_not_found');
+  }
+  const gameId = String(game.id);
   const isGameHost = me.isAdmin || game.host_email === me.email;
+  // Команда в этой игре. Табло по коду приходит без id игры — ищем по ней.
+  let player = mine;
+  if (!player && action === 'board' && !b.gameId) {
+    [player] = await sql`select id from players where game_id = ${gameId} and email = ${me.email}`;
+  }
+
+  if (action === 'board') {
+    if (!player && !isGameHost) fail('not_in_game');
+    return await B.boardData(sql, game);
+  }
 
   if (action === 'gameReport') {
-    const [p] = await sql`select id from players where game_id = ${gameId} and email = ${me.email}`;
-    if (!p && !isGameHost) fail('not_in_game');
-    return await B.gameReport(sql, game, p ? String(p.id) : null, isGameHost);
+    if (!player && !isGameHost) fail('not_in_game');
+    return await B.gameReport(sql, game, player ? String(player.id) : null, isGameHost);
   }
 
   if (HOST_ACTIONS[action]) {
@@ -224,9 +268,8 @@ async function route(deps: Deps, b: Row, token: string): Promise<Row> {
       playerId = String(p.id);
       impersonating = true;
     } else {
-      const [p] = await sql`select id from players where game_id = ${gameId} and email = ${me.email}`;
-      if (!p) fail('not_in_game');
-      playerId = String(p.id);
+      if (!player) fail('not_in_game');
+      playerId = String(player.id);
     }
     if (action === 'dashboard') return await P.dashboard(sql, game, playerId, impersonating);
     if (game.status === 'finished' && !['setProfile', 'markNoticesRead'].includes(action)) fail('game_finished');

@@ -7,7 +7,7 @@ import { t, errorText } from '../i18n.js';
 import { h, replace, toast, confirmDialog, busy, field, moneyInput, card } from '../dom.js';
 import { usd, int, dec2, pct, pctRaw, parseMoney } from '../fmt.js';
 import { act } from '../api.js';
-import { locationBadge, statusBadge, copyText, siteBase } from './common.js';
+import { locationBadge, statusBadge, copyText, siteBase, teamName as named } from './common.js';
 import { OWNER_COLORS } from './scoreboard.js';
 import { gameForm } from './create.js';
 import { debriefCard } from './ocean.js';
@@ -23,6 +23,8 @@ const CONFIG_ORDER = ['ROUND_DURATION_MIN', 'RENT', 'INSURANCE', 'UTILITIES', 'P
   'START_CAPITAL', 'CIVIL_SERVICE_SALARY', 'REOPEN_THRESHOLD'];
 
 const teamName = (p) => p.restaurant || p.email;
+// Границы настройки — в её единицах: проценты, доллары или штуки.
+const fmtSetting = (k, v) => (PERCENT_KEYS.has(k) ? pct(v) : MONEY_KEYS.has(k) ? usd(v) : int(v));
 
 export function createConsole(root, ctx) {
   let m = null;
@@ -180,8 +182,8 @@ export function createConsole(root, ctx) {
       dirty = false;
       if (res.state) area.value = res.state.players.map((p) => p.email).join('\n');
       const notes = [
-        ...Object.entries(res.kept || {}).map(([e, why]) => e + ' — ' + why),
-        ...Object.entries(res.skipped || {}).map(([e, why]) => e + ' — ' + why)
+        ...Object.entries(res.kept || {}).map(([e, why]) => e + ' — ' + t('host.rosterWhy.' + why)),
+        ...Object.entries(res.skipped || {}).map(([e, why]) => e + ' — ' + t('host.rosterWhy.' + why))
       ];
       replace(result, notes.length ? h('div', { class: 'banner banner--warn' },
         h('strong', {}, t('host.rosterNotes')), h('ul', {}, notes.map((x) => h('li', {}, x)))) : null);
@@ -292,7 +294,7 @@ export function createConsole(root, ctx) {
       const btn = h('button', { class: 'btn btn--small', type: 'button', onclick: async () => {
         const v = Number(String(input.value).replace(',', '.'));
         if (!Number.isFinite(v) || v < 0 || v > 100) { toast(t('errors.bad_pct'), 'bad'); return; }
-        const res = await run(btn, 'setCityShare', { kind, pct: v }, t('host.cityShareSaved', { name: t('institutions.' + kind), pct: pctRaw(v) }));
+        const res = await run(btn, 'setCityShare', { kind, pct: v }, t('host.cityShareSaved', { inst: t('institutionsOf.' + kind), pct: pctRaw(v) }));
         if (res?.ok) delete input.dataset.dirty;
       } }, t('common.save'));
       shareRows[kind] = { input, bar };
@@ -335,7 +337,7 @@ export function createConsole(root, ctx) {
       }), ' ', t('host.cityOwns', { pct: pctRaw(inst.ownership.cityPct) }));
       replace(holdersBox, inst.ownership.holders.length
         ? h('p', { class: 'small' }, h('b', {}, t('board.holders') + ': '),
-            inst.ownership.holders.map((x) => x.restaurant + ' ' + pctRaw(x.pct)).join(', '))
+            inst.ownership.holders.map((x) => named(x.restaurant) + ' ' + pctRaw(x.pct)).join(', '))
         : h('p', { class: 'small muted' }, t('board.noHolders')));
     }
     kindSel.addEventListener('change', paintHint);
@@ -359,7 +361,7 @@ export function createConsole(root, ctx) {
         action = 'transferStake'; params = { kind, fromPlayerId: seller.sel.value, toPlayerId: buyer.sel.value, pct: pctV, price };
       }
       const ok = await confirmDialog(t('host.confirmStake.' + op, {
-        pct: pctRaw(pctV), name: t('institutions.' + kind), price: usd(price),
+        pct: pctRaw(pctV), inst: t('institutionsOf.' + kind), price: usd(price),
         buyer: buyer.sel.selectedOptions[0]?.textContent || '', seller: seller.sel.selectedOptions[0]?.textContent || ''
       }), { ok: t('common.yes'), cancel: t('common.cancel') });
       if (!ok) return;
@@ -420,7 +422,7 @@ export function createConsole(root, ctx) {
       const p = form.read();
       if (!p.title) { toast(t('errors.empty_title'), 'bad'); return; }
       const params = { title: p.title, organizer: p.organizer, timezone: p.timezone, scheduledAt: p.scheduledAt,
-        openBook: p.openBook, sponsorName: p.sponsorName, sponsorUrl: p.sponsorUrl };
+        openBook: p.openBook, sponsorName: p.sponsorName, sponsorUrl: p.sponsorUrl, language: p.language };
       // Логотип — только если его меняли: файл, ссылка или «убрать».
       if ('sponsorLogoData' in p) params.sponsorLogoData = p.sponsorLogoData;
       if ('sponsorLogoUrl' in p) params.sponsorLogoUrl = p.sponsorLogoUrl;
@@ -437,7 +439,7 @@ export function createConsole(root, ctx) {
       const updates = {};
       for (const [key, input] of Object.entries(inputs)) {
         if (!input.dataset.dirty) continue;
-        let v = Number(String(input.value).replace(/[$,\s%]/g, ''));
+        let v = parseMoney(String(input.value).replace(/%/g, ''));
         if (!Number.isFinite(v)) { toast(t('host.badNumber', { name: t('upcoming.keys.' + key) }), 'bad'); return; }
         if (PERCENT_KEYS.has(key)) v = Math.round(v * 100) / 10000;
         updates[key] = v;
@@ -447,7 +449,11 @@ export function createConsole(root, ctx) {
       if (!res?.ok) return;
       for (const key of Object.keys(res.applied || {})) delete inputs[key]?.dataset.dirty;
       const rejected = Object.entries(res.rejected || {});
-      if (rejected.length) toast(rejected.map(([k, why]) => t('upcoming.keys.' + k) + ': ' + why).join('; '), 'bad', 8000);
+      if (rejected.length) {
+        toast(rejected.map(([k, why]) => t('upcoming.keys.' + k) + ': ' + t('host.configWhy.' + (why?.code || 'not_editable'), {
+          min: fmtSetting(k, why?.min), max: fmtSetting(k, why?.max)
+        })).join('; '), 'bad', 8000);
+      }
       else toast(t('host.configSaved'), 'ok');
       for (const input of Object.values(inputs)) delete input.dataset.dirty;
       paintConfig(res.state || m, true);
@@ -484,7 +490,7 @@ export function createConsole(root, ctx) {
         input.value = v === undefined ? '' : PERCENT_KEYS.has(key) ? String(Math.round(v * 10000) / 100) : String(v);
       }
       const list = s.upcomingChanges || [];
-      const fmtVal = (k, v) => (PERCENT_KEYS.has(k) ? pct(v) : MONEY_KEYS.has(k) ? usd(v) : int(v));
+      const fmtVal = fmtSetting;
       replace(upcomingBox, list.length ? h('div', { class: 'banner banner--warn' },
         h('strong', {}, t('upcoming.title')),
         h('ul', {}, list.map((c) => h('li', {}, t('upcoming.keys.' + c.key) + ': ' + fmtVal(c.key, c.from) + ' → ' + fmtVal(c.key, c.to)))))
@@ -494,11 +500,12 @@ export function createConsole(root, ctx) {
     function update(s) {
       const g = s.game;
       // Форму данных игры пересобираем, только если ведущий её не трогал.
-      const key = JSON.stringify([g.title, g.organizer, g.timezone, g.scheduledAt, g.openBook, g.practice, g.sponsor, g.roundNumber > 0]);
+      const key = JSON.stringify([g.title, g.organizer, g.timezone, g.scheduledAt, g.openBook, g.practice, g.sponsor,
+        g.language, g.roundNumber > 0]);
       if (!form || (!form.dirty && key !== formKey)) {
         formKey = key;
         form = gameForm(g, { withLeague: false, lockPractice: g.roundNumber > 0 });
-        replace(detailsBox, h('p', { class: 'muted small' }, t('host.leagueFixed', { league: g.leagueName, total: g.totalRounds })), form.el);
+        replace(detailsBox, h('p', { class: 'muted small' }, t('host.leagueFixed', { league: t('leagues.' + g.league), total: g.totalRounds })), form.el);
       }
       paintConfig(s, false);
       const canDelete = g.roundNumber === 0 || (g.roundNumber === 1 && g.roundStatus === 'open');

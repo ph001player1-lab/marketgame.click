@@ -179,7 +179,7 @@ await step('капитал — деньги минус долг: кредит в
   const bob = m.players.find((p) => p.email === BOB);
   const capital = async () => {
     const [s] = await sql`select capital from v_standings where player_id = ${bob.id}`;
-    const b = await call(null, 'board', { code: m.game.code });
+    const b = await call(BOB, 'board', { code: m.game.code });
     return { view: Math.round(s.capital), board: b.players.find((p) => p.id === bob.id).capital };
   };
   const before = await capital();
@@ -206,7 +206,7 @@ await step('поправка ведущего после финала сразу
 
 await step('логотип спонсора: файл, ссылка Google Drive, картинка по GET', async () => {
   const m = await call(HOST, 'monitor', { gameId });
-  const board = async () => (await call(null, 'board', { code: m.game.code })).game.sponsor;
+  const board = async () => (await call(ANN, 'board', { gameId })).game.sponsor;
   const handler = createHandler({ sql, adminEmails: [], allowedOrigins: [], verifyToken: async () => null,
     ensureAuthUser: async () => {} });
   const getLogo = () => handler(new Request('http://x/game?logo=' + gameId));

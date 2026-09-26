@@ -72,7 +72,7 @@ export function renderRatingPage(page) {
   function paint() {
     replace(tabs, LEAGUES.map((l) => h('button', { type: 'button', 'aria-pressed': l === league ? 'true' : 'false',
       onclick: () => { league = l; sessionStorage.setItem('mg-rating-league', l); where = 'all'; paint(); } },
-      t('leagues.' + l) + ' · ' + t('rating.months', { n: { start: 12, growth: 24, elite: 36 }[l] }))));
+      t('leagues.' + l) + ' · ' + tn('rating.months', { start: 12, growth: 24, elite: 36 }[l]))));
     if (!data) return;
     const all = (data.leagues || []).find((x) => x.league === league)?.players || [];
 

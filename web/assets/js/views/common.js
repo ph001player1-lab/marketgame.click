@@ -1,8 +1,9 @@
 // Общие куски разделов: где работает команда, значки статуса, плашка
 // спонсора, карточка «график или таблица», выгрузка CSV.
 
-import { CONFIG } from '../config.js';
+import { endpoint } from '../api.js';
 import { t } from '../i18n.js';
+import { currentLocale } from '../fmt.js';
 import { h, replace, toast } from '../dom.js';
 
 // 50 штатов и округ Колумбия — как на marketgame.biz.
@@ -25,7 +26,7 @@ const STATE_NAME = Object.fromEntries(US_STATES);
 export function locationText(loc, long = false) {
   if (!loc || !loc.kind) return '';
   if (loc.kind === 'state') return long ? (STATE_NAME[loc.state] || loc.state || '') : (loc.state || '');
-  if (loc.kind === 'multistate') return long ? t('rating.multistate') : 'U.S.';
+  if (loc.kind === 'multistate') return long ? t('rating.multistate') : t('rating.usShort');
   return loc.country || t('rating.international');
 }
 
@@ -63,7 +64,7 @@ export function directImageUrl(u) {
 export function logoSrc(sponsor, gameId) {
   if (!sponsor) return null;
   if (sponsor.logoRev && gameId) {
-    return CONFIG.apiUrl + '?logo=' + encodeURIComponent(gameId) + '&v=' + encodeURIComponent(sponsor.logoRev);
+    return endpoint({ logo: gameId, v: sponsor.logoRev });
   }
   return sponsor.logoUrl || null;
 }
@@ -124,17 +125,26 @@ export function simpleTable(head, rows, { numeric = [], rowClass } = {}) {
       r.map((c, i) => h('td', { class: isNumCol(i) ? 'r' : null }, c)))))));
 }
 
+/** Название команды; пустое — команда ещё не назвалась. */
+export const teamName = (name) => name || t('common.newTeam');
+
 // ----------------------------------------------------------------- файлы и ссылки
 
-function csvCell(v) {
-  if (v === null || v === undefined) return '';
-  const s = String(v);
-  return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
-}
-
-/** CSV для Excel и Google Sheets: запятые, UTF-8 с BOM. */
+/**
+ * CSV для Excel и Google Sheets, UTF-8 с BOM. Там, где дробную часть
+ * отделяют запятой (португальский, русский), Excel ждёт «;» между
+ * столбцами и «1234,5» в числах — так и пишем, иначе таблица слипнется в
+ * один столбец.
+ */
 export function downloadCsv(filename, rows) {
-  const text = '﻿' + rows.map((r) => r.map(csvCell).join(',')).join('\r\n');
+  const comma = new Intl.NumberFormat(currentLocale()).formatToParts(1.5).find((x) => x.type === 'decimal')?.value === ',';
+  const sep = comma ? ';' : ',';
+  const cell = (v) => {
+    if (v === null || v === undefined) return '';
+    const s = typeof v === 'number' && comma ? String(v).replace('.', ',') : String(v);
+    return s.includes(sep) || /["\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  const text = '\ufeff' + rows.map((r) => r.map(cell).join(sep)).join('\r\n');
   const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
   const a = h('a', { href: url, download: filename });
   document.body.append(a);
@@ -155,7 +165,7 @@ export async function copyText(text, okMessage) {
 
 /** Имя файла без пробелов и знаков: «taco-town-report.csv». */
 export function fileSlug(text) {
-  return String(text || 'market-game').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'market-game';
+  return String(text || 'market-game').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '').slice(0, 40) || 'market-game';
 }
 
 /** Адрес сайта для ссылок: работает и на marketgame.click, и на github.io. */

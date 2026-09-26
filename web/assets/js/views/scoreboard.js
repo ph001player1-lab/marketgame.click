@@ -6,11 +6,11 @@
 
 import { t, tn } from '../i18n.js';
 import { h, replace } from '../dom.js';
-import { usd, usdc, int, dec2, pctRaw, usdShort, short } from '../fmt.js';
+import { usd, usdc, int, dec2, decimal, pctRaw, usdShort, short } from '../fmt.js';
 import { read } from '../api.js';
 import { lineChart, barChart, sankey, PALETTE, OTHER, INK } from '../charts.js';
 import {
-  locationBadge, statusBadge, swatch, sponsorBanner, chartCard, simpleTable
+  locationBadge, statusBadge, swatch, sponsorBanner, chartCard, simpleTable, teamName
 } from './common.js';
 import { ratingTable } from './rating.js';
 import { waterChip, oceanCard } from './ocean.js';
@@ -20,12 +20,12 @@ const METRICS = [
   { key: 'capital', fmt: usd, tick: usdShort },
   { key: 'cash', fmt: usd, tick: usdShort },
   { key: 'profit', fmt: usd, tick: usdShort },
-  { key: 'marketSharePct', fmt: pctRaw, tick: (v) => short(v) + '%' },
+  { key: 'marketSharePct', fmt: pctRaw, tick: (v) => pctRaw(v) },
   { key: 'served', fmt: int, tick: short },
-  { key: 'price', fmt: usdc, tick: (v) => '$' + short(v), zero: false },
-  { key: 'brand', fmt: dec2, tick: (v) => String(v) },
-  { key: 'reputation', fmt: dec2, tick: (v) => String(v), zero: false },
-  { key: 'quality', fmt: dec2, tick: (v) => String(v) },
+  { key: 'price', fmt: usdc, tick: usdShort, zero: false },
+  { key: 'brand', fmt: dec2, tick: decimal },
+  { key: 'reputation', fmt: dec2, tick: decimal, zero: false },
+  { key: 'quality', fmt: dec2, tick: decimal },
   { key: 'capacity', fmt: int, tick: short },
   { key: 'marketingTotal', fmt: usd, tick: usdShort },
   { key: 'qualityInvest', fmt: usd, tick: usdShort },
@@ -80,7 +80,8 @@ export function createScoreboard(root, opts = {}) {
   function update(d, last) {
     if (!d || !d.ok) return;
     if (last?.player?.id) myId = last.player.id;
-    data = d;
+    // Команда, которая ещё не назвалась, — «Новая команда» на языке читателя.
+    data = { ...d, players: (d.players || []).map((p) => ({ ...p, restaurant: teamName(p.restaurant) })) };
     const next = JSON.stringify([d.players, d.marketTotals, d.institutions, d.city, d.moneyMap, d.ocean,
       d.game.roundNumber, d.game.roundStatus, d.game.status, d.game.sponsor, myId]);
     if (next === sig) return;
@@ -347,7 +348,7 @@ export function createScoreboard(root, opts = {}) {
     if (inst.lossCarryforward > 0) facts.push(t('board.lossCf', { amount: usd(inst.lossCarryforward) }));
     const holders = inst.ownership.holders.length
       ? h('p', { class: 'small' }, h('b', {}, t('board.holders') + ': '),
-          inst.ownership.holders.map((x) => x.restaurant + ' ' + pctRaw(x.pct)).join(', '))
+          inst.ownership.holders.map((x) => teamName(x.restaurant) + ' ' + pctRaw(x.pct)).join(', '))
       : h('p', { class: 'small muted' }, t('board.noHolders'));
 
     const top = h('div', {},
@@ -470,7 +471,7 @@ export function createScoreboard(root, opts = {}) {
   async function renderRating() {
     const league = data.game.league;
     const box = h('section', { class: ['card', big ? 'card--big' : null] },
-      h('h3', { class: 'card__title' }, t('board.ratingTitle', { league: data.game.leagueName })),
+      h('h3', { class: 'card__title' }, t('board.ratingTitle', { league: t('leagues.' + data.game.league) })),
       h('p', { class: 'muted small' }, t('rating.lead')),
       h('div', { class: 'spinner', role: 'status' }));
     body.append(box);

@@ -1,12 +1,17 @@
-// Табло для проектора: board/?code=ABC123. Открыто без входа — код игры и
-// так висит на экране в зале. Крупный шрифт, таймер месяца по часам
-// сервера, код игры и адрес сайта для входа команд.
+// Табло для проектора: board/?code=ABC123. Крупный шрифт, таймер месяца по
+// часам сервера, код игры и адрес сайта для входа команд.
+//
+// Табло видят только участники игры, её ведущий и администраторы, поэтому
+// на проекторе тоже нужно войти — обычно почтой ведущего. Язык табло —
+// язык игры: его читает зал.
 
 import { CONFIG } from '../config.js';
-import { t, errorText } from '../i18n.js';
+import { t, errorText, setLanguage, pickLanguage } from '../i18n.js';
 import { h, replace } from '../dom.js';
 import { clock } from '../fmt.js';
 import { read } from '../api.js';
+import { currentEmail, signOut } from '../auth.js';
+import { renderLogin } from '../views/login.js';
 import { createScoreboard } from '../views/scoreboard.js';
 import { siteBase } from '../views/common.js';
 
@@ -14,8 +19,33 @@ const root = document.getElementById('app');
 const params = new URLSearchParams(location.search);
 const code = (params.get('code') || location.hash.replace(/^#\/?/, '') || '').trim().toUpperCase();
 
-if (!code) askCode();
-else start(code);
+init();
+
+async function init() {
+  replace(root, h('div', { class: 'spinner', role: 'status', 'aria-label': t('common.loading') }));
+  const [email] = await Promise.all([currentEmail(), setLanguage(pickLanguage(null))]);
+  if (!code) askCode();
+  else if (!email) signIn();
+  else start(code);
+}
+
+function signIn() {
+  document.title = t('board.title') + ' · ' + t('brand');
+  renderLogin(root, { note: t('board.signInLead'), onSignedIn: () => start(code) });
+}
+
+/** Вошли не той почтой: табло этой игры ей не видно. */
+function refused(res) {
+  replace(root, h('main', { class: 'login' },
+    h('div', { class: 'login__brand' }, t('brand')),
+    h('div', { class: 'card' },
+      h('h1', { class: 'card__title' }, t('board.title')),
+      h('div', { class: 'banner banner--bad' }, errorText(res)),
+      h('p', { class: 'muted' }, t('board.signInLead')),
+      h('div', { class: 'btn-row' },
+        h('button', { class: 'btn btn--primary', type: 'button', onclick: async () => { await signOut(); signIn(); } },
+          t('login.otherEmail'))))));
+}
 
 function askCode() {
   const input = h('input', { class: 'input', autocapitalize: 'characters', autocomplete: 'off', maxlength: 8,
@@ -36,7 +66,16 @@ function askCode() {
   input.focus();
 }
 
-function start(gameCode) {
+async function start(gameCode) {
+  replace(root, h('div', { class: 'spinner', role: 'status', 'aria-label': t('common.loading') }));
+  const first = await read('board', { code: gameCode });
+  if (!first.ok) {
+    if (first.error === 'auth_required') signIn();
+    else refused(first);
+    return;
+  }
+  await setLanguage(first.game.language);
+
   const titleEl = h('h1', {}, t('common.loading'));
   const subEl = h('div', { class: 'projector__sub' }, '');
   const timerEl = h('div', { class: 'timer', hidden: true });
@@ -70,16 +109,17 @@ function start(gameCode) {
     if (left <= 0 && firedFor !== deadline) { firedFor = deadline; load(); }
   }, 250);
 
-  async function load() {
-    const data = await read('board', { code: gameCode }, { auth: false });
+  async function load(ready = null) {
+    const data = ready || await read('board', { code: gameCode });
     if (!data.ok) {
+      if (data.error === 'auth_required') { location.reload(); return; }
       replace(errorEl, h('div', { class: 'banner banner--bad' }, errorText(data)));
       return;
     }
     replace(errorEl);
     const g = data.game;
     titleEl.textContent = g.title;
-    subEl.textContent = [g.leagueName + (g.practice ? ' · ' + t('common.practice') : ''), g.organizer,
+    subEl.textContent = [t('leagues.' + g.league) + (g.practice ? ' · ' + t('common.practice') : ''), g.organizer,
       g.finished ? t('common.finished') : g.roundNumber > 0 ? t('common.monthOf', { n: g.roundNumber, total: g.totalRounds }) : t('common.notStarted'),
       g.roundStatus === 'open' ? t('board.decisionsOpen') : null].filter(Boolean).join(' · ');
     document.title = g.title + ' · ' + t('board.title');
@@ -97,7 +137,7 @@ function start(gameCode) {
     board.showView(views[viewIdx]);
   }, 20000);
 
-  load();
+  load(first);
   setInterval(() => { if (!document.hidden) load(); }, CONFIG.pollMs);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
 }

@@ -26,6 +26,13 @@ export const LEAGUES: Record<League, { months: number; name: string }> = {
   elite: { months: 36, name: 'Elite' }
 };
 
+/** Языки сайта. Язык игры выбирает ведущий; каждый может сменить свой. */
+export const LANGUAGES = ['en', 'es', 'pt', 'ru'] as const;
+export type Language = typeof LANGUAGES[number];
+export function isLanguage(v: unknown): v is Language {
+  return (LANGUAGES as readonly unknown[]).includes(v);
+}
+
 export function isLeague(v: unknown): v is League {
   return v === 'start' || v === 'growth' || v === 'elite';
 }

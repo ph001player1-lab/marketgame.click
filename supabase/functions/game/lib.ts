@@ -182,15 +182,23 @@ export function activeConfig(game: Row, round: RoundRow): Config {
 
 // ----------------------------------------------------------------- журналы
 
+/**
+ * Запись журнала денег. reason — английский текст (для старых записей и
+ * для причин, которые пишет ведущий), params — код и подробности: по ним
+ * сайт пишет примечание на языке читателя (history.notes.<code>).
+ */
 export interface LedgerEntry {
   game_id: string; player_id: string; round_number: number;
   kind: string; amount: number; target: 'cash' | 'savings';
-  reason?: string | null; actor?: string | null;
+  reason?: string | null; actor?: string | null; params?: Row | null;
 }
 
 export async function addLedger(sql: Sql, entries: LedgerEntry[]): Promise<void> {
   const rows = entries.filter((e) => Math.abs(e.amount) >= 0.005)
-    .map((e) => ({ reason: null, actor: null, ...e, amount: cents(e.amount) }));
+    .map((e) => ({
+      reason: null, actor: null, ...e, amount: cents(e.amount),
+      params: e.params ? sql.json(e.params) : null
+    }));
   if (rows.length) await sql`insert into ledger ${sql(rows)}`;
 }
 
@@ -206,10 +214,16 @@ export async function addCity(sql: Sql, entries: CityEntry[]): Promise<void> {
   if (rows.length) await sql`insert into city_ledger ${sql(rows)}`;
 }
 
+/**
+ * Новость команде. message — английский текст на всякий случай, params —
+ * код и подробности: сайт пишет новость на языке читателя
+ * (notices.kinds.<code>).
+ */
 export async function addNotice(sql: Sql, gameId: string, playerId: string, roundNumber: number,
-                                kind: string, message: string): Promise<void> {
-  await sql`insert into notices (game_id, player_id, round_number, kind, message)
-            values (${gameId}, ${playerId}, ${roundNumber}, ${kind}, ${message})`;
+                                kind: string, message: string, params: Row | null = null): Promise<void> {
+  await sql`insert into notices (game_id, player_id, round_number, kind, message, params)
+            values (${gameId}, ${playerId}, ${roundNumber}, ${kind}, ${message},
+                    ${params ? sql.json(params) : null})`;
 }
 
 export async function logHostAction(sql: Sql, gameId: string | null, actor: string,
@@ -226,6 +240,7 @@ export function usd(v: number): string {
 }
 
 /** Имя команды для чужих глаз: ресторан, а без него — имя. Почта — никогда. */
+/** Название команды; пустая строка — команда ещё не назвалась (сайт пишет «Новая команда»). */
 export function teamLabel(p: Row): string {
-  return String(p.restaurant_name || p.display_name || 'New team');
+  return String(p.restaurant_name || p.display_name || '');
 }

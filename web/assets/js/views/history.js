@@ -7,7 +7,7 @@ import { h, replace } from '../dom.js';
 import { usd, usdc, int, dec2, pctRaw } from '../fmt.js';
 import { createScoreboard } from './scoreboard.js';
 import { plTable } from './business.js';
-import { downloadCsv, copyText, fileSlug, siteBase, simpleTable } from './common.js';
+import { downloadCsv, copyText, fileSlug, siteBase, simpleTable, teamName as named } from './common.js';
 
 const CHANNELS = ['seo', 'promo', 'maps', 'social', 'outdoor', 'affiliate'];
 
@@ -26,11 +26,11 @@ export function renderReport(page, data, opts = {}) {
   const g = data.game;
   const team = data.team;
   const me = team ? (data.players || []).find((p) => p.id === team.playerId) : null;
-  const teamName = data.teamName || me?.restaurant || '';
+  const teamName = data.teamName || me?.restaurant || (team ? t('common.newTeam') : '');
   const scoreboards = [];
 
   // ---- шапка
-  const metaBits = [g.leagueName + ' · ' + t('rating.months', { n: g.totalRounds })];
+  const metaBits = [t('leagues.' + g.league) + ' · ' + tn('rating.months', g.totalRounds)];
   if (g.organizer) metaBits.push(g.organizer);
   metaBits.push(g.finished ? t('common.finished') : g.roundNumber > 0
     ? t('common.monthOf', { n: g.roundNumber, total: g.totalRounds }) : t('common.notStarted'));
@@ -116,7 +116,7 @@ export function renderReport(page, data, opts = {}) {
       h('h2', { class: 'card__title' }, t('history.allDecisions')),
       h('p', { class: 'muted small' }, t('history.allDecisionsLead')),
       data.allDecisions.map((x) => h('details', { class: 'details' },
-        h('summary', {}, x.restaurant + ' · ' + tn('history.decisionsCount', x.decisions.length)),
+        h('summary', {}, named(x.restaurant) + ' · ' + tn('history.decisionsCount', x.decisions.length)),
         x.decisions.length ? simpleTable(decisionHead(), decisionRows(x.decisions), { numeric: [1, 2, 3, 4, 5, 6, 7, 8, 9] })
           : h('p', { class: 'muted' }, '—')))));
   } else if (team) {
@@ -128,7 +128,7 @@ export function renderReport(page, data, opts = {}) {
     blocks.push(h('section', { class: 'card' },
       h('h2', { class: 'card__title' }, t('history.log')),
       simpleTable([t('common.month'), t('history.what'), t('history.amount'), t('history.note')],
-        team.moneyLog.map((l) => [l.round, t('history.kinds.' + l.kind), usd(l.amount), l.reason || '']),
+        team.moneyLog.map((l) => [l.round, t('history.kinds.' + l.kind), usd(l.amount), noteText(l)]),
         { numeric: [2] })));
   }
 
@@ -139,36 +139,55 @@ export function renderReport(page, data, opts = {}) {
   return { destroy() { scoreboards.forEach((b) => b.destroy()); } };
 }
 
+/**
+ * Примечание к записи журнала денег — на языке читателя, по коду записи.
+ * Причину штрафа или гранта пишет ведущий — её показываем как есть.
+ */
+export function noteText(l) {
+  const n = l.note;
+  if (!n || !n.code) return l.reason || '';
+  if (n.code === 'civil_salary' && n.months > 1) return t('history.notes.civilSalaryMonths', { n: n.months });
+  return t('history.notes.' + n.code, {
+    n: n.n, pct: n.pct !== undefined ? pctRaw(n.pct) : undefined,
+    inst: n.inst ? t('institutionsOf.' + n.inst) : undefined,
+    team: n.team !== undefined ? named(n.team) : undefined,
+    name: n.name !== undefined ? (n.name || t('common.someone')) : undefined
+  });
+}
+
 function stat(label, value) {
   return h('div', { class: 'stat' }, h('div', { class: 'stat__label' }, label), h('div', { class: 'stat__value' }, value));
 }
 
 // ----------------------------------------------------------------- CSV
 
+// Столбцы — ключами словаря (csv.*): заголовки на языке читателя.
+const TEAM_COLS = ['month', 'status', 'price', 'served', 'lost', 'sharePct', 'revenue', 'cogs', 'rent', 'insurance',
+  'utilities', 'payroll', 'shifts', 'qualityUpkeep', 'qualityInvest', 'advertising', ...CHANNELS.map((c) => 'ch:' + c),
+  'ebit', 'interest', 'pbt', 'tax', 'profit', 'principal', 'cashFlow', 'dividends', 'cashEnd', 'loanEnd', 'capital',
+  'brand', 'reputation', 'quality', 'capacity', 'sent'];
+const colName = (k) => (k.startsWith('ch:') ? t('channels.' + k.slice(3) + '.name') : t('csv.' + k));
+
 function teamCsv(data, teamName) {
   const team = data.team;
-  const head = ['Month', 'Status', 'Price', 'Guests served', 'Guests turned away', 'Market share %', 'Revenue',
-    'Food & supplies', 'Rent', 'Insurance', 'Utilities & other', 'Payroll', 'Extra shifts', 'Quality upkeep',
-    'Quality investment', 'Advertising', ...CHANNELS.map((c) => t('channels.' + c + '.name')),
-    'Operating profit', 'Loan interest', 'Profit before tax', 'Profit tax', 'Net profit', 'Loan principal paid',
-    'Cash flow', 'Dividends', 'Cash / savings at month end', 'Loan balance at month end', 'Capital (cash − loan)',
-    'Brand', 'Reputation', 'Quality', 'Capacity', 'Decision sent by team'];
+  const head = TEAM_COLS.map(colName);
+  const at = (k) => TEAM_COLS.indexOf(k);
   const dec = new Map(team.decisions.map((d) => [d.round, d]));
   const rows = [
-    ...team.results.map((r) => [r.roundNumber, 'open', r.price, r.served, r.lost, r.marketSharePct, r.revenue, r.cogs,
+    ...team.results.map((r) => [r.roundNumber, t('statuses.active'), r.price, r.served, r.lost, r.marketSharePct, r.revenue, r.cogs,
       r.opex.rent, r.opex.insurance, r.opex.utilities, r.opex.payroll, r.opex.shiftCost, r.opex.qualityUpkeep,
       r.opex.qualityInvest, r.opex.marketing, ...CHANNELS.map((c) => r.marketingByChannel[c]),
       r.ebit, r.interest, r.profitBeforeTax, r.tax, r.profit, r.principalPaid, r.cashFlow, r.dividends, r.cashAfter,
       r.loanBalanceAfter, r.cashAfter - r.loanBalanceAfter,
       r.brand, r.reputation, r.quality, r.capacity,
-      dec.has(r.roundNumber) ? (dec.get(r.roundNumber).autoplay ? 'no (repeated)' : 'yes') : '']),
+      dec.has(r.roundNumber) ? (dec.get(r.roundNumber).autoplay ? t('csv.noRepeated') : t('csv.yes')) : '']),
     ...team.offBusinessMonths.map((w) => {
       const row = Array(head.length).fill('');
-      row[0] = w.round;
-      row[1] = w.status;
-      row[head.indexOf('Net profit')] = w.income;
-      row[head.indexOf('Cash / savings at month end')] = w.savings;
-      row[head.indexOf('Capital (cash − loan)')] = w.savings;
+      row[at('month')] = w.round;
+      row[at('status')] = t('statuses.' + w.status);
+      row[at('profit')] = w.income;
+      row[at('cashEnd')] = w.savings;
+      row[at('capital')] = w.savings;
       return row;
     })
   ].sort((a, b) => a[0] - b[0]);
@@ -176,24 +195,25 @@ function teamCsv(data, teamName) {
 }
 
 function gameCsv(data) {
-  const head = ['Team', 'Month', 'In business', 'Capital (cash − loan)', 'Cash / savings', 'Profit / income', 'Market share %', 'Guests served',
-    'Price', 'Brand', 'Reputation', 'Quality', 'Capacity', 'Advertising', 'Quality investment', 'Profit tax', 'Dividends'];
+  const head = ['team', 'month', 'inBusiness', 'capital', 'cash', 'profitIncome', 'sharePct', 'served',
+    'price', 'brand', 'reputation', 'quality', 'capacity', 'advertising', 'qualityInvest', 'tax', 'dividends'].map(colName);
   const rows = [];
   for (const p of data.players || []) {
     for (const e of p.series) {
-      rows.push([p.restaurant, e.round, e.inBusiness ? 'yes' : e.offBusinessStatus, e.capital, e.cash, e.profit, e.marketSharePct,
-        e.served, e.price, e.brand, e.reputation, e.quality, e.capacity, e.marketingTotal, e.qualityInvest, e.tax, e.dividends]);
+      rows.push([named(p.restaurant), e.round, e.inBusiness ? t('csv.yes') : t('statuses.' + e.offBusinessStatus), e.capital,
+        e.cash, e.profit, e.marketSharePct, e.served, e.price, e.brand, e.reputation, e.quality, e.capacity,
+        e.marketingTotal, e.qualityInvest, e.tax, e.dividends]);
     }
   }
-  downloadCsv(fileSlug(data.game.title) + '-teams.csv', [head, ...rows]);
+  downloadCsv(fileSlug(data.game.title) + '-teams.csv', [head, ...rows.map(roundMoney)]);
   if (data.allDecisions) {
-    const dHead = ['Team', 'Month', 'Repeated automatically', 'Price', ...CHANNELS.map((c) => t('channels.' + c + '.name')),
-      'Shift change', 'Quality investment'];
+    const dHead = ['team', 'month', 'repeated', 'price', ...CHANNELS.map((c) => 'ch:' + c), 'shiftChange', 'qualityInvest']
+      .map(colName);
     const dRows = [];
     for (const x of data.allDecisions) {
       for (const d of x.decisions) {
-        dRows.push([x.restaurant, d.round, d.autoplay ? 'yes' : 'no', d.price, d.seoSpend, d.promoSpend, d.mapsSpend,
-          d.socialSpend, d.outdoorSpend, d.affiliateSpend, d.shiftsDelta, d.qualityInvest]);
+        dRows.push([named(x.restaurant), d.round, d.autoplay ? t('csv.yes') : t('csv.no'), d.price, d.seoSpend, d.promoSpend,
+          d.mapsSpend, d.socialSpend, d.outdoorSpend, d.affiliateSpend, d.shiftsDelta, d.qualityInvest]);
       }
     }
     setTimeout(() => downloadCsv(fileSlug(data.game.title) + '-decisions.csv', [dHead, ...dRows]), 400);

@@ -19,6 +19,7 @@
 // каждого графика табло есть таблица с теми же числами.
 
 import { h, replace } from './dom.js';
+import { t } from './i18n.js';
 
 export const PALETTE = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7', '#e34948'];
 export const OTHER = '#A9A8A0';
@@ -104,11 +105,11 @@ function frame(box, cfg, series, hooks) {
   if (series.length >= 2 && cfg.legend !== false) {
     const colored = series.filter((se) => !se.other);
     const gray = series.filter((se) => se.other);
-    legendEl = h('div', { class: 'legend', role: 'group', 'aria-label': cfg.legendLabel || 'Legend' },
+    legendEl = h('div', { class: 'legend', role: 'group', 'aria-label': cfg.legendLabel || t('charts.legend') },
       colored.map((se) => {
         const b = h('button', {
           class: ['legend__item', se.emphasis ? 'is-mine' : null], type: 'button', 'aria-pressed': 'false',
-          title: 'Highlight ' + se.name,
+          title: t('charts.highlight', { name: se.name }),
           onclick: () => { focus = focus === se.key ? null : se.key; sync(); hooks.redraw(); }
         }, h('i', { class: 'legend__swatch', style: { background: se.color } }), se.name);
         b.dataset.key = se.key;
@@ -117,7 +118,7 @@ function frame(box, cfg, series, hooks) {
       }),
       gray.length ? h('span', { class: 'legend__item legend__item--static' },
         h('i', { class: 'legend__swatch', style: { background: OTHER } }),
-        (cfg.otherLabel || 'Other') + ' (' + gray.length + ')') : null);
+        (cfg.otherLabel || t('charts.other')) + ' (' + gray.length + ')') : null);
   }
   function sync() {
     for (const b of legendButtons) {
@@ -226,7 +227,7 @@ export function lineChart(box, cfg) {
   const series = cfg.series;
   const fmt = cfg.fmt || String;
   const tick = cfg.tick || fmt;
-  const xLabel = cfg.xLabel || ((x) => 'Month ' + x);
+  const xLabel = cfg.xLabel || ((x) => t('common.month') + ' ' + x);
   let geo = null;
   let idx = null;
   let cross = null;
@@ -293,7 +294,7 @@ export function lineChart(box, cfg) {
       if (i % every !== 0) continue;
       svg.append(s('text', { class: 'chart__tick', x: X(i), y: baseY, 'text-anchor': 'middle' }, xs[i]));
     }
-    svg.append(s('text', { class: 'chart__tick chart__axis-name', x: left - 8, y: baseY, 'text-anchor': 'end' }, cfg.xName || 'Mo'));
+    svg.append(s('text', { class: 'chart__tick chart__axis-name', x: left - 8, y: baseY, 'text-anchor': 'end' }, cfg.xName || t('board.mo')));
 
     // Серые — под цветными, своя команда и выделенная — поверх всех.
     const rank = (se) => (se.key === f.focus ? 3 : se.emphasis ? 2 : se.other ? 0 : 1);
@@ -407,7 +408,7 @@ export function barChart(box, cfg) {
   const series = cfg.series;
   const fmt = cfg.fmt || String;
   const tick = cfg.tick || fmt;
-  const xLabel = cfg.xLabel || ((x) => 'Month ' + x);
+  const xLabel = cfg.xLabel || ((x) => t('common.month') + ' ' + x);
   let geo = null;
   let idx = null;
   let cross = null;
@@ -476,7 +477,7 @@ export function barChart(box, cfg) {
       if (i % every !== 0) continue;
       svg.append(s('text', { class: 'chart__tick', x: left + band * (i + 0.5), y: baseY, 'text-anchor': 'middle' }, xs[i]));
     }
-    svg.append(s('text', { class: 'chart__tick chart__axis-name', x: left - 8, y: baseY, 'text-anchor': 'end' }, cfg.xName || 'Mo'));
+    svg.append(s('text', { class: 'chart__tick chart__axis-name', x: left - 8, y: baseY, 'text-anchor': 'end' }, cfg.xName || t('board.mo')));
 
     stacks.forEach((st, i) => {
       const x = left + band * i + (band - bw) / 2;
@@ -517,9 +518,9 @@ export function barChart(box, cfg) {
     const st = stackAt(i);
     const nodes = [tipHeader(xLabel(xs[i]))];
     const rows = series.map((se) => ({ se, v: Number(se.values[i]) || 0 })).filter((r) => r.v !== 0);
-    if (!rows.length) nodes.push(h('div', { class: 'chart__tip-more' }, cfg.emptyText || 'Nothing this month'));
+    if (!rows.length) nodes.push(h('div', { class: 'chart__tip-more' }, cfg.emptyText || t('charts.nothing')));
     for (const r of rows) nodes.push(tipRow(r.se.color, r.se.name, fmt(r.v)));
-    if (series.length > 1 && rows.length > 1) nodes.push(tipRow(null, cfg.totalLabel || 'Total', fmt(st.pos + st.neg), true));
+    if (series.length > 1 && rows.length > 1) nodes.push(tipRow(null, cfg.totalLabel || t('common.total'), fmt(st.pos + st.neg), true));
     f.showTip(nodes, left + band * (i + 0.5), (Y(st.pos) + Y(st.neg)) / 2);
   }
 

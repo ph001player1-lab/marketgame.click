@@ -8,6 +8,9 @@ export const CONFIG = {
   supabaseUrl: 'https://fzchwkwyicnjbtjkqack.supabase.co',
   publishableKey: 'sb_publishable_Q7RQ9We4D2h8qEiW1-ISjg_8P_Fq3_p',
   apiUrl: 'https://fzchwkwyicnjbtjkqack.supabase.co/functions/v1/game',
+  // Регион базы проекта (Supabase → Settings → General). Функция работает
+  // рядом с базой, где бы ни был игрок.
+  functionRegion: 'us-west-1',
   // Как часто подтягивать свежее состояние, мс.
   pollMs: 8000,
   // Вход без писем — только для локальных тестов.

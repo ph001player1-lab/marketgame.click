@@ -24,6 +24,19 @@ export const actionsInFlight = () => inFlight;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /**
+ * Адрес функции game. Supabase запускает функцию в регионе, ближайшем к
+ * игроку, а база одна — в Калифорнии. Из Азии каждый запрос функции к базе
+ * пересекал бы океан, поэтому просим запускать её рядом с базой
+ * (forceFunctionRegion): через океан идёт один запрос браузера, а не десяток.
+ */
+export function endpoint(params = {}) {
+  const url = new URL(CONFIG.apiUrl, location.href);
+  if (CONFIG.functionRegion) url.searchParams.set('forceFunctionRegion', CONFIG.functionRegion);
+  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, String(v));
+  return url.toString();
+}
+
+/**
  * Идентификатор нажатия. crypto.randomUUID есть только на https, а сайт
  * могут открыть и по http, пока домен не получил сертификат, — тогда
  * собираем такой же UUID v4 из crypto.getRandomValues.
@@ -46,7 +59,7 @@ async function send(body, withAuth) {
   let lastError = null;
   for (let attempt = 1; attempt <= RETRIES; attempt++) {
     try {
-      const res = await fetch(CONFIG.apiUrl, {
+      const res = await fetch(endpoint(), {
         method: 'POST', headers, body: JSON.stringify(body), cache: 'no-store'
       });
       const text = await res.text();

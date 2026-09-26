@@ -9,7 +9,7 @@
 
 import { computeCapacity, type Config } from './economy.ts';
 import {
-  configForLeague, isLeague, EDITABLE_CONFIG, DEFAULT_CITY_SHARE_PCT, LEAGUES
+  configForLeague, isLeague, isLanguage, EDITABLE_CONFIG, DEFAULT_CITY_SHARE_PCT, LEAGUES
 } from './presets.ts';
 import {
   type Sql, type Row, fail, num, cents, round2, normEmail, isEmail, currentRound, accountingRound,
@@ -125,6 +125,7 @@ export async function createGame(sql: Sql, hostEmail: string, b: Row) {
   const cfg = configForLeague(league);
   const scheduledAt = b.scheduledAt ? new Date(String(b.scheduledAt)) : null;
   if (scheduledAt && isNaN(scheduledAt.getTime())) fail('bad_date');
+  if (b.language !== undefined && !isLanguage(b.language)) fail('bad_language');
 
   return await sql.begin(async (tx: Sql) => {
     let code = newCode();
@@ -139,6 +140,7 @@ export async function createGame(sql: Sql, hostEmail: string, b: Row) {
       sponsor_name: text(b.sponsorName, 120),
       sponsor_url: url(b.sponsorUrl), timezone: validTimezone(b.timezone),
       scheduled_at: scheduledAt, open_book: b.openBook === undefined ? true : !!b.openBook,
+      language: isLanguage(b.language) ? b.language : 'en',
       config: tx.json(cfg)
     })} returning *`;
     const logo = await saveLogo(tx, game, b);
@@ -164,6 +166,10 @@ export async function updateGame(sql: Sql, game: Row, actor: string, b: Row) {
     upd.scheduled_at = d;
   }
   if (b.openBook !== undefined) upd.open_book = !!b.openBook;
+  if (b.language !== undefined) {
+    if (!isLanguage(b.language)) fail('bad_language');
+    upd.language = b.language;
+  }
   if (b.practice !== undefined) {
     // Пометку Practice меняем только до первого месяца: иначе ведущий мог
     // бы вычеркнуть неудачную для кого-то игру из рейтинга задним числом.
@@ -208,8 +214,9 @@ export async function setRoster(sql: Sql, game: Row, actor: string, b: Row,
   for (const item of raw) {
     const e = normEmail(item);
     if (!e) continue;
-    if (!isEmail(e)) { skipped[e] = 'not an email'; continue; }
-    if (e === game.host_email) { skipped[e] = 'the host cannot play in own game'; continue; }
+    // Причины — кодами: сайт объяснит их на языке ведущего (host.rosterWhy).
+    if (!isEmail(e)) { skipped[e] = 'not_email'; continue; }
+    if (e === game.host_email) { skipped[e] = 'host'; continue; }
     if (wanted.includes(e)) { skipped[e] = 'repeated'; continue; }
     wanted.push(e);
   }
@@ -238,7 +245,7 @@ export async function setRoster(sql: Sql, game: Row, actor: string, b: Row,
       await addLedger(tx, [{
         game_id: game.id, player_id: p.id, round_number: accountingRound(round),
         kind: 'start_capital', amount: cfg.START_CAPITAL, target: 'cash',
-        reason: 'Starting capital', actor
+        reason: 'Starting capital', actor, params: { code: 'start_capital' }
       }]);
       added.push(e);
     }
@@ -250,7 +257,7 @@ export async function setRoster(sql: Sql, game: Row, actor: string, b: Row,
       const [played] = await tx`
         select 1 from results where player_id = ${id}
         union all select 1 from wallet_entries where player_id = ${id} limit 1`;
-      if (played) { kept[e] = 'already played — removing would break the history'; continue; }
+      if (played) { kept[e] = 'played'; continue; }
       await tx`delete from players where id = ${id}`;
       removed.push(e);
     }
@@ -259,20 +266,30 @@ export async function setRoster(sql: Sql, game: Row, actor: string, b: Row,
   });
 
   // Вход по коду возможен только для заведённых в Supabase Auth почт.
-  for (const e of result.added) await ensureAuthUser(e);
+  // Заводим по пять разом: список из двадцати команд не ждёт двадцать кругов.
+  for (let i = 0; i < result.added.length; i += 5) {
+    await Promise.all(result.added.slice(i, i + 5).map((e: string) => ensureAuthUser(e)));
+  }
   return result;
 }
 
 // ----------------------------------------------------------------- пульт
 
 export async function monitor(sql: Sql, game: Row) {
-  const round = await currentRound(sql, game.id);
+  // Независимые запросы — разом. Решения — открытого (последнего) месяца.
+  const [round, players, submitted, city, institutions, ocean] = await Promise.all([
+    currentRound(sql, game.id),
+    sql`select * from players where game_id = ${game.id} order by created_at, id`,
+    sql`
+      select player_id from decisions
+      where game_id = ${game.id} and not autoplay
+        and round_number = (select coalesce(max(round_number), 0) from rounds where game_id = ${game.id})`,
+    cityBudget(sql, game.id),
+    institutionsState(sql, game.id),
+    oceanByMonth(sql, game.id)
+  ]);
   const cfg = activeConfig(game, round);
-  const players: Row[] = await sql`select * from players where game_id = ${game.id} order by created_at, id`;
-  const submitted: Row[] = await sql`
-    select player_id from decisions
-    where game_id = ${game.id} and round_number = ${round.round_number} and not autoplay`;
-  const sub = new Set(submitted.map((s) => String(s.player_id)));
+  const sub = new Set((submitted as Row[]).map((s) => String(s.player_id)));
 
   return {
     ok: true,
@@ -281,7 +298,7 @@ export async function monitor(sql: Sql, game: Row) {
     upcomingChanges: await upcomingChanges(sql, game, round),
     config: game.config,
     editable: EDITABLE_CONFIG,
-    players: players.map((p) => {
+    players: (players as Row[]).map((p) => {
       const off = OFF_BUSINESS.includes(String(p.status));
       const noBiz = p.status !== 'active';
       return {
@@ -297,9 +314,7 @@ export async function monitor(sql: Sql, game: Row) {
         submitted: round.status === 'open' && p.status === 'active' ? sub.has(String(p.id)) : null
       };
     }),
-    city: await cityBudget(sql, game.id),
-    institutions: await institutionsState(sql, game.id),
-    ocean: await oceanByMonth(sql, game.id)
+    city, institutions, ocean
   };
 }
 
@@ -307,14 +322,15 @@ export async function updateConfig(sql: Sql, game: Row, actor: string, b: Row) {
   const updates = (b.updates && typeof b.updates === 'object') ? b.updates as Row : {};
   const cfg = { ...(game.config as Row) };
   const applied: Record<string, number> = {};
-  const rejected: Record<string, string> = {};
+  // Причины отказа — кодами (host.configWhy на сайте).
+  const rejected: Record<string, Row> = {};
   for (const [key, raw] of Object.entries(updates)) {
     const rule = EDITABLE_CONFIG[key];
-    if (!rule) { rejected[key] = 'not editable'; continue; }
+    if (!rule) { rejected[key] = { code: 'not_editable' }; continue; }
     const v = Number(raw);
-    if (!Number.isFinite(v)) { rejected[key] = 'not a number'; continue; }
-    if (rule.int && !Number.isInteger(v)) { rejected[key] = 'must be a whole number'; continue; }
-    if (v < rule.min || v > rule.max) { rejected[key] = `allowed ${rule.min}–${rule.max}`; continue; }
+    if (!Number.isFinite(v)) { rejected[key] = { code: 'not_number' }; continue; }
+    if (rule.int && !Number.isInteger(v)) { rejected[key] = { code: 'not_whole' }; continue; }
+    if (v < rule.min || v > rule.max) { rejected[key] = { code: 'range', min: rule.min, max: rule.max }; continue; }
     cfg[key] = v;
     applied[key] = v;
   }
@@ -361,7 +377,8 @@ export async function adjust(sql: Sql, game: Row, actor: string, b: Row) {
     await addCity(tx, [{ game_id: game.id, round_number: rn, kind, amount: collected,
       player_id: playerId, reason, actor }]);
     await addNotice(tx, game.id, playerId, rn, kind,
-      (kind === 'fine' ? 'City fine ' + usd(-actual) : 'City grant ' + usd(actual)) + (reason ? '. ' + reason : '.'));
+      (kind === 'fine' ? 'City fine ' + usd(-actual) : 'City grant ' + usd(actual)) + (reason ? '. ' + reason : '.'),
+      { code: kind, amount: Math.abs(actual), reason: reason || null });
     await logHostAction(tx, game.id, actor, kind, { amount: actual, target }, reason, playerId);
     return { ok: true, applied: actual, target };
   });
@@ -388,13 +405,15 @@ export async function massAdjust(sql: Sql, game: Row, actor: string, b: Row) {
         await tx`update players set cash = ${cents(num(p.cash) - amount)} where id = ${p.id}`;
         await addLedger(tx, [{ game_id: game.id, player_id: p.id, round_number: rn, kind: 'city_tax',
           amount: -amount, target: 'cash', reason, actor }]);
-        await addNotice(tx, game.id, p.id, rn, 'city_tax', 'City tax ' + usd(amount) + (reason ? '. ' + reason : '.'));
+        await addNotice(tx, game.id, p.id, rn, 'city_tax', 'City tax ' + usd(amount) + (reason ? '. ' + reason : '.'),
+          { code: 'city_tax', amount, reason: reason || null });
       } else {
         total = cents(total + amount);
         await tx`update players set employment_savings = ${cents(num(p.employment_savings) + amount)} where id = ${p.id}`;
         await addLedger(tx, [{ game_id: game.id, player_id: p.id, round_number: rn, kind: 'grant',
           amount, target: 'savings', reason, actor }]);
-        await addNotice(tx, game.id, p.id, rn, 'grant', 'City grant ' + usd(amount) + (reason ? '. ' + reason : '.'));
+        await addNotice(tx, game.id, p.id, rn, 'grant', 'City grant ' + usd(amount) + (reason ? '. ' + reason : '.'),
+          { code: 'grant', amount, reason: reason || null });
       }
     }
     await addCity(tx, [{ game_id: game.id, round_number: rn,
@@ -481,11 +500,13 @@ export async function sellStake(sql: Sql, game: Row, actor: string, b: Row) {
     await moveMoney(tx, p, -price);
     const reason = `${pct}% of ${INSTITUTION_NAMES[kind]}`;
     await addLedger(tx, [{ game_id: game.id, player_id: p.id, round_number: rn, kind: 'stake_buy',
-      amount: -price, target: moneyTarget(p.status), reason: 'Bought ' + reason, actor }]);
+      amount: -price, target: moneyTarget(p.status), reason: 'Bought ' + reason, actor,
+      params: { code: 'stake_bought_city', pct, inst: kind } }]);
     await addCity(tx, [{ game_id: game.id, round_number: rn, kind: 'stake_sale', amount: price,
       player_id: p.id, institution: kind, reason: 'Sold ' + reason, actor }]);
     await addNotice(tx, game.id, p.id, rn, 'stake',
-      `You bought ${reason} for ${usd(price)}. Its profit share is paid to you every month.`);
+      `You bought ${reason} for ${usd(price)}. Its profit share is paid to you every month.`,
+      { code: 'stake_bought_city', pct, inst: kind, amount: price });
     await logHostAction(tx, game.id, actor, 'sell_stake', { kind, pct, price }, null, p.id);
     return { ok: true };
   });
@@ -510,12 +531,14 @@ export async function buybackStake(sql: Sql, game: Row, actor: string, b: Row) {
     if (target) {
       await moveMoney(tx, p, price);
       await addLedger(tx, [{ game_id: game.id, player_id: p.id, round_number: rn, kind: 'stake_sell',
-        amount: price, target, reason: `Sold ${pct}% of ${INSTITUTION_NAMES[kind]} to the city`, actor }]);
+        amount: price, target, reason: `Sold ${pct}% of ${INSTITUTION_NAMES[kind]} to the city`, actor,
+        params: { code: 'stake_sold_city', pct, inst: kind } }]);
     }
     await addCity(tx, [{ game_id: game.id, round_number: rn, kind: 'stake_buyback', amount: -price,
       player_id: p.id, institution: kind, reason: `Bought back ${pct}% of ${INSTITUTION_NAMES[kind]}`, actor }]);
     await addNotice(tx, game.id, p.id, rn, 'stake',
-      `The city bought back ${pct}% of ${INSTITUTION_NAMES[kind]} from you for ${usd(price)}.`);
+      `The city bought back ${pct}% of ${INSTITUTION_NAMES[kind]} from you for ${usd(price)}.`,
+      { code: 'stake_buyback', pct, inst: kind, amount: price });
     await logHostAction(tx, game.id, actor, 'buyback_stake', { kind, pct, price }, null, p.id);
     return { ok: true };
   });
@@ -550,12 +573,16 @@ export async function transferStake(sql: Sql, game: Row, actor: string, b: Row) 
     const what = `${pct}% of ${INSTITUTION_NAMES[kind]}`;
     await addLedger(tx, [
       { game_id: game.id, player_id: toId, round_number: rn, kind: 'stake_buy', amount: -price,
-        target: moneyTarget(buyer.status), reason: `Bought ${what} from ${teamLabel(seller)}`, actor },
+        target: moneyTarget(buyer.status), reason: `Bought ${what} from ${teamLabel(seller)}`, actor,
+        params: { code: 'stake_bought', pct, inst: kind, team: teamLabel(seller) } },
       { game_id: game.id, player_id: fromId, round_number: rn, kind: 'stake_sell', amount: price,
-        target: moneyTarget(seller.status), reason: `Sold ${what} to ${teamLabel(buyer)}`, actor }
+        target: moneyTarget(seller.status), reason: `Sold ${what} to ${teamLabel(buyer)}`, actor,
+        params: { code: 'stake_sold', pct, inst: kind, team: teamLabel(buyer) } }
     ]);
-    await addNotice(tx, game.id, toId, rn, 'stake', `You bought ${what} from ${teamLabel(seller)} for ${usd(price)}.`);
-    await addNotice(tx, game.id, fromId, rn, 'stake', `You sold ${what} to ${teamLabel(buyer)} for ${usd(price)}.`);
+    await addNotice(tx, game.id, toId, rn, 'stake', `You bought ${what} from ${teamLabel(seller)} for ${usd(price)}.`,
+      { code: 'stake_bought', pct, inst: kind, team: teamLabel(seller), amount: price });
+    await addNotice(tx, game.id, fromId, rn, 'stake', `You sold ${what} to ${teamLabel(buyer)} for ${usd(price)}.`,
+      { code: 'stake_sold', pct, inst: kind, team: teamLabel(buyer), amount: price });
     await logHostAction(tx, game.id, actor, 'transfer_stake', { kind, pct, price, fromId, toId });
     return { ok: true };
   });
@@ -586,7 +613,7 @@ export async function playAgain(sql: Sql, game: Row, actor: string,
     title: game.title, league: game.league, practice: game.practice, organizer: game.organizer,
     sponsorName: game.sponsor_name, sponsorLogoUrl: game.sponsor_logo_url, sponsorUrl: game.sponsor_url,
     sponsorLogoData: logo?.data ?? null,
-    timezone: game.timezone, openBook: game.open_book
+    timezone: game.timezone, openBook: game.open_book, language: game.language
   });
   const newId = created.gameId;
   // Настройки, которые ведущий подкрутил, переносим; длина — по лиге.

@@ -6,9 +6,9 @@
 //   «- …» — пункт списка, «= …» — формула, «> …» — совет в рамке,
 //   **так** — жирный. Остальное — обычный абзац.
 
-import { t, fill } from '../i18n.js';
+import { t, tn, fill } from '../i18n.js';
 import { h, replace } from '../dom.js';
-import { usd, usdc, int, pct } from '../fmt.js';
+import { usd, usdc, int, pct, decimal } from '../fmt.js';
 
 const SECTIONS = ['goal', 'ocean', 'month', 'pnl', 'market', 'choice', 'price', 'capacity', 'quality', 'marketing',
   'brand', 'costs', 'tax', 'bank', 'cash', 'deals', 'owners', 'city', 'board', 'scoring', 'leagues'];
@@ -58,9 +58,10 @@ function varsFor(rules, game) {
     margin: money(margin), breakEven: int(Math.ceil(r.fixedTotal / margin)),
     // Сколько ресторанов рынок кормит по справедливой цене — как в табло.
     feeds: Math.max(1, Math.floor((r.marketBase * margin) / r.fixedTotal)),
+    feedsText: tn('ocean.nRestaurants', Math.max(1, Math.floor((r.marketBase * margin) / r.fixedTotal))),
     floor: money(r.priceFloor), ceiling: money(r.priceCeiling), softCap: money(r.priceSoftCap),
     cogs: money(r.cogsPerMeal), qadd: pct(r.qualityCogsAdd),
-    marketBase: int(r.marketBase), gain: pct(r.marketQualityGain), catMin: r.marketPriceMin, catMax: r.marketPriceMax,
+    marketBase: int(r.marketBase), gain: pct(r.marketQualityGain), catMin: decimal(r.marketPriceMin), catMax: decimal(r.marketPriceMax),
     capacityBase: int(r.capacityBase), step: int(r.shiftStepCapacity), cost: usd(r.shiftStepCost),
     min: r.shiftsMin, max: r.shiftsMax,
     unit: usd(r.qualityInvestPerUnit), decay: pct(r.qualityDecay), upkeep: usd(r.qualityUpkeep),

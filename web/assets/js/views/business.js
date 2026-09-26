@@ -9,7 +9,7 @@ import { t, errorText } from '../i18n.js';
 import { h, $, replace, toast, confirmDialog, busy, field, moneyInput, card } from '../dom.js';
 import { usd, usdSigned, int, dec2, pct, pctRaw, parseMoney, dateTime } from '../fmt.js';
 import { act } from '../api.js';
-import { US_STATES } from './common.js';
+import { US_STATES, teamName } from './common.js';
 
 export { US_STATES };
 
@@ -107,7 +107,7 @@ export function createBusiness(root, ctx) {
           onclick: (e) => run(e.currentTarget, 'markNoticesRead', {}) }, t('notices.gotIt'));
         replace(el, h('div', { class: 'banner banner--info', role: 'status' },
           h('strong', {}, t('notices.title')),
-          h('ul', {}, s.notices.map((n) => h('li', {}, n.message))), btn));
+          h('ul', {}, s.notices.map((n) => h('li', {}, noticeText(n)))), btn));
       }
     };
   }
@@ -446,7 +446,7 @@ export function createBusiness(root, ctx) {
       h('div', { class: 'btn-row' }, h('div', { style: { flex: '1 1 160px' } }, amount),
         h('button', { class: 'btn', type: 'button', onclick: (e) =>
           run(e.currentTarget, 'transferMoney', { toPlayerId: select.value, amount: parseMoney(amount.value) }, null)
-            .then((res) => { if (res?.ok) { toast(t('transfer.sent', { amount: usd(res.sent), team: res.to }), 'ok'); amount.value = ''; } }) },
+            .then((res) => { if (res?.ok) { toast(t('transfer.sent', { amount: usd(res.sent), team: teamName(res.to) }), 'ok'); amount.value = ''; } }) },
           t('transfer.send'))));
     const el = card(t('transfer.title'), h('p', { class: 'muted small' }, t('transfer.lead')), empty, form);
     let sig = '';
@@ -603,6 +603,26 @@ export function createBusiness(root, ctx) {
   }
 
   return { update };
+}
+
+/**
+ * Новость команде — на языке читателя, по коду и подробностям. Старые
+ * новости без кода — английским текстом, как их записал сервер.
+ */
+export function noticeText(n) {
+  const p = n.params;
+  if (!p || !p.code) return n.message;
+  const text = t('notices.kinds.' + p.code, {
+    amount: p.amount !== undefined ? usd(p.amount) : undefined,
+    salary: p.salary !== undefined ? usd(p.salary) : undefined,
+    pct: p.pct !== undefined ? pctRaw(p.pct) : undefined,
+    inst: p.inst ? t('institutionsOf.' + p.inst) : undefined,
+    team: p.team !== undefined ? teamName(p.team) : undefined,
+    name: p.name !== undefined ? (p.name || t('common.someone')) : undefined,
+    job: p.job !== undefined ? (p.job || t('notices.anEmployee')) : undefined
+  });
+  if (text === 'notices.kinds.' + p.code) return n.message;
+  return p.reason ? text + ' ' + t('notices.reason', { reason: p.reason }) : text;
 }
 
 /** Отчёт о прибылях и убытках за месяц — в кабинете и в истории игр. */
