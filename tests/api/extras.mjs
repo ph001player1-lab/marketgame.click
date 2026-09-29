@@ -246,7 +246,7 @@ await step('логотип спонсора: файл, ссылка Google Drive
   assert.equal(Number(log.n), 0, 'сам файл в журнал ведущего не попадает');
 });
 
-await step('звёзды качества: за полный пункт, держатся с запасом, у города — по среднему', async () => {
+await step('звёзды качества: строго за полный пункт, у города — по среднему', async () => {
   const g = await call(HOST, 'createGame', { title: 'Stars', league: 'start' });
   ok(g);
   const gid = g.gameId;
@@ -285,26 +285,26 @@ await step('звёзды качества: за полный пункт, дер�
   assert.equal((await monitor(gid)).players.find((p) => p.email === ANN).stars, 1, 'пульт тоже');
 
   // Месяц 2: Bob докупает: 0,5 × 0,95 + 0,6 = 1,075 — звезда. Качество Ann тает
-  // до 0,95, но звезда держится. Среднее (0,95 + 1,075) ÷ 2 ≈ 1,01 — у города
-  // первая звезда.
+  // до 0,95 — звезда гаснет сразу. Среднее (0,95 + 1,075) ÷ 2 ≈ 1,01 — у
+  // города первая звезда.
   await playMonth(0, 24000);
   s = await starsOf();
-  assert.equal(s.ann.stars, 1, '0,95 — звезда держится');
+  assert.equal(s.ann.stars, 0, '0,95 — ниже полного пункта, звезда погасла');
   assert.equal(s.ann.starsGained, 0);
+  assert.deepEqual(s.ann.series.map((e) => e.stars), [1, 0]);
   assert.equal(s.bob.stars, 1);
   assert.equal(s.bob.starsGained, 1);
   assert.equal(s.city, 1, 'среднее качество выше 1 — у города первая звезда');
 
-  // Ниже полпункта звезда гаснет. Качество до 0,49 тает долго — подставим итог.
-  await sql`update results set quality = 0.49 where game_id = ${gid} and round_number = 2 and player_id = ${sid[ANN]}`;
-  await sql`update players set quality = 0.49 where id = ${sid[ANN]}`;
-  s = await starsOf();
-  assert.equal(s.ann.stars, 0, '0,49 — звезда погасла');
-  // Две звезды — с двух полных пунктов; третья — только с трёх.
-  await sql`update results set quality = 2.3 where game_id = ${gid} and round_number = 2 and player_id = ${sid[ANN]}`;
-  await sql`update players set quality = 2.3 where id = ${sid[ANN]}`;
-  s = await starsOf();
-  assert.equal(s.ann.stars, 2);
+  // Звёзд ровно столько, сколько полных пунктов: подставим итог месяца.
+  const setQuality = async (q) => {
+    await sql`update results set quality = ${q} where game_id = ${gid} and round_number = 2 and player_id = ${sid[ANN]}`;
+    await sql`update players set quality = ${q} where id = ${sid[ANN]}`;
+    return (await starsOf()).ann.stars;
+  };
+  for (const [q, n] of [[0.9999, 0], [1, 1], [1.9999, 1], [2, 2], [2.9999, 2], [3, 3]]) {
+    assert.equal(await setQuality(q), n, `качество ${q} — звёзд ${n}`);
+  }
   // Ресторан закрылся и открылся заново — качество с нуля, звёзд нет.
   await sql`update players set quality = 0 where id = ${sid[ANN]}`;
   s = await starsOf();

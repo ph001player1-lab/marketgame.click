@@ -766,7 +766,7 @@ export default {
           '- Quality fades {decay} a month, and upkeep is {upkeep} a month per point.',
           '- Better food costs more: +{qadd} food cost per point.',
           '- Quality makes you more attractive, helps your brand grow and grows the whole market.',
-          '- **Quality stars ★.** A star for every whole point: it lights up when quality reaches 1, 2 and 3 and stays while quality stays above 0.5, 1.5 and 2.5. Everyone sees your stars next to your restaurant\'s name. The town earns stars the same way — by the average quality of all restaurants.'
+          '- **Quality stars ★.** A star for every whole point: it lights up when quality reaches 1, 2 and 3 and goes out as soon as quality drops below that. Quality fades {decay} a month, so a star needs regular investment to keep. Everyone sees your stars next to your restaurant\'s name. The town earns stars the same way — by the average quality of all restaurants.'
         ]
       },
       marketing: {

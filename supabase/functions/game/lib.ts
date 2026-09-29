@@ -244,50 +244,39 @@ export function usd(v: number): string {
 
 /** Звёзд качества — по одной за полный пункт качества, не больше трёх. */
 export const MAX_STARS = 3;
-/** Насколько качество может опуститься ниже звезды, пока она держится. */
-export const STAR_KEEP_MARGIN = 0.5;
 
 /**
- * Звёзды качества по месяцам. Звезда k загорается, когда качество дошло до
- * k (1, 2 или 3), и держится, пока качество не ниже k − 0,5: качество тает
- * на 5% в месяц, и без запаса купленная звезда гасла бы уже через месяц.
- * Месяц вне бизнеса (quality null) или пропуск в номерах месяцев —
- * ресторан закрывался — обнуляет звёзды: у нового ресторана своя история.
- * Тот же счёт — у города, по среднему качеству ресторанов.
+ * Звёзды — ровно по качеству: сколько в нём полных пунктов. 1,00 — звезда,
+ * 0,99 — уже нет. Качество тает на 5% в месяц, и звезда гаснет сразу, как
+ * только качество опустилось ниже целого пункта: видно, что пора вкладываться.
  */
+export function starsFor(quality: number | null | undefined): number {
+  if (quality === null || quality === undefined) return 0;
+  return Math.max(0, Math.min(MAX_STARS, Math.floor((Number(quality) || 0) + 1e-6)));
+}
+
+/** Звёзды по месяцам. Месяц вне бизнеса (quality null) — без звёзд. */
 export function qualityStars(series: Array<{ round: number; quality: number | null }>): number[] {
-  const eps = 1e-6;
-  let stars = 0;
-  let prev: number | null = null;
-  return series.map(({ round, quality }) => {
-    const gap = prev !== null && round !== prev + 1;
-    prev = round;
-    if (quality === null || quality === undefined || gap) stars = 0;
-    if (quality === null || quality === undefined) return 0;
-    const q = Number(quality) || 0;
-    while (stars > 0 && q < stars - STAR_KEEP_MARGIN - eps) stars--;
-    while (stars < MAX_STARS && q >= stars + 1 - eps) stars++;
-    return stars;
-  });
+  return series.map((e) => starsFor(e.quality));
 }
 
 /**
- * Звёзды ресторана сейчас и сколько он получил в последнем рассчитанном
- * месяце. history — качество по месяцам из results. Если ресторан с тех пор
- * закрылся или открылся заново (качество в players уже не то, что в
- * последнем итоге), история не считается: звёзды — по нынешнему качеству.
+ * Звёзды ресторана сейчас — по нынешнему качеству — и сколько он получил в
+ * последнем рассчитанном месяце (по сравнению с предыдущим). history —
+ * качество по месяцам из results.
  */
 export function starsNow(history: Array<{ round: number; quality: number }>, active: boolean,
                          quality: number, latestRound: number): { stars: number; gained: number } {
   if (!active) return { stars: 0, gained: 0 };
+  const stars = starsFor(quality);
   const last = history[history.length - 1];
-  if (!last || Math.abs(Number(last.quality) - Number(quality)) > 1e-4) {
-    return { stars: qualityStars([{ round: 0, quality }])[0], gained: 0 };
+  // Ресторан закрылся или открылся заново после последнего расчёта: новых звёзд в этом месяце нет.
+  if (!last || last.round !== latestRound || Math.abs(Number(last.quality) - Number(quality)) > 1e-4) {
+    return { stars, gained: 0 };
   }
-  const list = qualityStars(history);
-  const stars = list[list.length - 1];
-  const before = history.length > 1 && history[history.length - 2].round === last.round - 1 ? list[list.length - 2] : 0;
-  return { stars, gained: last.round === latestRound ? Math.max(0, stars - before) : 0 };
+  const prev = history.length > 1 && history[history.length - 2].round === last.round - 1
+    ? starsFor(history[history.length - 2].quality) : 0;
+  return { stars, gained: Math.max(0, stars - prev) };
 }
 
 /** Название команды; пустая строка — команда ещё не назвалась (сайт пишет «Новая команда»). */

@@ -764,7 +764,7 @@ export default {
           '- A qualidade se desgasta {decay} por mês, e a manutenção custa {upkeep} por mês por ponto.',
           '- Comida melhor custa mais: +{qadd} no custo dos alimentos por ponto.',
           '- A qualidade deixa você mais atraente, ajuda a marca a crescer e faz o mercado inteiro crescer.',
-          '- **Estrelas de qualidade ★.** Uma estrela para cada ponto inteiro: ela acende quando sua qualidade chega a 1, 2 e 3 e continua enquanto a qualidade ficar acima de 0,5, 1,5 e 2,5. Todos veem suas estrelas ao lado do nome do seu restaurante. A cidade ganha estrelas do mesmo jeito — pela qualidade média de todos os restaurantes.'
+          '- **Estrelas de qualidade ★.** Uma estrela para cada ponto inteiro: ela acende quando sua qualidade chega a 1, 2 e 3 e apaga assim que a qualidade cai abaixo disso. A qualidade se desgasta {decay} por mês, então é preciso continuar investindo para manter a estrela. Todos veem suas estrelas ao lado do nome do seu restaurante. A cidade ganha estrelas do mesmo jeito — pela qualidade média de todos os restaurantes.'
         ]
       },
       marketing: {
