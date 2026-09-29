@@ -451,6 +451,46 @@ try {
     await p.close();
   });
 
+  await step('quality stars: next to team names and for the town, everywhere', async () => {
+    // Качество подставляем в итоги: честно накопить три пункта за тест долго.
+    // Последний месяц: у всех 1,2 (у города первая звезда), у Taco Town — 2,1.
+    const [{ r }] = await server.sql`select max(round_number) as r from results where game_id = ${live.gameId}`;
+    await server.sql`update results set quality = 0.3 where game_id = ${live.gameId} and round_number = ${r - 1}`;
+    await server.sql`update results set quality = 1.2 where game_id = ${live.gameId} and round_number = ${r}`;
+    await server.sql`update players p set quality = 1.2 from results x
+                     where x.player_id = p.id and x.game_id = ${live.gameId} and x.round_number = ${r} and p.status = 'active'`;
+    const [taco] = await server.sql`select id from players where game_id = ${live.gameId} and email = ${TEAMS[0].email}`;
+    await server.sql`update results set quality = 2.1 where player_id = ${taco.id} and round_number = ${r}`;
+    await server.sql`update players set quality = 2.1 where id = ${taco.id}`;
+
+    const p = await page(browser, 'laptop', TEAMS[0].email);
+    await p.goto(base + '#/g/' + live.gameId);
+    const row = p.locator('.table--standings tr', { hasText: 'Taco Town' });
+    await row.locator('.stars').waitFor();
+    assert.equal(await row.locator('.stars').getAttribute('aria-label'), '2 quality stars out of 3');
+    assert.match(await p.locator('.board-line .stars--city').getAttribute('aria-label'), /City: 1 quality star out of 3/);
+    await p.locator('.stars-news', { hasText: 'Taco Town' }).waitFor();
+    await p.locator('.topbar__name .stars').waitFor();
+    await p.waitForTimeout(300);
+    await shot(p, 'stars-01-game');
+    await p.close();
+
+    const b = await page(browser, 'projector', ADMIN);
+    await b.goto(base + 'board/?code=' + live.code);
+    await b.locator('.table--standings .stars').first().waitFor();
+    await b.waitForTimeout(400);
+    await shot(b, 'stars-02-projector');
+    await b.close();
+
+    const h = await page(browser, 'laptop', ADMIN);
+    await h.goto(base + '#/g/' + live.gameId);
+    await h.locator('.stars-news', { hasText: 'Taco Town' }).first().waitFor();
+    await h.getByRole('button', { name: 'Teams', exact: true }).first().click();
+    await h.locator('.team-cell .stars').first().waitFor();
+    await shot(h, 'stars-03-console');
+    await h.close();
+  });
+
   if (errors.length) {
     console.log('\nJavaScript errors on pages:\n  ' + errors.join('\n  '));
     process.exitCode = 1;

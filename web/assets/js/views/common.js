@@ -2,7 +2,7 @@
 // спонсора, карточка «график или таблица», выгрузка CSV.
 
 import { endpoint } from '../api.js';
-import { t } from '../i18n.js';
+import { t, tn } from '../i18n.js';
 import { currentLocale } from '../fmt.js';
 import { h, replace, toast } from '../dom.js';
 
@@ -127,6 +127,22 @@ export function simpleTable(head, rows, { numeric = [], rowClass } = {}) {
 
 /** Название команды; пустое — команда ещё не назвалась. */
 export const teamName = (name) => name || t('common.newTeam');
+
+/**
+ * Звёзды качества: ★ за каждый полный пункт, до трёх. У команды — только
+ * полученные звёзды рядом с названием; у города (withEmpty) — все три,
+ * пустые контуром: видно, сколько ещё впереди. Число звёзд — и в подписи
+ * для экранных читалок, цвет не единственный признак.
+ */
+export function starsBadge(n, { withEmpty = false, label = null } = {}) {
+  const k = Math.max(0, Math.min(3, Math.round(Number(n) || 0)));
+  if (!k && !withEmpty) return null;
+  const said = (label ? label + ': ' : '') + tn('stars.aria', k);
+  return h('span', { class: ['stars', withEmpty ? 'stars--city' : null], role: 'img', title: said, 'aria-label': said },
+    label ? h('span', { class: 'stars__label' }, label) : null,
+    h('span', { class: 'stars__on', 'aria-hidden': 'true' }, '★'.repeat(k)),
+    withEmpty && k < 3 ? h('span', { class: 'stars__off', 'aria-hidden': 'true' }, '☆'.repeat(3 - k)) : null);
+}
 
 // ----------------------------------------------------------------- файлы и ссылки
 

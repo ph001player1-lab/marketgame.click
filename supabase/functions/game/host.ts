@@ -14,7 +14,7 @@ import {
 import {
   type Sql, type Row, fail, num, cents, round2, normEmail, isEmail, currentRound, accountingRound,
   activeConfig, addLedger, addCity, addNotice, logHostAction, moneyTarget, available,
-  OFF_BUSINESS, INSTITUTIONS, isInstitution, usd, teamLabel, STARTUP_LOAN_TIER, directImageUrl
+  OFF_BUSINESS, INSTITUTIONS, isInstitution, usd, teamLabel, STARTUP_LOAN_TIER, directImageUrl, starsNow
 } from './lib.ts';
 import { gameMeta, rulesFor, upcomingChanges } from './player.ts';
 import { cityBudget, institutionsState, oceanByMonth } from './board.ts';
@@ -277,7 +277,7 @@ export async function setRoster(sql: Sql, game: Row, actor: string, b: Row,
 
 export async function monitor(sql: Sql, game: Row) {
   // Независимые запросы — разом. Решения — открытого (последнего) месяца.
-  const [round, players, submitted, city, institutions, ocean] = await Promise.all([
+  const [round, players, submitted, city, institutions, ocean, qualityRows] = await Promise.all([
     currentRound(sql, game.id),
     sql`select * from players where game_id = ${game.id} order by created_at, id`,
     sql`
@@ -286,10 +286,19 @@ export async function monitor(sql: Sql, game: Row) {
         and round_number = (select coalesce(max(round_number), 0) from rounds where game_id = ${game.id})`,
     cityBudget(sql, game.id),
     institutionsState(sql, game.id),
-    oceanByMonth(sql, game.id)
+    oceanByMonth(sql, game.id),
+    sql`select player_id, round_number, quality from results where game_id = ${game.id} order by round_number`
   ]);
   const cfg = activeConfig(game, round);
   const sub = new Set((submitted as Row[]).map((s) => String(s.player_id)));
+  // Звёзды качества команд — по истории их качества (см. lib.ts starsNow).
+  const history = new Map<string, Array<{ round: number; quality: number }>>();
+  for (const r of qualityRows as Row[]) {
+    const pid = String(r.player_id);
+    if (!history.has(pid)) history.set(pid, []);
+    history.get(pid)!.push({ round: num(r.round_number), quality: num(r.quality) });
+  }
+  const latestRound = (qualityRows as Row[]).reduce((m: number, r: Row) => Math.max(m, num(r.round_number)), 0);
 
   return {
     ok: true,
@@ -311,6 +320,10 @@ export async function monitor(sql: Sql, game: Row) {
         brand: noBiz ? null : round2(num(p.brand)),
         capacity: noBiz ? null : computeCapacity(cfg, num(p.capacity_shifts)),
         loanBalance: num(p.loan_balance), loanTier: num(p.loan_tier),
+        ...(() => {
+          const s = starsNow(history.get(String(p.id)) ?? [], String(p.status) === 'active', num(p.quality), latestRound);
+          return { stars: s.stars, starsGained: s.gained };
+        })(),
         submitted: round.status === 'open' && p.status === 'active' ? sub.has(String(p.id)) : null
       };
     }),

@@ -7,7 +7,7 @@ import { EDITABLE_CONFIG, LEAGUES, type League } from './presets.ts';
 import {
   type Sql, type Row, fail, num, cents, round2, currentRound, accountingRound, activeConfig,
   businessReset, addLedger, addNotice, moneyTarget, available, OFF_BUSINESS, usd, teamLabel,
-  INSTITUTIONS, directImageUrl, type RoundRow
+  INSTITUTIONS, directImageUrl, starsNow, type RoundRow
 } from './lib.ts';
 
 // ----------------------------------------------------------------- общее
@@ -139,8 +139,8 @@ async function myStakes(sql: Sql, gameId: string, playerId: string) {
 export async function dashboard(sql: Sql, game: Row, playerId: string, impersonating = false) {
   const gameId = String(game.id);
   // Независимые запросы — разом: каждый круг до базы на счету.
-  const [[player], round, [last], notices, others, stakes, [myDecision], employees]: [
-    Row[], RoundRow, Row[], Row[], Row[], Row[], Row[], Row[]
+  const [[player], round, [last], notices, others, stakes, [myDecision], employees, qualityRows]: [
+    Row[], RoundRow, Row[], Row[], Row[], Row[], Row[], Row[], Row[]
   ] = await Promise.all([
     sql`select * from players where id = ${playerId}`,
     currentRound(sql, gameId),
@@ -159,10 +159,14 @@ export async function dashboard(sql: Sql, game: Row, playerId: string, impersona
         and d.round_number = (select coalesce(max(round_number), 0) from rounds where game_id = ${gameId})`,
     sql`
       select * from players where employer_id = ${playerId} and status = 'custom_employed'
-      order by created_at, id`
+      order by created_at, id`,
+    sql`select round_number, quality from results where player_id = ${playerId} order by round_number`
   ]);
   if (!player) fail('player_not_found');
   const cfg = activeConfig(game, round);
+  const latestRound = round.status === 'open' ? num(round.round_number) - 1 : num(round.round_number);
+  const stars = starsNow(qualityRows.map((r) => ({ round: num(r.round_number), quality: num(r.quality) })),
+    String(player.status) === 'active', num(player.quality), latestRound).stars;
 
   const base = {
     ok: true, impersonating,
@@ -175,7 +179,8 @@ export async function dashboard(sql: Sql, game: Row, playerId: string, impersona
       location: { kind: player.location_kind ?? null, state: player.location_state ?? null,
                   country: player.location_country ?? null },
       status: String(player.status),
-      cash: num(player.cash), savings: num(player.employment_savings)
+      cash: num(player.cash), savings: num(player.employment_savings),
+      stars
     },
     // Данные из прошлой игры подставлены, но команда подтверждает их в
     // каждой новой игре: название ресторана часто меняют.

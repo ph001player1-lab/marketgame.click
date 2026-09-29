@@ -301,7 +301,7 @@ export default {
       price: 'Precio por comida.',
       brand: 'De 0 a 3. Crece con clientes contentos y se desgasta cada mes.',
       reputation: 'De 0.6 a 1.0. Baja cuando se rechaza a clientes.',
-      quality: 'De 0 a 3. Se compra con inversión y se desgasta despacio.',
+      quality: 'De 0 a 3. Se compra con inversión y se desgasta despacio. Una ★ por cada punto completo.',
       dividends: 'Parte de las utilidades del arrendador, el banco, la aseguradora y la empresa de servicios.'
     },
     metric: 'Mostrar',
@@ -763,7 +763,8 @@ export default {
           'Una inversión única: cada **{unit}** compra +1 punto de calidad, hasta 3.',
           '- La calidad se desgasta {decay} al mes y su mantenimiento cuesta {upkeep} al mes por punto.',
           '- Mejor comida cuesta más: +{qadd} al costo de alimentos por punto.',
-          '- La calidad te hace más atractivo, ayuda a que crezca tu marca y hace crecer todo el mercado.'
+          '- La calidad te hace más atractivo, ayuda a que crezca tu marca y hace crecer todo el mercado.',
+          '- **Estrellas de calidad ★.** Una estrella por cada punto completo: se enciende cuando tu calidad llega a 1, 2 y 3, y se mantiene mientras la calidad siga por encima de 0.5, 1.5 y 2.5. Todos ven tus estrellas junto al nombre de tu restaurante. La ciudad gana estrellas igual, según la calidad promedio de todos los restaurantes.'
         ]
       },
       marketing: {
@@ -894,6 +895,14 @@ export default {
 
   charts: {
     legend: 'Leyenda', highlight: 'Resaltar {name}', other: 'Otros', nothing: 'Nada este mes'
+  },
+
+  stars: {
+    aria: '{n} estrellas de calidad de 3',
+    aria_one: '{n} estrella de calidad de 3',
+    news: 'Nuevas estrellas de calidad en el mes {n}:',
+    cityLabel: 'Estrellas de calidad de la ciudad',
+    cityWhy: 'La ciudad gana una estrella por cada punto completo de calidad promedio de sus restaurantes, igual que un restaurante.'
   },
 
   statuses: {

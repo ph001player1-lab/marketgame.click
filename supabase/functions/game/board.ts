@@ -13,7 +13,8 @@
 import { type Config } from './economy.ts';
 import { isLeague } from './presets.ts';
 import {
-  type Sql, type Row, fail, num, cents, round2, currentRound, activeConfig, teamLabel, INSTITUTIONS
+  type Sql, type Row, fail, num, cents, round2, currentRound, activeConfig, teamLabel, INSTITUTIONS,
+  qualityStars, starsNow
 } from './lib.ts';
 import { gameMeta, rulesFor, formatResult } from './player.ts';
 
@@ -119,7 +120,9 @@ export async function oceanByMonth(sql: Sql, gameId: string) {
              where rd.game_id = r.game_id and rd.round_number = r.round_number) as cfg
     from results r where r.game_id = ${gameId}
     group by r.game_id, r.round_number order by r.round_number`;
-  return rows.map((m) => {
+  // Звёзды города — по среднему качеству ресторанов, по тому же правилу, что у команд.
+  const cityStars = qualityStars(rows.map((m) => ({ round: num(m.round_number), quality: num(m.avg_quality) })));
+  return rows.map((m, i) => {
     const cfg = (m.cfg ?? {}) as Row;
     const pRef = num(cfg.P_REF, 30);
     const cogs = pRef * num(cfg.COGS_PCT, 0.4);
@@ -138,6 +141,7 @@ export async function oceanByMonth(sql: Sql, gameId: string) {
       adShare: revenue > 0 ? Math.round((num(m.ads) / revenue) * 1000) / 1000 : 0,
       avgQuality: round2(avgQuality),
       qualityGain: num(cfg.MARKET_QUALITY_GAIN),
+      stars: cityStars[i],
       qualityBoost: Math.round(num(cfg.MARKET_QUALITY_GAIN) * avgQuality * 1000) / 1000,
       market: Math.round(market),
       // Сколько ресторанов этот рынок кормит по справедливой цене: каждый
@@ -253,6 +257,26 @@ async function timeline(sql: Sql, gameId: string) {
     });
   }
   for (const p of byPlayer.values()) p.series.sort((a: Row, b: Row) => a.round - b.round);
+
+  // Звёзды качества: по месяцам (для графиков и таблиц) и сейчас — рядом с
+  // названием. Считаются по точному качеству из results, а не по округлённому.
+  const history = new Map<string, Array<{ round: number; quality: number }>>();
+  for (const r of results) {
+    const pid = String(r.player_id);
+    if (!history.has(pid)) history.set(pid, []);
+    history.get(pid)!.push({ round: num(r.round_number), quality: num(r.quality) });
+  }
+  const latestRound = results.reduce((m: number, r: Row) => Math.max(m, num(r.round_number)), 0);
+  for (const p of players) {
+    const tp = byPlayer.get(String(p.id))!;
+    const hist = history.get(String(p.id)) ?? [];
+    const perMonth = qualityStars(hist);
+    const byRound = new Map(hist.map((e, i) => [e.round, perMonth[i]]));
+    for (const e of tp.series) e.stars = e.inBusiness ? byRound.get(e.round) ?? 0 : 0;
+    const now = starsNow(hist, String(p.status) === 'active', num(p.quality), latestRound);
+    tp.stars = now.stars;
+    tp.starsGained = now.gained;
+  }
 
   const marketTotals: Record<number, number> = {};
   for (const r of results) marketTotals[num(r.round_number)] = Math.round(num(r.market_total));

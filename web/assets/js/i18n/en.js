@@ -303,7 +303,7 @@ export default {
       price: 'Price per meal.',
       brand: '0 to 3. Grows from happy guests, fades every month.',
       reputation: '0.6 to 1.0. Drops when guests are turned away.',
-      quality: '0 to 3. Bought with investment, fades slowly.',
+      quality: '0 to 3. Bought with investment, fades slowly. A ★ for every whole point.',
       dividends: 'Profit share from stakes in the landlord, bank, insurer and utilities.'
     },
     metric: 'Show',
@@ -765,7 +765,8 @@ export default {
           'A one-time investment: every **{unit}** buys +1 quality point, up to 3.',
           '- Quality fades {decay} a month, and upkeep is {upkeep} a month per point.',
           '- Better food costs more: +{qadd} food cost per point.',
-          '- Quality makes you more attractive, helps your brand grow and grows the whole market.'
+          '- Quality makes you more attractive, helps your brand grow and grows the whole market.',
+          '- **Quality stars ★.** A star for every whole point: it lights up when quality reaches 1, 2 and 3 and stays while quality stays above 0.5, 1.5 and 2.5. Everyone sees your stars next to your restaurant\'s name. The town earns stars the same way — by the average quality of all restaurants.'
         ]
       },
       marketing: {
@@ -898,6 +899,14 @@ export default {
 
   charts: {
     legend: 'Legend', highlight: 'Highlight {name}', other: 'Other', nothing: 'Nothing this month'
+  },
+
+  stars: {
+    aria: '{n} quality stars out of 3',
+    aria_one: '{n} quality star out of 3',
+    news: 'New quality stars in month {n}:',
+    cityLabel: 'Town quality stars',
+    cityWhy: 'The town earns a star for every whole point of average quality in its restaurants — just like a restaurant.'
   },
 
   statuses: {

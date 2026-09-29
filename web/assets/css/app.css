@@ -333,7 +333,7 @@ select.input.input--inline,.input.input--inline{width:auto;max-width:100%;min-he
 .water--blue{border-color:#2a78d6}
 .water--choppy{border-color:#eda100}
 .ocean-now{margin:4px 0 6px}
-.ocean-now__head{font-size:18px;margin:0 0 6px}
+.ocean-now__head{font-size:18px;margin:0 0 6px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .ocean-now__text{margin:0 0 6px;font-weight:600}
 .board--big .ocean-now__head{font-size:24px}
 .board--big .ocean-now__text,.board--big .drivers{font-size:18px}
@@ -343,6 +343,19 @@ select.input.input--inline,.input.input--inline{width:auto;max-width:100%;min-he
   margin-top:2px;color:#fff}
 .driver--warn b{background:var(--red-ink)}
 .driver--ok b{background:var(--green)}
+/* Звёзды качества: золото достаточно тёмное для светлого фона (контраст ~4:1). */
+.stars{display:inline-flex;align-items:center;gap:5px;white-space:nowrap;font-weight:700;line-height:1}
+.stars__on{color:#A86B00;letter-spacing:1px}
+.stars__off{color:#8F8D84;letter-spacing:1px}
+.stars__label{color:var(--mute);font-weight:700}
+.stars--city{padding:3px 9px;border:1.5px solid var(--line);border-radius:999px;background:var(--surface);font-size:14px}
+.board--big .stars--city{font-size:18px}
+.team-cell .stars{font-size:.95em}
+.board--big .stars-news{font-size:18px}
+.topbar .stars{font-size:.8em;margin-left:4px}
+.topbar .stars__on{color:#F2B84B}
+.stars-news{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center}
+.stars-news__item{display:inline-flex;gap:6px;align-items:center;font-weight:700}
 .driver--note{color:var(--mute)}
 .driver--note b{background:var(--mute)}
 .questions{margin:4px 0 0;padding-left:22px;font-size:15px}

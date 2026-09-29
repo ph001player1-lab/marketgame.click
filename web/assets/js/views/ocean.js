@@ -10,7 +10,7 @@ import { t, tn } from '../i18n.js';
 import { h } from '../dom.js';
 import { usd, usdc, usdShort, pct, dec2, int } from '../fmt.js';
 import { barChart, PALETTE } from '../charts.js';
-import { chartCard, simpleTable } from './common.js';
+import { chartCard, simpleTable, starsBadge, teamName } from './common.js';
 
 // Расходящаяся пара: заработали — синий, потеряли — красный, между ними —
 // нейтральный ноль. Метка всегда с подписью, цвет не единственный признак.
@@ -92,7 +92,7 @@ export function oceanCard(ocean, { big = false } = {}) {
   });
   const host = card.el.querySelector('.chart-host');
   card.el.insertBefore(h('div', { class: 'ocean-now' },
-    h('div', { class: 'ocean-now__head' }, waterChip(last.water)),
+    h('div', { class: 'ocean-now__head' }, waterChip(last.water), starsBadge(last.stars, { withEmpty: true, label: t('common.city') })),
     h('p', { class: 'ocean-now__text' }, summary(last)),
     h('h4', { class: 'chart-sub' }, t('ocean.driversTitle')),
     drivers(last),
@@ -101,15 +101,27 @@ export function oceanCard(ocean, { big = false } = {}) {
   return card;
 }
 
-/** Разбор для ведущего после месяца: цвет воды, причины и вопросы командам. */
-export function debriefCard(ocean) {
+/**
+ * Разбор для ведущего после месяца: цвет воды, новые звёзды качества,
+ * причины и вопросы командам.
+ */
+export function debriefCard(ocean, players = []) {
   if (!ocean || !ocean.length) return null;
   const last = ocean[ocean.length - 1];
+  const before = ocean.length > 1 ? ocean[ocean.length - 2].stars : 0;
   const questions = t('ocean.questions.' + last.water);
+  const fresh = [
+    ...players.filter((p) => p.starsGained > 0).map((p) => [teamName(p.restaurant), p.stars]),
+    ...(last.stars > before ? [[t('common.city'), last.stars]] : [])
+  ];
   return h('section', { class: 'card' },
     h('div', { class: 'card__head' },
-      h('h3', { class: 'card__title' }, t('ocean.debriefTitle', { n: last.round })), waterChip(last.water)),
+      h('h3', { class: 'card__title' }, t('ocean.debriefTitle', { n: last.round })),
+      h('div', { class: 'ocean-now__head' }, waterChip(last.water), starsBadge(last.stars, { withEmpty: true, label: t('common.city') }))),
     h('p', { class: 'small' }, summary(last)),
+    fresh.length ? h('p', { class: 'banner banner--ok small stars-news' },
+      h('b', {}, t('stars.news', { n: last.round })),
+      fresh.map(([name, n]) => h('span', { class: 'stars-news__item' }, name, starsBadge(n)))) : null,
     drivers(last),
     h('h4', { class: 'chart-sub' }, t('ocean.questionsTitle')),
     h('ol', { class: 'questions' }, (Array.isArray(questions) ? questions : []).map((q) => h('li', {}, q))));

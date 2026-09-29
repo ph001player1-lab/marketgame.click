@@ -28,6 +28,7 @@ import { renderReport } from './views/history.js';
 import { renderHosts } from './views/admin.js';
 import { renderCreate } from './views/create.js';
 import { renderRatingPage } from './views/rating.js';
+import { starsBadge } from './views/common.js';
 
 const root = document.getElementById('app');
 let me = null;            // кто вошёл: почта, роли, игры
@@ -356,7 +357,7 @@ function openGame(gameId, asPlayerId) {
       subEl.textContent = leagueLine;
       document.title = g.title + ' · ' + t('host.console');
     } else {
-      nameEl.textContent = state.player.restaurant || g.title;
+      replace(nameEl, state.player.restaurant || g.title, ' ', starsBadge(state.player.stars));
       subEl.textContent = leagueLine;
       const off = state.lifecycle !== 'active';
       replace(moneyEl, h('b', {}, usd(off ? state.player.savings : state.player.cash)),

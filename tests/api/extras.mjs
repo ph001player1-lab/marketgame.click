@@ -246,6 +246,72 @@ await step('логотип спонсора: файл, ссылка Google Drive
   assert.equal(Number(log.n), 0, 'сам файл в журнал ведущего не попадает');
 });
 
+await step('звёзды качества: за полный пункт, держатся с запасом, у города — по среднему', async () => {
+  const g = await call(HOST, 'createGame', { title: 'Stars', league: 'start' });
+  ok(g);
+  const gid = g.gameId;
+  ok(await call(HOST, 'setRoster', { gameId: gid, emails: [ANN, BOB] }));
+  for (const [e, r] of [[ANN, 'A'], [BOB, 'B']]) {
+    ok(await call(e, 'setProfile', { gameId: gid, displayName: r, restaurantName: 'Star ' + r, locationKind: 'multistate' }));
+  }
+  const m0 = await monitor(gid);
+  const sid = Object.fromEntries(m0.players.map((p) => [p.email, p.id]));
+  // Стартовой кассы на полный пункт не хватает — деньги на качество даёт город.
+  for (const e of [ANN, BOB]) ok(await call(HOST, 'adjust', { gameId: gid, playerId: sid[e], amount: 60000, reason: 'Quality fund' }));
+  const decide = (e, qualityInvest) => call(e, 'submitDecision', { gameId: gid, price: 30, seoSpend: 0, promoSpend: 0,
+    mapsSpend: 0, socialSpend: 0, outdoorSpend: 0, affiliateSpend: 0, shiftsDelta: 0, qualityInvest });
+  const playMonth = async (ann, bob) => {
+    ok(await call(HOST, 'openRound', { gameId: gid }));
+    ok(await decide(ANN, ann));
+    ok(await decide(BOB, bob));
+    ok(await call(HOST, 'calculateRound', { gameId: gid }));
+  };
+  const starsOf = async () => {
+    const b = await call(ANN, 'board', { gameId: gid });
+    ok(b);
+    const byId = Object.fromEntries(b.players.map((p) => [p.id, p]));
+    return { ann: byId[sid[ANN]], bob: byId[sid[BOB]], city: b.ocean.at(-1).stars };
+  };
+
+  // Месяц 1: Ann покупает полный пункт — первая звезда. Bob — полпункта: звезды нет.
+  await playMonth(40000, 20000);
+  let s = await starsOf();
+  assert.equal(s.ann.stars, 1, 'полный пункт — звезда');
+  assert.equal(s.ann.starsGained, 1, 'звезда получена в этом месяце');
+  assert.equal(s.ann.series.at(-1).stars, 1);
+  assert.equal(s.bob.stars, 0, 'полпункта — ещё не звезда');
+  assert.equal(s.city, 0, 'среднее качество 0,75 — у города звезды нет');
+  assert.equal((await dash(ANN, gid)).player.stars, 1, 'кабинет видит ту же звезду');
+  assert.equal((await monitor(gid)).players.find((p) => p.email === ANN).stars, 1, 'пульт тоже');
+
+  // Месяц 2: Bob докупает: 0,5 × 0,95 + 0,6 = 1,075 — звезда. Качество Ann тает
+  // до 0,95, но звезда держится. Среднее (0,95 + 1,075) ÷ 2 ≈ 1,01 — у города
+  // первая звезда.
+  await playMonth(0, 24000);
+  s = await starsOf();
+  assert.equal(s.ann.stars, 1, '0,95 — звезда держится');
+  assert.equal(s.ann.starsGained, 0);
+  assert.equal(s.bob.stars, 1);
+  assert.equal(s.bob.starsGained, 1);
+  assert.equal(s.city, 1, 'среднее качество выше 1 — у города первая звезда');
+
+  // Ниже полпункта звезда гаснет. Качество до 0,49 тает долго — подставим итог.
+  await sql`update results set quality = 0.49 where game_id = ${gid} and round_number = 2 and player_id = ${sid[ANN]}`;
+  await sql`update players set quality = 0.49 where id = ${sid[ANN]}`;
+  s = await starsOf();
+  assert.equal(s.ann.stars, 0, '0,49 — звезда погасла');
+  // Две звезды — с двух полных пунктов; третья — только с трёх.
+  await sql`update results set quality = 2.3 where game_id = ${gid} and round_number = 2 and player_id = ${sid[ANN]}`;
+  await sql`update players set quality = 2.3 where id = ${sid[ANN]}`;
+  s = await starsOf();
+  assert.equal(s.ann.stars, 2);
+  // Ресторан закрылся и открылся заново — качество с нуля, звёзд нет.
+  await sql`update players set quality = 0 where id = ${sid[ANN]}`;
+  s = await starsOf();
+  assert.equal(s.ann.stars, 0, 'новый ресторан начинает без звёзд');
+  assert.equal((await dash(ANN, gid)).player.stars, 0);
+});
+
 await step('CORS: только разрешённые сайты', async () => {
   const handler = createHandler({
     sql, adminEmails: [], allowedOrigins: ['https://marketgame.click'],

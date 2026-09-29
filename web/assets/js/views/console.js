@@ -7,7 +7,7 @@ import { t, errorText } from '../i18n.js';
 import { h, replace, toast, confirmDialog, busy, field, moneyInput, card } from '../dom.js';
 import { usd, int, dec2, pct, pctRaw, parseMoney } from '../fmt.js';
 import { act } from '../api.js';
-import { locationBadge, statusBadge, copyText, siteBase, teamName as named } from './common.js';
+import { locationBadge, statusBadge, copyText, siteBase, teamName as named, starsBadge } from './common.js';
 import { OWNER_COLORS } from './scoreboard.js';
 import { gameForm } from './create.js';
 import { debriefCard } from './ocean.js';
@@ -143,7 +143,7 @@ export function createConsole(root, ctx) {
       }
       replace(monthBox, blocks);
       // Разбор последнего рассчитанного месяца: цвет воды и вопросы командам.
-      replace(debriefBox, debriefCard(s.ocean));
+      replace(debriefBox, debriefCard(s.ocean, s.players));
     }
 
     async function finish(btn, early, total) {
@@ -201,7 +201,7 @@ export function createConsole(root, ctx) {
         h('td', {},
           h('div', { class: 'team-cell' },
             h('span', { class: 'team-cell__name' }, p.restaurant || t('host.profilePending')),
-            locationBadge(p.location), statusBadge(p.status)),
+            starsBadge(p.stars), locationBadge(p.location), statusBadge(p.status)),
           p.displayName ? h('div', { class: 'team-cell__who' }, p.displayName) : null,
           h('div', { class: 'team-cell__who' }, p.email)),
         h('td', { class: 'r' }, usd(p.money), p.offBusiness ? h('div', { class: 'muted small' }, t('header.savings')) : null),
@@ -381,12 +381,17 @@ export function createConsole(root, ctx) {
     function update(s) {
       const city = s.city;
       const last = city.months[city.months.length - 1];
+      const town = s.ocean?.length ? s.ocean[s.ocean.length - 1] : null;
       replace(budgetBox, card(null,
         h('div', { class: 'stats stats--2' },
           h('div', { class: 'stat' }, h('div', { class: 'stat__label' }, t('board.cityTitle')),
             h('div', { class: ['stat__value', city.balance < 0 ? 'neg' : null] }, usd(city.balance))),
           h('div', { class: 'stat' }, h('div', { class: 'stat__label' }, t('host.lastMonthNet')),
-            h('div', { class: 'stat__value' }, last ? usd(last.total) : '—')))));
+            h('div', { class: 'stat__value' }, last ? usd(last.total) : '—'))),
+        // Звёзды города — по среднему качеству ресторанов.
+        h('p', { class: 'small', style: { margin: '10px 0 0' } },
+          starsBadge(town?.stars ?? 0, { withEmpty: true, label: t('stars.cityLabel') }), ' ',
+          h('span', { class: 'muted' }, t('stars.cityWhy')))));
       adjTeam.fill(s.players);
       const traders = (p) => p.status !== 'left' && p.status !== 'bankrupt';
       buyer.fill(s.players, traders);

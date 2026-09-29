@@ -6,11 +6,11 @@
 
 import { t, tn } from '../i18n.js';
 import { h, replace } from '../dom.js';
-import { usd, usdc, int, dec2, decimal, pctRaw, usdShort, short } from '../fmt.js';
+import { usd, usdc, int, dec2, decimal, pct, pctRaw, usdShort, short } from '../fmt.js';
 import { read } from '../api.js';
 import { lineChart, barChart, sankey, PALETTE, OTHER, INK } from '../charts.js';
 import {
-  locationBadge, statusBadge, swatch, sponsorBanner, chartCard, simpleTable, teamName
+  locationBadge, statusBadge, swatch, sponsorBanner, chartCard, simpleTable, teamName, starsBadge
 } from './common.js';
 import { ratingTable } from './rating.js';
 import { waterChip, oceanCard } from './ocean.js';
@@ -147,11 +147,25 @@ export function createScoreboard(root, opts = {}) {
     const lastMonth = months.length;
 
     const market = data.marketTotals?.[lastMonth];
+    const ocean = data.ocean || [];
+    const town = ocean.length ? ocean[ocean.length - 1] : null;
     body.append(h('p', { class: 'board-line' },
       months.length ? t('board.afterMonth', { n: lastMonth }) : t('board.beforeStart'),
       market ? ' · ' + t('board.market', { guests: int(market) }) : '',
       ' · ' + tn('board.teamsCount', list.filter((p) => p.status !== 'left').length),
-      data.ocean?.length ? [' · ', waterChip(data.ocean[data.ocean.length - 1].water)] : null));
+      town ? [' · ', waterChip(town.water), ' ', starsBadge(town.stars, { withEmpty: true, label: t('common.city') })] : null));
+
+    // Новые звёзды качества этого месяца — у команд и у города.
+    const townBefore = ocean.length > 1 ? ocean[ocean.length - 2].stars : 0;
+    const fresh = [
+      ...list.filter((tm) => tm.starsGained > 0).map((tm) => [tm.restaurant, tm.stars]),
+      ...(town && town.stars > townBefore ? [[t('common.city'), town.stars]] : [])
+    ];
+    if (fresh.length && months.length) {
+      body.append(h('p', { class: 'banner banner--ok small stars-news' },
+        h('b', {}, t('stars.news', { n: lastMonth })),
+        fresh.map(([name, n]) => h('span', { class: 'stars-news__item' }, name, starsBadge(n)))));
+    }
 
     body.append(standings(list, lastMonth));
 
@@ -225,6 +239,7 @@ export function createScoreboard(root, opts = {}) {
           h('td', {},
             h('div', { class: 'team-cell' }, swatch(r.tm.color),
               h('span', { class: 'team-cell__name' }, r.tm.restaurant),
+              starsBadge(r.tm.stars),
               r.tm.mine ? h('span', { class: 'badge badge--ink' }, t('common.you')) : null,
               locationBadge(r.tm.location), statusBadge(r.tm.status)),
             r.tm.displayName ? h('div', { class: 'team-cell__who' }, r.tm.displayName) : null),
@@ -253,7 +268,7 @@ export function createScoreboard(root, opts = {}) {
     if (mMonths.length) {
       add(chartCard({
         title: t('board.marketTitle'),
-        note: t('board.marketWhy', { base: int(rules.marketBase), gain: Math.round((rules.marketQualityGain || 0) * 100) + '%' }),
+        note: t('board.marketWhy', { base: int(rules.marketBase), gain: pct(rules.marketQualityGain || 0, 0) }),
         big,
         chart: (box) => lineChart(box, {
           x: mMonths, big, zero: false, fmt: int, tick: short,

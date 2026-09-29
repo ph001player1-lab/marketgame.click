@@ -9,7 +9,7 @@ import { t, errorText } from '../i18n.js';
 import { h, $, replace, toast, confirmDialog, busy, field, moneyInput, card } from '../dom.js';
 import { usd, usdSigned, int, dec2, pct, pctRaw, parseMoney, dateTime } from '../fmt.js';
 import { act } from '../api.js';
-import { US_STATES, teamName } from './common.js';
+import { US_STATES, teamName, starsBadge } from './common.js';
 
 export { US_STATES };
 
@@ -207,7 +207,7 @@ export function createBusiness(root, ctx) {
         const b = s.business || {};
         brand.v.textContent = dec2(b.brand);
         rep.v.textContent = dec2(b.reputation);
-        quality.v.textContent = dec2(b.quality);
+        replace(quality.v, dec2(b.quality), ' ', starsBadge(s.player?.stars));
         cap.v.textContent = int(b.capacity);
         lossNote.hidden = !(b.taxLossCarryforward > 0 && s.rules.taxRate > 0);
         lossNote.textContent = t('stats.lossCf') + ': ' + usd(b.taxLossCarryforward);
