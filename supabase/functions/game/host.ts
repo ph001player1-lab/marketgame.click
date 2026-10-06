@@ -17,6 +17,7 @@ import {
   OFF_BUSINESS, INSTITUTIONS, isInstitution, usd, teamLabel, STARTUP_LOAN_TIER, directImageUrl, starsNow
 } from './lib.ts';
 import { gameMeta, rulesFor, upcomingChanges } from './player.ts';
+import { gameLocation, teamLocation } from './geo.ts';
 import { cityBudget, institutionsState, oceanByMonth } from './board.ts';
 
 const INSTITUTION_NAMES: Record<string, string> = {
@@ -126,6 +127,7 @@ export async function createGame(sql: Sql, hostEmail: string, b: Row) {
   const scheduledAt = b.scheduledAt ? new Date(String(b.scheduledAt)) : null;
   if (scheduledAt && isNaN(scheduledAt.getTime())) fail('bad_date');
   if (b.language !== undefined && !isLanguage(b.language)) fail('bad_language');
+  const place = gameLocation(b);
 
   return await sql.begin(async (tx: Sql) => {
     let code = newCode();
@@ -141,6 +143,7 @@ export async function createGame(sql: Sql, hostEmail: string, b: Row) {
       sponsor_url: url(b.sponsorUrl), timezone: validTimezone(b.timezone),
       scheduled_at: scheduledAt, open_book: b.openBook === undefined ? true : !!b.openBook,
       language: isLanguage(b.language) ? b.language : 'en',
+      ...place,
       config: tx.json(cfg)
     })} returning *`;
     const logo = await saveLogo(tx, game, b);
@@ -169,6 +172,13 @@ export async function updateGame(sql: Sql, game: Row, actor: string, b: Row) {
   if (b.language !== undefined) {
     if (!isLanguage(b.language)) fail('bad_language');
     upd.language = b.language;
+  }
+  // Место игры: регион мира, страна и штат, регион или город. Чего нет в
+  // запросе — берём из игры. Менять можно и посреди игры: это подпись, а
+  // не правило экономики.
+  if (b.region !== undefined || b.country !== undefined || b.area !== undefined) {
+    const given = (k: string) => (b[k] !== undefined ? b[k] : game[k]);
+    Object.assign(upd, gameLocation({ region: given('region'), country: given('country'), area: given('area') }));
   }
   if (b.practice !== undefined) {
     // Пометку Practice меняем только до первого месяца: иначе ведущий мог
@@ -232,15 +242,19 @@ export async function setRoster(sql: Sql, game: Row, actor: string, b: Row,
     const added: string[] = [];
     for (const e of wanted) {
       if (have.has(e)) continue;
+      // Место — где команда вела бизнес в прошлой игре: пригодится, если
+      // новая игра онлайн и команда указывает его сама.
       const [prev] = await tx`
-        select display_name, restaurant_name, location_kind, location_state, location_country
-        from players where email = ${e} order by created_at desc limit 1`;
+        select p.display_name, p.restaurant_name,
+               case when g.region = 'online' then p.location_country else g.country end as location_country,
+               case when g.region = 'online' then p.location_area else g.area end as location_area
+        from players p join games g on g.id = p.game_id
+        where p.email = ${e} order by p.created_at desc limit 1`;
       const [p] = await tx`insert into players ${tx({
         game_id: game.id, email: e, cash: cfg.START_CAPITAL, reputation: 1, status: 'active',
         loan_tier: STARTUP_LOAN_TIER,
         display_name: prev?.display_name ?? null, restaurant_name: prev?.restaurant_name ?? null,
-        location_kind: prev?.location_kind ?? null, location_state: prev?.location_state ?? null,
-        location_country: prev?.location_country ?? null
+        location_country: prev?.location_country ?? null, location_area: prev?.location_area ?? null
       })} returning id`;
       await addLedger(tx, [{
         game_id: game.id, player_id: p.id, round_number: accountingRound(round),
@@ -313,8 +327,8 @@ export async function monitor(sql: Sql, game: Row) {
       return {
         id: String(p.id), email: String(p.email), restaurant: p.restaurant_name ?? null,
         displayName: p.display_name ?? null, status: String(p.status),
-        location: { kind: p.location_kind ?? null, state: p.location_state ?? null, country: p.location_country ?? null },
-        profileDone: !!(p.display_name && p.restaurant_name && p.location_kind),
+        location: teamLocation(game, p),
+        profileDone: !!(p.display_name && p.restaurant_name && p.joined_at),
         // Вне бизнеса касса по определению ноль: показываем накопления.
         money: off ? num(p.employment_savings) : num(p.cash), offBusiness: off,
         brand: noBiz ? null : round2(num(p.brand)),
@@ -626,7 +640,8 @@ export async function playAgain(sql: Sql, game: Row, actor: string,
     title: game.title, league: game.league, practice: game.practice, organizer: game.organizer,
     sponsorName: game.sponsor_name, sponsorLogoUrl: game.sponsor_logo_url, sponsorUrl: game.sponsor_url,
     sponsorLogoData: logo?.data ?? null,
-    timezone: game.timezone, openBook: game.open_book, language: game.language
+    timezone: game.timezone, openBook: game.open_book, language: game.language,
+    region: game.region, country: game.country, area: game.area
   });
   const newId = created.gameId;
   // Настройки, которые ведущий подкрутил, переносим; длина — по лиге.

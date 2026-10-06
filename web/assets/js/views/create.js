@@ -2,9 +2,10 @@
 
 import { t, tn, errorText, LANGUAGES, language } from '../i18n.js';
 import { h, replace, toast, busy, field } from '../dom.js';
-import { zonedToIso, isoToZoned } from '../fmt.js';
+import { zonedToIso, isoToZoned, currentLocale } from '../fmt.js';
 import { act } from '../api.js';
 import { directImageUrl, logoSrc } from './common.js';
+import { ONLINE, REGION_KEYS, DEFAULT_PLACE, regionName, countryOptions, hasAreaList, areaOptions, areaZone } from '../geo.js';
 
 const LEAGUES = [['start', 12], ['growth', 24], ['elite', 36]];
 
@@ -15,9 +16,22 @@ export const TIME_ZONES = [
   ['America/Phoenix', 'arizona'], ['America/Los_Angeles', 'pacific'], ['America/Anchorage', 'alaska'],
   ['Pacific/Honolulu', 'hawaii'], ['America/Puerto_Rico', 'atlantic'], ['America/Toronto', 'toronto'],
   ['America/Mexico_City', 'mexicoCity'], ['America/Sao_Paulo', 'saoPaulo'], ['Europe/London', 'london'],
-  ['Europe/Berlin', 'berlin'], ['Asia/Dubai', 'dubai'], ['Asia/Bangkok', 'bangkok'], ['Asia/Tokyo', 'tokyo'],
-  ['Australia/Sydney', 'sydney'], ['UTC', 'utc']
+  ['Europe/Berlin', 'berlin'], ['Europe/Moscow', 'moscow'], ['Asia/Dubai', 'dubai'], ['Asia/Bangkok', 'bangkok'],
+  ['Asia/Tokyo', 'tokyo'], ['Australia/Sydney', 'sydney'], ['UTC', 'utc']
 ];
+
+/** Подпись пояса: из словаря или, для пояса региона, — от браузера с GMT. */
+function zoneLabel(zone) {
+  const known = TIME_ZONES.find(([z]) => z === zone);
+  if (known) return t('tz.' + known[1]);
+  try {
+    const name = (style) => new Intl.DateTimeFormat(currentLocale(), { timeZone: zone, timeZoneName: style })
+      .formatToParts(new Date()).find((p) => p.type === 'timeZoneName')?.value;
+    return name('long') + ' (' + name('shortOffset') + ')';
+  } catch {
+    return zone;
+  }
+}
 
 // ----------------------------------------------------------------- логотип
 
@@ -179,6 +193,78 @@ function logoField(values, onChange) {
   };
 }
 
+// ----------------------------------------------------------------- место игры
+
+/**
+ * Где проходит игра: регион мира, страна и, по желанию, штат США, регион
+ * России или город. Онлайн — команды из разных мест: каждая укажет своё при
+ * входе. Выбрали штат или регион — onZone(пояс) подставит часовой пояс.
+ */
+function placeField(values, lang, mark, onZone) {
+  const fresh = !values?.region;
+  const start = fresh ? { ...(DEFAULT_PLACE[lang] || DEFAULT_PLACE.en), area: null } : values;
+  let touched = false;
+  const change = () => { touched = true; mark(); };
+
+  const region = h('select', { class: 'input' },
+    [...REGION_KEYS, ONLINE].map((r) => h('option', { value: r, selected: r === start.region }, regionName(r))));
+  const country = h('select', { class: 'input' });
+  const countryBox = field(t('geo.country'), country);
+  const areaBox = h('div', {});
+  const hint = h('p', { class: 'field__hint' });
+  let area = null;
+
+  function fillCountries(keep) {
+    replace(country, h('option', { value: '' }, t('geo.pickCountry')),
+      countryOptions(region.value).map(([c, name]) => h('option', { value: c, selected: c === keep }, name)));
+  }
+  function fillArea(keep) {
+    const c = country.value;
+    if (!c || region.value === ONLINE) { area = null; replace(areaBox); return; }
+    if (hasAreaList(c)) {
+      area = h('select', { class: 'input', onchange: () => {
+        change();
+        const zone = areaZone(c, area.value);
+        if (zone) onZone(zone);
+      } },
+        h('option', { value: '' }, t('geo.notSpecified')),
+        areaOptions(c).map(([a, name]) => h('option', { value: a, selected: a === keep }, name)));
+      replace(areaBox, field(t(c === 'US' ? 'geo.state' : 'geo.region'), area));
+    } else {
+      area = h('input', { class: 'input', maxlength: 60, value: keep || '', oninput: change });
+      replace(areaBox, field(t('geo.city'), area, t('geo.cityHint')));
+    }
+  }
+  function sync() {
+    const online = region.value === ONLINE;
+    countryBox.hidden = online;
+    hint.textContent = t(online ? 'host.placeOnline' : 'host.placeFixed');
+  }
+  function set(place) {
+    region.value = place.region;
+    fillCountries(place.country);
+    fillArea(place.area);
+    sync();
+  }
+  region.addEventListener('change', () => { change(); fillCountries(null); fillArea(null); sync(); });
+  country.addEventListener('change', () => { change(); fillArea(null); });
+  set(start);
+
+  return {
+    el: h('fieldset', { class: 'field fieldset' },
+      h('legend', { class: 'field__label' }, t('host.place')),
+      field(t('host.worldRegion'), region), countryBox, areaBox, hint),
+    /** Новая игра: сменили язык, а место ещё не трогали — место по языку. */
+    languageChanged(code) {
+      if (fresh && !touched) set({ ...(DEFAULT_PLACE[code] || DEFAULT_PLACE.en), area: null });
+    },
+    read() {
+      if (region.value === ONLINE) return { region: ONLINE, country: null, area: null };
+      return { region: region.value, country: country.value, area: area ? area.value.trim() : '' };
+    }
+  };
+}
+
 function guessZone() {
   try {
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -202,11 +288,17 @@ export function gameForm(values = {}, { withLeague = true, lockPractice = false 
   const organizer = h('input', { class: 'input', maxlength: 120, value: values.organizer || '', oninput: mark,
     placeholder: t('host.organizerPlaceholder') });
   const zone = h('select', { class: 'input', onchange: mark },
-    [...TIME_ZONES.map(([z, key]) => [z, t('tz.' + key)]), ...(TIME_ZONES.some(([z]) => z === tz) ? [] : [[tz, tz]])]
-      .map(([z, label]) => h('option', { value: z, selected: z === tz }, label)));
+    [...TIME_ZONES.map(([z]) => z), ...(TIME_ZONES.some(([z]) => z === tz) ? [] : [tz])]
+      .map((z) => h('option', { value: z, selected: z === tz }, zoneLabel(z))));
+  /** Пояс штата или региона: если его нет в списке — добавляем. */
+  const setZone = (z) => {
+    if (![...zone.options].some((o) => o.value === z)) zone.append(h('option', { value: z }, zoneLabel(z)));
+    zone.value = z;
+  };
   // Язык игры: по умолчанию — язык, на котором сейчас сайт у ведущего.
   const lang = values.language || language();
-  const gameLanguage = h('select', { class: 'input', onchange: mark },
+  const place = placeField(values.location, lang, mark, setZone);
+  const gameLanguage = h('select', { class: 'input', onchange: () => { mark(); place.languageChanged(gameLanguage.value); } },
     LANGUAGES.map((l) => h('option', { value: l.code, selected: l.code === lang, lang: l.code }, l.name)));
   const when = h('input', { class: 'input', type: 'datetime-local', value: isoToZoned(values.scheduledAt, tz), oninput: mark });
   const openBook = h('input', { type: 'checkbox', checked: values.openBook !== false, onchange: mark });
@@ -228,6 +320,7 @@ export function gameForm(values = {}, { withLeague = true, lockPractice = false 
   const el = h('div', {},
     field(t('host.title'), title),
     field(t('host.language'), gameLanguage, t('host.languageHint')),
+    place.el,
     leagueBox,
     h('label', { class: 'check' }, practice, h('span', {}, t('host.practiceLabel'),
       lockPractice ? h('span', { class: 'muted small', style: { display: 'block' } }, t('host.practiceLocked')) : null)),
@@ -250,6 +343,7 @@ export function gameForm(values = {}, { withLeague = true, lockPractice = false 
       return {
         title: title.value.trim(), league, practice: practice.checked, organizer: organizer.value.trim(),
         timezone: zone.value, scheduledAt, openBook: openBook.checked, language: gameLanguage.value,
+        ...place.read(),
         sponsorName: sponsorName.value.trim(), sponsorUrl: sponsorUrl.value.trim(),
         ...logo.change()
       };

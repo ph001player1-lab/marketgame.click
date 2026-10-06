@@ -338,17 +338,19 @@ export function createScoreboard(root, opts = {}) {
   function ownershipBar(own) {
     const seg = (pct, color, label) => pct > 0
       ? h('span', { style: { width: pct + '%', background: color }, title: label + ' ' + pctRaw(pct) }) : null;
+    // Частные владельцы появляются, только если ведущий уменьшил долю города.
+    const hasPrivate = own.privatePct > 0;
     return h('div', {},
       h('div', { class: 'owners', role: 'img', 'aria-label': t('board.ownership') + ': ' +
-        t('common.city') + ' ' + pctRaw(own.cityPct) + ', ' + t('board.teamOwners') + ' ' + pctRaw(own.playersPct) + ', ' +
-        t('common.private') + ' ' + pctRaw(own.privatePct) },
+        t('common.city') + ' ' + pctRaw(own.cityPct) + ', ' + t('board.teamOwners') + ' ' + pctRaw(own.playersPct) +
+        (hasPrivate ? ', ' + t('common.private') + ' ' + pctRaw(own.privatePct) : '') },
         seg(own.cityPct, OWNER_COLORS.city, t('common.city')),
         seg(own.playersPct, OWNER_COLORS.players, t('board.teamOwners')),
         seg(own.privatePct, OWNER_COLORS.private, t('common.private'))),
       h('div', { class: 'owner-keys' },
         h('span', {}, swatch(OWNER_COLORS.city), t('common.city') + ' ' + pctRaw(own.cityPct)),
         h('span', {}, swatch(OWNER_COLORS.players), t('board.teamOwners') + ' ' + pctRaw(own.playersPct)),
-        h('span', {}, swatch(OWNER_COLORS.private), t('common.private') + ' ' + pctRaw(own.privatePct))));
+        hasPrivate ? h('span', {}, swatch(OWNER_COLORS.private), t('common.private') + ' ' + pctRaw(own.privatePct)) : null));
   }
 
   function institutionCard(inst) {
@@ -383,7 +385,7 @@ export function createScoreboard(root, opts = {}) {
           { key: 'city', name: t('common.city'), color: OWNER_COLORS.city, values: inst.months.map((m) => m.toCity) },
           { key: 'players', name: t('board.teamOwners'), color: OWNER_COLORS.players, values: inst.months.map((m) => m.toPlayers) },
           { key: 'private', name: t('common.private'), color: OWNER_COLORS.private, values: inst.months.map((m) => m.toPrivate) }
-        ],
+        ].filter((x) => x.key !== 'private' || x.values.some((v) => v > 0)),
         emptyText: t('board.noPayout'),
         label: t('board.payoutChart', { name: t('institutions.' + inst.kind) }),
         xName: t('board.mo'), xLabel: (m) => t('common.month') + ' ' + m,
@@ -473,7 +475,7 @@ export function createScoreboard(root, opts = {}) {
       h('div', { class: 'owner-keys' },
         h('span', {}, swatch(OWNER_COLORS.city), t('money.city') + ' ' + usd(toCity)),
         h('span', {}, swatch(OWNER_COLORS.players), t('money.players') + ' ' + usd(toPlayers)),
-        h('span', {}, swatch(OWNER_COLORS.private), t('money.private') + ' ' + usd(toPrivate)),
+        toPrivate > 0 ? h('span', {}, swatch(OWNER_COLORS.private), t('money.private') + ' ' + usd(toPrivate)) : null,
         h('span', {}, swatch('#E4E3DC'), t('money.retained') + ' ' + usd(retained))),
       h('ul', { class: 'facts' },
         h('li', {}, t('money.cityGot', { tax: usd(r.cityTax), fines: usd((c.fines || 0) + (c.cityTaxes || 0)), stakes: usd(c.stakeSales || 0) })),

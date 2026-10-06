@@ -3,13 +3,15 @@
 
 import { t, tn } from '../i18n.js';
 import { h, replace } from '../dom.js';
-import { dec2, pctRaw, usd, dateOnly } from '../fmt.js';
+import { dec2, pctRaw, usd, dateOnly, currentLocale } from '../fmt.js';
 import { read } from '../api.js';
-import { locationText, US_STATES } from './common.js';
+import { placeText, countryName, areaName, hasAreaList, regionOf, regionName, REGION_KEYS } from '../geo.js';
 
 const LEAGUES = ['start', 'growth', 'elite'];
 
-const locOf = (p) => ({ kind: p.location_kind, state: p.location_state, country: p.location_country });
+// Где команда вела бизнес в своей последней игре: там, где шла игра, или —
+// в онлайн-игре — где указала сама.
+const locOf = (p) => ({ country: p.location_country, area: p.location_area });
 
 /** Таблица рейтинга; в строке команды — история её игр. */
 export function ratingTable(players, { limit = 50 } = {}) {
@@ -38,7 +40,7 @@ export function ratingTable(players, { limit = 50 } = {}) {
           h('ul', {}, p.history.map((g) => h('li', {},
             g.title + (g.organizer ? ' · ' + g.organizer : '') + ' · ' + dateOnly(g.finishedAt) + ': ' +
             t('rating.gameLine', { place: g.place, rivals: g.rivals, capital: usd(g.capital), mult: dec2(g.multiplier) }))))) : null),
-      h('td', {}, locationText(locOf(p), true) || '—'),
+      h('td', {}, placeText(locOf(p), true) || '—'),
       opt(p.games), opt(p.wins), num('×' + dec2(p.avg_multiplier)), opt(dec2(p.avg_place_score)),
       opt(pctRaw(p.avg_share_pct)), h('td', { class: 'r' }, h('b', {}, dec2(p.score))))))));
 }
@@ -76,18 +78,32 @@ export function renderRatingPage(page) {
     if (!data) return;
     const all = (data.leagues || []).find((x) => x.league === league)?.players || [];
 
-    // Фильтр — только по тем местам, что есть в этой лиге.
-    const states = [...new Set(all.filter((p) => p.location_kind === 'state').map((p) => p.location_state))].sort();
+    // Фильтр — только по тем местам, что есть в этой лиге: часть света,
+    // в ней страны, а в США и России — штаты и регионы.
+    const byName = (a, b) => a[1].localeCompare(b[1], currentLocale());
+    const pad = '\u00a0\u00a0\u00a0';
     const options = [['all', t('rating.all')]];
-    if (all.some((p) => p.location_kind === 'multistate')) options.push(['multistate', t('rating.multistate')]);
-    if (all.some((p) => p.location_kind === 'international')) options.push(['international', t('rating.international')]);
-    const names = Object.fromEntries(US_STATES);
-    for (const s of states) options.push(['state:' + s, names[s] || s]);
+    for (const r of REGION_KEYS) {
+      const here = all.filter((p) => regionOf(p.location_country) === r);
+      if (!here.length) continue;
+      options.push(['r:' + r, regionName(r)]);
+      const countries = [...new Set(here.map((p) => p.location_country))].map((c) => [c, countryName(c)]).sort(byName);
+      for (const [c, name] of countries) {
+        options.push(['c:' + c, pad + name]);
+        if (!hasAreaList(c)) continue;
+        const areas = [...new Set(here.filter((p) => p.location_country === c && p.location_area).map((p) => p.location_area))]
+          .map((a) => [a, areaName(c, a)]).sort(byName);
+        for (const [a, aName] of areas) options.push(['a:' + c + ':' + a, pad + pad + aName]);
+      }
+    }
     if (!options.some(([v]) => v === where)) where = 'all';
     replace(filter, options.map(([v, label]) => h('option', { value: v, selected: v === where }, label)));
 
-    const list = all.filter((p) => where === 'all' ||
-      (where.startsWith('state:') ? p.location_kind === 'state' && p.location_state === where.slice(6) : p.location_kind === where));
+    const [kind, x, y] = where.split(':');
+    const list = all.filter((p) => kind === 'all' ||
+      (kind === 'r' ? regionOf(p.location_country) === x
+        : kind === 'c' ? p.location_country === x
+          : p.location_country === x && p.location_area === y));
     replace(body, list.length
       ? ratingTable(list, { limit: 200 })
       : h('p', { class: 'muted' }, t('rating.empty')));

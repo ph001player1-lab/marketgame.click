@@ -53,12 +53,12 @@ let gameId;
 await step('подготовка: ведущие, игра, состав, профили', async () => {
   ok(await call(ADMIN, 'addHost', { email: HOST }));
   ok(await call(ADMIN, 'addHost', { email: HOST2 }));
-  const g = await call(HOST, 'createGame', { title: 'Extras', league: 'start' });
+  const g = await call(HOST, 'createGame', { title: 'Extras', league: 'start', region: 'north_america', country: 'US' });
   ok(g);
   gameId = g.gameId;
   ok(await call(HOST, 'setRoster', { gameId, emails: [ANN, BOB, CAT, DAN] }));
   for (const [e, r] of [[ANN, 'A'], [BOB, 'B'], [CAT, 'C'], [DAN, 'D']]) {
-    ok(await call(e, 'setProfile', { gameId, displayName: r, restaurantName: 'Rest ' + r, locationKind: 'multistate' }));
+    ok(await call(e, 'setProfile', { gameId, displayName: r, restaurantName: 'Rest ' + r }));
   }
   const m = await monitor(gameId);
   for (const p of m.players) ids[p.email] = p.id;
@@ -151,7 +151,7 @@ await step('выход из игры: доли возвращаются горо
   ok(await call(DAN, 'chooseCareerPath', { gameId, path: 'end' }));
   const m = await monitor(gameId);
   const landlord = m.institutions.find((i) => i.kind === 'landlord');
-  assert.equal(landlord.ownership.cityPct, 50);
+  assert.equal(landlord.ownership.cityPct, 100);
   const bank = m.institutions.find((i) => i.kind === 'bank');
   assert.equal(bank.ownership.cityPct, 100, 'и доля в банке тоже');
   const d = await dash(DAN, gameId);
@@ -247,12 +247,12 @@ await step('логотип спонсора: файл, ссылка Google Drive
 });
 
 await step('звёзды качества: строго за полный пункт, у города — по среднему', async () => {
-  const g = await call(HOST, 'createGame', { title: 'Stars', league: 'start' });
+  const g = await call(HOST, 'createGame', { title: 'Stars', league: 'start', region: 'europe', country: 'DE', area: 'Berlin' });
   ok(g);
   const gid = g.gameId;
   ok(await call(HOST, 'setRoster', { gameId: gid, emails: [ANN, BOB] }));
   for (const [e, r] of [[ANN, 'A'], [BOB, 'B']]) {
-    ok(await call(e, 'setProfile', { gameId: gid, displayName: r, restaurantName: 'Star ' + r, locationKind: 'multistate' }));
+    ok(await call(e, 'setProfile', { gameId: gid, displayName: r, restaurantName: 'Star ' + r }));
   }
   const m0 = await monitor(gid);
   const sid = Object.fromEntries(m0.players.map((p) => [p.email, p.id]));

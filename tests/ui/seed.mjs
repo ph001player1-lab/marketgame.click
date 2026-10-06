@@ -6,14 +6,19 @@ import assert from 'node:assert/strict';
 import { makeApi } from '../api/harness.mjs';
 import { ADMIN } from './server.mjs';
 
+// country и area — где команда ведёт бизнес: их спрашивают только в
+// онлайн-игре, в игре в одном месте команды там же, где игра.
 export const TEAMS = [
-  { email: 'team1@example.com', name: 'Maria', restaurant: 'Taco Town', kind: 'state', state: 'TX' },
-  { email: 'team2@example.com', name: 'Jake', restaurant: 'Pizza Planet', kind: 'multistate' },
-  { email: 'team3@example.com', name: 'Sam', restaurant: 'Burger Barn', kind: 'state', state: 'CA' },
-  { email: 'team4@example.com', name: 'Lee', restaurant: 'Noodle Nook', kind: 'international', country: 'Canada' },
-  { email: 'team5@example.com', name: 'Ava', restaurant: 'Green Bowl', kind: 'state', state: 'NY' },
-  { email: 'team6@example.com', name: 'Ben', restaurant: 'Smokehouse BBQ', kind: 'state', state: 'TX' }
+  { email: 'team1@example.com', name: 'Maria', restaurant: 'Taco Town', country: 'US', area: 'TX' },
+  { email: 'team2@example.com', name: 'Jake', restaurant: 'Pizza Planet', country: 'US', area: 'IL' },
+  { email: 'team3@example.com', name: 'Sam', restaurant: 'Burger Barn', country: 'US', area: 'CA' },
+  { email: 'team4@example.com', name: 'Lee', restaurant: 'Noodle Nook', country: 'CA', area: 'Toronto' },
+  { email: 'team5@example.com', name: 'Ava', restaurant: 'Green Bowl', country: 'US', area: 'NY' },
+  { email: 'team6@example.com', name: 'Ben', restaurant: 'Smokehouse BBQ', country: 'US', area: 'TX' }
 ];
+
+/** Остин, Техас — как в названии тестовой игры. */
+export const AUSTIN = { region: 'north_america', country: 'US', area: 'TX' };
 
 // Решение месяца: у каждой команды своя манера.
 function decide(i, month, cash) {
@@ -46,18 +51,19 @@ async function ok(p, what) {
 
 /** Партия: months — сколько месяцев рассчитать; finish — закрыть игру. */
 export async function seedGame(sql, { months = 4, finish = false, title = 'Austin Chamber · Fall session',
-                                      league = 'start', teams = TEAMS, sponsor = true, language = 'en' } = {}) {
+                                      league = 'start', teams = TEAMS, sponsor = true, language = 'en',
+                                      place = AUSTIN } = {}) {
   const { call } = makeApi(sql, { admins: [ADMIN] });
   const created = await ok(call(ADMIN, 'createGame', {
-    title, league, organizer: 'Austin Chamber of Commerce', timezone: 'America/Chicago', language,
+    title, league, organizer: 'Austin Chamber of Commerce', timezone: 'America/Chicago', language, ...place,
     ...(sponsor ? { sponsorName: 'Lone Star Coffee Roasters', sponsorUrl: 'https://example.com' } : {})
   }), 'createGame');
   const gameId = created.gameId;
   await ok(call(ADMIN, 'setRoster', { gameId, emails: teams.map((x) => x.email).join('\n') }), 'setRoster');
   for (const tm of teams) {
     await ok(call(tm.email, 'setProfile', {
-      gameId, displayName: tm.name, restaurantName: tm.restaurant, locationKind: tm.kind,
-      locationState: tm.state, locationCountry: tm.country
+      gameId, displayName: tm.name, restaurantName: tm.restaurant,
+      ...(place.region === 'online' ? { locationCountry: tm.country, locationArea: tm.area } : {})
     }), 'setProfile ' + tm.email);
   }
 

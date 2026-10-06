@@ -95,10 +95,14 @@ let gameId, code;
 await step('ведущий создаёт игру лиги Start', async () => {
   err(await call(ANN, 'createGame', { title: 'x', league: 'start' }), 'not_host');
   err(await call(HOST, 'createGame', { title: 'x', league: 'pro' }), 'bad_league');
+  // Место игры задаёт ведущий: регион мира, страна, штат.
+  err(await call(HOST, 'createGame', { title: 'x', league: 'start', region: 'mars' }), 'bad_region');
+  err(await call(HOST, 'createGame', { title: 'x', league: 'start', region: 'europe', country: 'US' }), 'bad_country');
+  err(await call(HOST, 'createGame', { title: 'x', league: 'start', region: 'north_america', country: 'US', area: 'Texas' }), 'bad_state');
   const r = await call(HOST, 'createGame', {
     title: 'Austin Chamber Night', league: 'start', organizer: 'Austin Chamber of Commerce',
     sponsorName: 'Example Bank', sponsorLogoUrl: 'https://example.com/logo.png',
-    timezone: 'America/Chicago', language: 'es'
+    timezone: 'America/Chicago', language: 'es', region: 'north_america', country: 'US', area: 'TX'
   });
   ok(r);
   gameId = r.gameId; code = r.code;
@@ -108,6 +112,7 @@ await step('ведущий создаёт игру лиги Start', async () => 
   assert.equal(m.game.totalRounds, 12);
   assert.equal(m.game.leagueName, 'Start');
   assert.equal(m.game.language, 'es', 'язык игры — как выбрал ведущий');
+  assert.deepEqual(m.game.location, { region: 'north_america', country: 'US', area: 'TX' });
   err(await call(HOST, 'updateGame', { gameId, language: 'de' }), 'bad_language');
   ok(await call(HOST, 'updateGame', { gameId, language: 'ru' }));
   assert.equal((await call(HOST, 'monitor', { gameId })).game.language, 'ru');
@@ -115,7 +120,8 @@ await step('ведущий создаёт игру лиги Start', async () => 
   assert.equal((await call(HOST, 'me')).hosting.find((g) => g.id === gameId).language, 'en');
   assert.equal(m.rules.rent, 7500);
   assert.equal(m.institutions.length, 4);
-  assert.ok(m.institutions.every((i) => i.ownership.cityPct === 50));
+  assert.ok(m.institutions.every((i) => i.ownership.cityPct === 100), 'компании целиком у города');
+  assert.ok(m.institutions.every((i) => i.ownership.privatePct === 0), 'частных владельцев нет');
 });
 
 await step('состав — вставленный список почт', async () => {
@@ -141,21 +147,20 @@ await step('первый вход команды — профиль', async () =
   assert.equal(d.needsProfile, true);
   assert.equal(d.game.leagueName, 'Start');
   assert.equal(d.game.sponsor.name, 'Example Bank');
-  err(await call(ANN, 'setProfile', { gameId, displayName: 'Ann', restaurantName: 'Ann’s Diner', locationKind: 'state', locationState: 'Texas' }), 'bad_state');
-  const places = [
-    [ANN, 'Ann', 'Ann’s Diner', 'state', 'TX'],
-    [BOB, 'Bob', 'Bob’s BBQ', 'multistate', null],
-    [CAT, 'Cat', 'Cat Café', 'international', null],
-    [DAN, 'Dan', 'Dan’s Deli', 'state', 'OH']
-  ];
-  for (const [e, name, rest, kind, st] of places) {
-    ok(await call(e, 'setProfile', { gameId, displayName: name, restaurantName: rest,
-      locationKind: kind, locationState: st, locationCountry: kind === 'international' ? 'Canada' : null }));
+  assert.deepEqual(d.game.location, { region: 'north_america', country: 'US', area: 'TX' });
+  err(await call(ANN, 'setProfile', { gameId, displayName: 'Ann', restaurantName: '' }), 'empty');
+  // Игра в одном месте: команда вводит только имя и название ресторана.
+  const teams = [[ANN, 'Ann', 'Ann’s Diner'], [BOB, 'Bob', 'Bob’s BBQ'], [CAT, 'Cat', 'Cat Café'], [DAN, 'Dan', 'Dan’s Deli']];
+  for (const [e, name, rest] of teams) {
+    ok(await call(e, 'setProfile', { gameId, displayName: name, restaurantName: rest }));
   }
-  err(await call(BOB, 'setProfile', { gameId, displayName: 'Bob', restaurantName: 'ann’s diner', locationKind: 'multistate' }), 'restaurant_taken');
+  err(await call(BOB, 'setProfile', { gameId, displayName: 'Bob', restaurantName: 'ann’s diner' }), 'restaurant_taken');
   const d2 = await dash(ANN, gameId);
   assert.equal(d2.needsProfile, false);
   assert.equal(d2.player.cash, 10000);
+  assert.ok(d2.others.every((o) => o.location === null), 'место команд не показываем — все там же, где игра');
+  const m = await call(HOST, 'monitor', { gameId });
+  assert.ok(m.players.every((p) => p.profileDone && p.location === null));
 });
 
 await step('стартовый кредит открыт ещё до первого месяца', async () => {
@@ -294,12 +299,12 @@ await step('правки ведущего действуют со следующ
 await step('доля в страховой: покупка у города и дивиденды', async () => {
   const m = await call(HOST, 'monitor', { gameId });
   const ann = m.players.find((p) => p.email === ANN);
-  err(await call(HOST, 'sellStake', { gameId, kind: 'insurer', playerId: ann.id, pct: 60, price: 1 }), 'city_has_less');
   const r = await call(HOST, 'sellStake', { gameId, kind: 'insurer', playerId: ann.id, pct: 10, price: 2000, requestId: uuid() });
   ok(r);
   const insurer = r.state.institutions.find((i) => i.kind === 'insurer');
-  assert.equal(insurer.ownership.cityPct, 40);
+  assert.equal(insurer.ownership.cityPct, 90);
   assert.equal(insurer.ownership.playersPct, 10);
+  err(await call(HOST, 'sellStake', { gameId, kind: 'insurer', playerId: ann.id, pct: 95, price: 1 }), 'city_has_less');
   const d = await dash(ANN, gameId);
   assert.equal(d.stakes[0].kind, 'insurer');
   // Новость — кодом с подробностями: сайт напишет её на языке читателя.
@@ -316,9 +321,9 @@ await step('доля в страховой: покупка у города и д
   const [div] = await sql`select dividends from results r join players p on p.id = r.player_id
                           where p.email = ${ANN} and r.round_number = 3`;
   assert.equal(div.dividends, 600);
-  assert.equal(row.to_city, 2400, 'город после продажи владеет 40%');
+  assert.equal(row.to_city, 5400, 'город после продажи владеет 90%');
   const [landlord] = await sql`select * from institution_months where game_id = ${gameId} and round_number = 3 and kind = 'landlord'`;
-  assert.equal(landlord.to_city, 15000, 'половина аренды четырёх ресторанов');
+  assert.equal(landlord.to_city, 30000, 'вся аренда четырёх ресторанов');
   const budget = (await call(HOST, 'monitor', { gameId })).city;
   const m3 = budget.months.find((x) => x.round === 3);
   const [cityDiv] = await sql`select sum(to_city) as s from institution_months where game_id = ${gameId} and round_number = 3`;
@@ -403,6 +408,8 @@ await step('рейтинг обновился сразу после финала
   assert.ok(start.players.length >= 3);
   assert.ok(!JSON.stringify(r).includes('@test.com'), 'в рейтинг утекли почты');
   assert.ok(start.players.every((p) => p.history.length === 1 && p.player_key));
+  // Место в рейтинге — где шла игра: Техас, США.
+  assert.ok(start.players.every((p) => p.location_country === 'US' && p.location_area === 'TX'), 'место команд — место игры');
 });
 
 await step('история: My games, открытые решения, отчёт по ссылке', async () => {
@@ -435,6 +442,51 @@ await step('сыграть ещё раз тем же составом', async ()
   const d = await dash(ANN, r.gameId);
   assert.equal(d.needsProfile, true, 'профиль подтверждают заново');
   assert.equal(d.player.restaurant, 'Ann’s Diner', 'но он подставлен из прошлой игры');
+  assert.deepEqual(m.game.location, { region: 'north_america', country: 'US', area: 'TX' }, 'место игры перенеслось');
+  // Место из прошлой игры подставлено: пригодится, если новую сделать онлайн.
+  assert.deepEqual(d.player.location, { country: 'US', area: 'TX' });
+});
+
+await step('онлайн-игра: место указывает каждая команда', async () => {
+  const g = await call(HOST, 'createGame', { title: 'Online cup', league: 'start', region: 'online', country: 'RU', area: 'MOW' });
+  ok(g);
+  const gid = g.gameId;
+  const m0 = await call(HOST, 'monitor', { gameId: gid });
+  assert.deepEqual(m0.game.location, { region: 'online', country: null, area: null }, 'у онлайн-игры нет страны');
+  ok(await call(HOST, 'setRoster', { gameId: gid, emails: [ANN, BOB, CAT, DAN] }));
+  const prof = (e, extra) => call(e, 'setProfile', { gameId: gid, displayName: e.slice(0, 3), restaurantName: 'Web ' + e, ...extra });
+  err(await prof(ANN, {}), 'bad_country');
+  err(await prof(ANN, { locationCountry: 'Narnia' }), 'bad_country');
+  err(await prof(ANN, { locationCountry: 'US' }), 'bad_state');
+  err(await prof(ANN, { locationCountry: 'US', locationArea: 'Texas' }), 'bad_state');
+  err(await prof(BOB, { locationCountry: 'RU', locationArea: '' }), 'bad_ru_region');
+  ok(await prof(ANN, { locationCountry: 'US', locationArea: 'ny' }));
+  ok(await prof(BOB, { locationCountry: 'RU', locationArea: 'SPE' }));
+  ok(await prof(CAT, { locationCountry: 'DE', locationArea: ' Berlin ' }));
+  ok(await prof(DAN, { locationCountry: 'KZ' }));
+  const m = await call(HOST, 'monitor', { gameId: gid });
+  const where = Object.fromEntries(m.players.map((p) => [p.email, p.location]));
+  assert.deepEqual(where, {
+    [ANN]: { country: 'US', area: 'NY' }, [BOB]: { country: 'RU', area: 'SPE' },
+    [CAT]: { country: 'DE', area: 'Berlin' }, [DAN]: { country: 'KZ', area: null }
+  });
+  const b = await call(ANN, 'board', { gameId: gid });
+  assert.deepEqual(b.players.find((p) => p.restaurant === 'Web ' + BOB).location, { country: 'RU', area: 'SPE' });
+  // Ведущий перенёс игру в одно место — места команд больше не показываются.
+  err(await call(HOST, 'updateGame', { gameId: gid, region: 'cis', country: 'RU', area: 'Moscow' }), 'bad_ru_region');
+  ok(await call(HOST, 'updateGame', { gameId: gid, region: 'cis', country: 'RU', area: 'MOW' }));
+  // Только регион России — страна и регион мира остаются прежними.
+  ok(await call(HOST, 'updateGame', { gameId: gid, area: 'SPE' }));
+  assert.deepEqual((await call(HOST, 'monitor', { gameId: gid })).game.location, { region: 'cis', country: 'RU', area: 'SPE' });
+  ok(await call(HOST, 'updateGame', { gameId: gid, area: 'MOW' }));
+  const m2 = await call(HOST, 'monitor', { gameId: gid });
+  assert.deepEqual(m2.game.location, { region: 'cis', country: 'RU', area: 'MOW' });
+  assert.ok(m2.players.every((p) => p.location === null));
+  // В игре в одном месте присланное командой место не записывается.
+  ok(await call(ANN, 'setProfile', { gameId: gid, displayName: 'Ann', restaurantName: 'Web Ann', locationCountry: 'BR' }));
+  const [row] = await sql`select location_country, location_area from players where game_id = ${gid} and email = ${ANN}`;
+  assert.deepEqual({ ...row }, { location_country: 'US', location_area: 'NY' });
+  ok(await call(HOST, 'deleteGame', { gameId: gid }));
 });
 
 await step('учебная игра, законченная раньше, в рейтинг не идёт', async () => {

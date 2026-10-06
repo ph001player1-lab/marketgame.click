@@ -5,34 +5,15 @@ import { endpoint } from '../api.js';
 import { t, tn } from '../i18n.js';
 import { currentLocale } from '../fmt.js';
 import { h, replace, toast } from '../dom.js';
+import { placeText } from '../geo.js';
 
-// 50 штатов и округ Колумбия — как на marketgame.biz.
-export const US_STATES = [
-  ['AL', 'Alabama'], ['AK', 'Alaska'], ['AZ', 'Arizona'], ['AR', 'Arkansas'], ['CA', 'California'],
-  ['CO', 'Colorado'], ['CT', 'Connecticut'], ['DE', 'Delaware'], ['DC', 'District of Columbia'],
-  ['FL', 'Florida'], ['GA', 'Georgia'], ['HI', 'Hawaii'], ['ID', 'Idaho'], ['IL', 'Illinois'],
-  ['IN', 'Indiana'], ['IA', 'Iowa'], ['KS', 'Kansas'], ['KY', 'Kentucky'], ['LA', 'Louisiana'],
-  ['ME', 'Maine'], ['MD', 'Maryland'], ['MA', 'Massachusetts'], ['MI', 'Michigan'], ['MN', 'Minnesota'],
-  ['MS', 'Mississippi'], ['MO', 'Missouri'], ['MT', 'Montana'], ['NE', 'Nebraska'], ['NV', 'Nevada'],
-  ['NH', 'New Hampshire'], ['NJ', 'New Jersey'], ['NM', 'New Mexico'], ['NY', 'New York'],
-  ['NC', 'North Carolina'], ['ND', 'North Dakota'], ['OH', 'Ohio'], ['OK', 'Oklahoma'], ['OR', 'Oregon'],
-  ['PA', 'Pennsylvania'], ['RI', 'Rhode Island'], ['SC', 'South Carolina'], ['SD', 'South Dakota'],
-  ['TN', 'Tennessee'], ['TX', 'Texas'], ['UT', 'Utah'], ['VT', 'Vermont'], ['VA', 'Virginia'],
-  ['WA', 'Washington'], ['WV', 'West Virginia'], ['WI', 'Wisconsin'], ['WY', 'Wyoming']
-];
-const STATE_NAME = Object.fromEntries(US_STATES);
-
-/** Где команда ведёт бизнес: «TX», «Across the U.S.», «Mexico». */
-export function locationText(loc, long = false) {
-  if (!loc || !loc.kind) return '';
-  if (loc.kind === 'state') return long ? (STATE_NAME[loc.state] || loc.state || '') : (loc.state || '');
-  if (loc.kind === 'multistate') return long ? t('rating.multistate') : t('rating.usShort');
-  return loc.country || t('rating.international');
-}
-
+/**
+ * Значок «где команда ведёт бизнес» — только в онлайн-игре: в игре в
+ * одном месте сервер места команд не присылает, все они там же, где игра.
+ */
 export function locationBadge(loc) {
-  const text = locationText(loc);
-  return text ? h('span', { class: 'badge', title: locationText(loc, true) }, text) : null;
+  const text = placeText(loc);
+  return text ? h('span', { class: 'badge', title: placeText(loc, true) }, text) : null;
 }
 
 export function statusBadge(status) {

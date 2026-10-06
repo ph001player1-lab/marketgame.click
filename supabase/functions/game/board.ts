@@ -17,6 +17,7 @@ import {
   qualityStars, starsNow
 } from './lib.ts';
 import { gameMeta, rulesFor, formatResult } from './player.ts';
+import { teamLocation } from './geo.ts';
 
 // ----------------------------------------------------------------- бюджет города
 
@@ -207,7 +208,8 @@ export async function moneyMap(sql: Sql, gameId: string) {
 
 // ----------------------------------------------------------------- табло
 
-async function timeline(sql: Sql, gameId: string) {
+async function timeline(sql: Sql, game: Row) {
+  const gameId = String(game.id);
   const [players, results, wallets]: Row[][] = await Promise.all([
     sql`select * from players where game_id = ${gameId} order by created_at, id`,
     sql`select * from results where game_id = ${gameId} order by round_number`,
@@ -219,7 +221,7 @@ async function timeline(sql: Sql, gameId: string) {
     byPlayer.set(String(p.id), {
       id: String(p.id), restaurant: teamLabel(p), displayName: p.display_name ?? null,
       status: String(p.status),
-      location: { kind: p.location_kind ?? null, state: p.location_state ?? null, country: p.location_country ?? null },
+      location: teamLocation(game, p),
       // Капитал сейчас — по тому же правилу, что и v_standings: касса минус
       // долг банку или накопления. Штраф или перевод между месяцами виден
       // на табло сразу.
@@ -285,7 +287,7 @@ async function timeline(sql: Sql, gameId: string) {
 
 export async function boardData(sql: Sql, game: Row) {
   const [round, tl, institutions, city, money, ocean] = await Promise.all([
-    currentRound(sql, game.id), timeline(sql, game.id), institutionsState(sql, game.id),
+    currentRound(sql, game.id), timeline(sql, game), institutionsState(sql, game.id),
     cityBudget(sql, game.id), moneyMap(sql, game.id), oceanByMonth(sql, game.id)
   ]);
   return {

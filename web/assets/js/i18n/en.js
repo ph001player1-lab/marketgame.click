@@ -6,7 +6,6 @@
 
 export default {
   brand: 'Market Game',
-  tagline: 'Into new waters — not into a fight',
 
   common: {
     loading: 'Loading…',
@@ -68,7 +67,7 @@ export default {
 
   login: {
     title: 'Sign in',
-    lead: 'Use the email your host added to the game. We\'ll send you a 6-digit code — no password needed.',
+    lead: 'To register for the game, please enter your email — we\'ll send a verification code to it.',
     email: 'Email',
     sendCode: 'Send me a code',
     codeSent: 'We sent a 6-digit code to {email}. It works for one hour.',
@@ -103,11 +102,6 @@ export default {
     name: 'Your name',
     restaurant: 'Restaurant name',
     where: 'Where do you do business?',
-    inState: 'In one state',
-    multistate: 'Across the U.S. (several states)',
-    international: 'Internationally',
-    state: 'State',
-    country: 'Country',
     start: 'Start playing',
     edit: 'Edit profile'
   },
@@ -452,9 +446,6 @@ export default {
     months: '{n} months',
     filter: 'Where',
     all: 'Everywhere',
-    multistate: 'Across the U.S.',
-    usShort: 'U.S.',
-    international: 'International',
     gamesList: '{n} games',
     gamesList_one: '{n} game',
     gameLine: 'place {place} of {rivals}, {capital}, ×{mult}',
@@ -521,7 +512,7 @@ export default {
     confirmGrantAll: 'Give {amount} to every team out of business?',
     massDone: 'Done: {n} team(s), {total} in total.',
     sharesTitle: 'City ownership',
-    sharesLead: 'How much of each company the city owns. The rest belongs to teams (stakes) and private owners. The city gets its share of each company\'s profit every month.',
+    sharesLead: 'How much of each company the city owns; 100% in a new game. The rest belongs to teams (stakes) and private owners. The city gets its share of each company\'s profit every month.',
     cityPct: 'City owns, %',
     cityShareSaved: 'The city now owns {pct} of {inst}.',
     stakesTitle: 'Stakes',
@@ -541,6 +532,10 @@ export default {
     gameInfo: 'Game details',
     language: 'Game language',
     languageHint: 'Everyone sees the game in this language unless they pick another one in the menu.',
+    place: 'Where the game takes place',
+    worldRegion: 'World region',
+    placeFixed: 'Teams land here automatically: when they join, they only enter their name and restaurant name.',
+    placeOnline: 'Each team states its country when it joins — plus its state in the U.S. or its region in Russia.',
     title: 'Game title', titlePlaceholder: 'e.g. Austin Chamber, fall session',
     organizer: 'Organizer', organizerPlaceholder: 'e.g. Austin Chamber of Commerce',
     scheduled: 'Date and time', scheduledHint: 'In the game\'s time zone.',
@@ -741,12 +736,12 @@ export default {
         ]
       },
       price: {
-        title: 'Price',
+        title: 'Menu price and food cost',
         body: [
-          'Reference price **{pRef}**. You can charge from {floor} to {ceiling}.',
+          '**Menu price** is what a guest pays for a meal. Reference price **{pRef}**; you can charge from {floor} to {ceiling}.',
           '- Guests watch prices: 10% cheaper makes you about 26% more attractive, 10% dearer about 19% less.',
           '- Above **{softCap}** is the pain point: guests leave sharply, not gradually.',
-          '- Every meal costs you {cogs} in food and supplies, more with higher quality. Don\'t price below that.',
+          '- **Food cost** is what you pay suppliers for one meal: **{cogs}** at quality 0; {cogs1} at quality 1, {cogs2} at 2, {cogs3} at 3 (+{qadd} per point). Keep your menu price above it.',
           '- A price that feels fair for your quality grows your brand faster.'
         ]
       },
@@ -831,7 +826,7 @@ export default {
         title: 'Landlord, bank, insurer, utilities — and stakes',
         body: [
           'The rent, interest, insurance and utility bills that restaurants pay are income for four companies. Every month each company pays its profit to its owners in proportion to their shares — after covering its own past losses. The bank loses the loans that bankrupt teams never repaid.',
-          'The city owns part of every company (the host decides how much); private owners hold the rest. The city can sell part of its share to a team: from then on that team gets its cut of the profit every month as dividends. Buybacks and deals between teams also go through the host.',
+          'These companies belong to the city — all of each at the start of the game; the host can hand part of them to private owners. The city can sell part of its share to a team: from then on that team gets its cut of the profit every month as dividends. Buybacks and deals between teams also go through the host.',
           '> Stakes don\'t count in your final capital — only money does. A stake is worth buying if its dividends pay it back before the game ends.',
           'When a team leaves the game, its stakes go back to the city.',
           'A classic play: take a loan, buy a stake in the insurance company, then lobby the city to raise insurance premiums.'
@@ -894,11 +889,23 @@ export default {
     arizona: 'Arizona (Phoenix)', pacific: 'Pacific (Los Angeles)', alaska: 'Alaska (Anchorage)',
     hawaii: 'Hawaii (Honolulu)', atlantic: 'Atlantic (Puerto Rico)', toronto: 'Toronto', mexicoCity: 'Mexico City',
     saoPaulo: 'São Paulo', london: 'London', berlin: 'Berlin', dubai: 'Dubai', bangkok: 'Bangkok', tokyo: 'Tokyo',
-    sydney: 'Sydney', utc: 'UTC'
+    sydney: 'Sydney', moscow: 'Moscow', utc: 'UTC'
   },
 
   charts: {
     legend: 'Legend', highlight: 'Highlight {name}', other: 'Other', nothing: 'Nothing this month'
+  },
+
+  regions: {
+    north_america: 'North America', latin_america: 'Latin America', europe: 'Europe', cis: 'Russia & CIS',
+    middle_east_africa: 'Middle East & Africa', asia: 'Asia', oceania: 'Australia & Oceania',
+    online: 'Online — teams from different countries and regions'
+  },
+
+  geo: {
+    country: 'Country', state: 'State', region: 'Region', city: 'City or region', cityHint: 'Optional.',
+    pickCountry: '— choose a country —', pickState: '— choose a state —', pickRegion: '— choose a region —',
+    notSpecified: '— not specified —'
   },
 
   stars: {
@@ -974,8 +981,9 @@ export default {
     too_many_teams: 'Up to {max} teams per game.',
     restaurant_taken: 'Another team already uses that restaurant name.',
     bad_state: 'Pick a state.',
-    bad_country: 'Enter your country.',
-    bad_location: 'Tell us where you do business.',
+    bad_country: 'Choose a country.',
+    bad_ru_region: 'Choose a region.',
+    bad_region: 'Choose where the game takes place.',
     empty: 'Fill in every field.',
     bad_code: 'Enter the game code.',
     bad_game: 'Game not found.',

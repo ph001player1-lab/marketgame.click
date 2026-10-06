@@ -360,7 +360,6 @@ select.input.input--inline,.input.input--inline{width:auto;max-width:100%;min-he
 .driver--note b{background:var(--mute)}
 .questions{margin:4px 0 0;padding-left:22px;font-size:15px}
 .questions li{margin:0 0 4px}
-.login__tagline{margin:8px 0 0;color:var(--red-ink);font-weight:700;font-size:16px}
 .board--big .table{font-size:18px}
 .board--big .card__title{font-size:20px}
 .board--big .board-line{font-size:20px}

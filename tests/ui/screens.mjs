@@ -8,7 +8,7 @@ import { createRequire } from 'node:module';
 import { mkdirSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { startServer, ADMIN } from './server.mjs';
-import { seedGame, TEAMS } from './seed.mjs';
+import { seedGame, TEAMS, AUSTIN } from './seed.mjs';
 import { TEST_LOGO_PNG_B64 } from '../fixtures/logo.mjs';
 
 async function loadPlaywright() {
@@ -61,8 +61,10 @@ const shot = (p, name, full = false) => p.screenshot({ path: `${OUT}/${name}.png
 
 try {
   console.log('Seeding games…');
-  // Сыгранная до конца игра — для рейтинга и отчёта.
-  const done = await seedGame(server.sql, { months: 12, finish: true, title: 'Dallas Small Business Week', sponsor: false });
+  // Сыгранная до конца онлайн-игра — для рейтинга и отчёта: команды из
+  // разных штатов и стран, место каждая указала сама.
+  const done = await seedGame(server.sql, { months: 12, finish: true, title: 'Small Business Week Online', sponsor: false,
+    place: { region: 'online' } });
   // Идущая игра: 4 месяца рассчитаны, пятый открыт.
   const live = await seedGame(server.sql, { months: 4 });
   await live.call(ADMIN, 'openRound', { gameId: live.gameId });
@@ -74,6 +76,8 @@ try {
   await step('sign-in on a phone: email, code, My games', async () => {
     const p = await page(browser, 'phone');
     await p.goto(base);
+    await p.getByText('To register for the game, please enter your email').waitFor();
+    assert.equal(await p.locator('.login__tagline').count(), 0, 'no slogan on the sign-in screen');
     await p.getByLabel('Email').fill('nobody@example.com');
     await p.getByRole('button', { name: 'Send me a code' }).click();
     await p.getByText('isn\'t on any game roster').waitFor();
@@ -176,6 +180,35 @@ try {
     await p.close();
   });
 
+  await step('new team joins: only name and restaurant; an online game also asks where', async () => {
+    const NEW = 'newbie@example.com';
+    const here = await live.call(ADMIN, 'createGame', { title: 'Austin Lunch', league: 'start', ...AUSTIN });
+    await live.call(ADMIN, 'setRoster', { gameId: here.gameId, emails: [NEW] });
+    const p = await page(browser, 'phone', NEW);
+    await p.goto(base + '#/g/' + here.gameId);
+    await p.getByRole('heading', { name: 'Welcome to the game' }).waitFor();
+    assert.equal(await p.getByLabel('Country').count(), 0, 'the host set the place: no questions about it');
+    await p.getByLabel('Your name').fill('Nina');
+    await p.getByLabel('Restaurant name').fill('Nina’s Kitchen');
+    await shot(p, 'phone-12-join');
+    await p.getByRole('button', { name: 'Start playing' }).click();
+    await p.getByText('The game hasn\'t started yet').waitFor();
+
+    // Онлайн-игра: команда указывает страну, а в России — регион.
+    const web = await live.call(ADMIN, 'createGame', { title: 'Webinar Cup', league: 'start', region: 'online' });
+    await live.call(ADMIN, 'setRoster', { gameId: web.gameId, emails: [NEW] });
+    await p.goto(base + '#/g/' + web.gameId);
+    await p.getByRole('heading', { name: 'Welcome to the game' }).waitFor();
+    await p.getByLabel('Country').selectOption('RU');
+    await p.getByLabel('Region').selectOption('MOW');
+    await shot(p, 'phone-13-join-online');
+    await p.getByRole('button', { name: 'Start playing' }).click();
+    await p.getByText('The game hasn\'t started yet').waitFor();
+    const mon = await live.call(ADMIN, 'monitor', { gameId: web.gameId });
+    assert.deepEqual(mon.players[0].location, { country: 'RU', area: 'MOW' });
+    await p.close();
+  });
+
   for (const kind of ['tablet', 'laptop', 'wide']) {
     await step(kind + ': business with scoreboard / guide side by side', async () => {
       const p = await page(browser, kind, TEAMS[1].email);
@@ -262,7 +295,12 @@ try {
   await step('create a game with an uploaded sponsor logo', async () => {
     const p = await page(browser, 'laptop', ADMIN);
     await p.goto(base + '#/new');
-    await p.getByLabel('Game title').fill('Houston Chamber · Winter');
+    await p.getByLabel('Game title').fill('Albany Chamber · Winter');
+    // Место по языку сайта ведущего: Северная Америка, США. Штат подставляет пояс.
+    assert.equal(await p.getByLabel('World region').inputValue(), 'north_america');
+    assert.equal(await p.getByLabel('Country').inputValue(), 'US');
+    await p.getByLabel('State').selectOption('NY');
+    assert.equal(await p.getByLabel('Time zone').inputValue(), 'America/New_York', 'time zone from the state');
     await p.getByText('Growth · 24 months').click();
     await p.getByText('Sponsor (optional)').click();
     await p.getByLabel('Sponsor name').fill('Lone Star Coffee Roasters');
@@ -284,6 +322,26 @@ try {
       return img && img.complete && img.naturalWidth === 101;
     });
     await b.close();
+    await p.close();
+    const [g] = await server.sql`select region, country, area, timezone from games where title = 'Albany Chamber · Winter'`;
+    assert.deepEqual({ ...g }, { region: 'north_america', country: 'US', area: 'NY', timezone: 'America/New_York' });
+  });
+
+  await step('host in Russian: a game in a Russian region, time zone from the region', async () => {
+    const p = await page(browser, 'laptop', ADMIN);
+    await p.addInitScript(() => localStorage.setItem('mg-lang', 'ru'));
+    await p.goto(base + '#/new');
+    await p.getByRole('heading', { name: 'Создать игру' }).waitFor();
+    assert.equal(await p.getByLabel('Регион мира').inputValue(), 'cis', 'Russian host: Russia & CIS');
+    assert.equal(await p.getByLabel('Страна').inputValue(), 'RU');
+    await p.getByLabel('Название игры').fill('Екатеринбург · весна');
+    await p.getByLabel('Регион', { exact: true }).selectOption('SVE');
+    assert.equal(await p.getByLabel('Часовой пояс').inputValue(), 'Asia/Yekaterinburg', 'time zone from the region');
+    await shot(p, 'lang-ru-03-create', true);
+    await p.getByRole('button', { name: 'Создать игру' }).click();
+    await p.getByText('Всё готово к старту').waitFor();
+    const [g] = await server.sql`select region, country, area, timezone, language from games where title = 'Екатеринбург · весна'`;
+    assert.deepEqual({ ...g }, { region: 'cis', country: 'RU', area: 'SVE', timezone: 'Asia/Yekaterinburg', language: 'ru' });
     await p.close();
   });
 
@@ -398,6 +456,12 @@ try {
     await p.goto(base + 'rating/');
     await p.locator('.table--rating').waitFor();
     await shot(p, 'phone-10-rating', true);
+    // Фильтр по месту: регион мира, страна, штат.
+    await p.getByLabel('Where').selectOption('a:US:TX');
+    const places = await p.locator('.table--rating tbody td:nth-child(3)').allTextContents();
+    assert.ok(places.length && places.every((x) => x === 'Texas, US'), 'only Texas teams: ' + places.join(' | '));
+    await p.getByLabel('Where').selectOption('r:north_america');
+    assert.ok((await p.locator('.table--rating tbody tr').count()) > places.length, 'the whole region');
     await p.close();
   });
 

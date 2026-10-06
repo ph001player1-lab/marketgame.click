@@ -4,7 +4,6 @@
 
 export default {
   brand: 'Market Game',
-  tagline: 'Hacia aguas nuevas, no a la pelea',
 
   common: {
     loading: 'Cargando…',
@@ -66,7 +65,7 @@ export default {
 
   login: {
     title: 'Iniciar sesión',
-    lead: 'Usa el correo que el facilitador agregó al juego. Te enviaremos un código de 6 dígitos; no necesitas contraseña.',
+    lead: 'Para registrarte en el juego, escribe tu correo: te enviaremos un código de verificación.',
     email: 'Correo electrónico',
     sendCode: 'Enviarme un código',
     codeSent: 'Enviamos un código de 6 dígitos a {email}. Vale por una hora.',
@@ -101,11 +100,6 @@ export default {
     name: 'Tu nombre',
     restaurant: 'Nombre del restaurante',
     where: '¿Dónde hacen negocios?',
-    inState: 'En un estado',
-    multistate: 'En todo EE. UU. (varios estados)',
-    international: 'Fuera de EE. UU.',
-    state: 'Estado',
-    country: 'País',
     start: 'Empezar a jugar',
     edit: 'Editar perfil'
   },
@@ -450,9 +444,6 @@ export default {
     months: '{n} meses',
     filter: 'Dónde',
     all: 'En todas partes',
-    multistate: 'En todo EE. UU.',
-    usShort: 'EE. UU.',
-    international: 'Fuera de EE. UU.',
     gamesList: '{n} juegos',
     gamesList_one: '{n} juego',
     gameLine: 'lugar {place} de {rivals}, {capital}, ×{mult}',
@@ -519,7 +510,7 @@ export default {
     confirmGrantAll: '¿Dar {amount} a cada equipo fuera del negocio?',
     massDone: 'Listo: equipos {n}, {total} en total.',
     sharesTitle: 'Participación de la ciudad',
-    sharesLead: 'Cuánto de cada empresa es de la ciudad. El resto es de los equipos (participaciones) y de dueños privados. La ciudad recibe cada mes su parte de las utilidades de cada empresa.',
+    sharesLead: 'Cuánto de cada empresa es de la ciudad; en un juego nuevo, el 100 %. El resto es de los equipos (participaciones) y de dueños privados. La ciudad recibe cada mes su parte de las utilidades de cada empresa.',
     cityPct: 'La ciudad posee, %',
     cityShareSaved: 'Ahora la ciudad posee el {pct} {inst}.',
     stakesTitle: 'Participaciones',
@@ -539,6 +530,10 @@ export default {
     gameInfo: 'Datos del juego',
     language: 'Idioma del juego',
     languageHint: 'Todos ven el juego en este idioma, salvo que elijan otro en el menú.',
+    place: 'Dónde se juega',
+    worldRegion: 'Región del mundo',
+    placeFixed: 'Los equipos quedan aquí automáticamente: al entrar solo escriben su nombre y el de su restaurante.',
+    placeOnline: 'Cada equipo indica su país al entrar; en EE. UU., también su estado, y en Rusia, su región.',
     title: 'Nombre del juego', titlePlaceholder: 'p. ej. Cámara de Austin, sesión de otoño',
     organizer: 'Organizador', organizerPlaceholder: 'p. ej. Cámara de Comercio de Austin',
     scheduled: 'Fecha y hora', scheduledHint: 'En la zona horaria del juego.',
@@ -739,12 +734,12 @@ export default {
         ]
       },
       price: {
-        title: 'Precio',
+        title: 'Precio de venta y costo de compra',
         body: [
-          'Precio de referencia: **{pRef}**. Puedes cobrar de {floor} a {ceiling}.',
+          'El **precio de venta** es lo que paga un cliente por una comida. Precio de referencia: **{pRef}**; puedes cobrar de {floor} a {ceiling}.',
           '- Los clientes se fijan en el precio: 10 % más barato te hace cerca de 26 % más atractivo; 10 % más caro, cerca de 19 % menos.',
           '- Arriba de **{softCap}** está el punto de dolor: los clientes se van de golpe, no poco a poco.',
-          '- Cada comida te cuesta {cogs} en alimentos e insumos, más si subes la calidad. No cobres menos que eso.',
+          '- El **costo de compra** es lo que pagas a los proveedores por una comida: **{cogs}** con calidad 0; {cogs1} con calidad 1, {cogs2} con 2, {cogs3} con 3 (+{qadd} por punto). Cobra siempre más que eso.',
           '- Un precio que se siente justo para tu calidad hace crecer tu marca más rápido.'
         ]
       },
@@ -829,7 +824,7 @@ export default {
         title: 'Arrendador, banco, aseguradora, servicios y participaciones',
         body: [
           'La renta, los intereses, el seguro y los servicios que pagan los restaurantes son ingresos de cuatro empresas. Cada mes cada empresa reparte sus utilidades entre sus dueños según su participación, después de cubrir sus propias pérdidas anteriores. El banco pierde los préstamos que los equipos en quiebra nunca pagaron.',
-          'La ciudad es dueña de una parte de cada empresa (el facilitador decide cuánto); el resto es de dueños privados. La ciudad puede vender parte de lo suyo a un equipo: desde entonces ese equipo recibe cada mes su parte de las utilidades como dividendos. Las recompras y los tratos entre equipos también pasan por el facilitador.',
+          'Estas empresas son de la ciudad: al empezar el juego, completas; el facilitador puede pasar una parte a dueños privados. La ciudad puede vender parte de lo suyo a un equipo: desde entonces ese equipo recibe cada mes su parte de las utilidades como dividendos. Las recompras y los tratos entre equipos también pasan por el facilitador.',
           '> Las participaciones no cuentan en tu capital final: solo cuenta el dinero. Vale la pena comprar una participación si sus dividendos la pagan antes de que termine el juego.',
           'Cuando un equipo sale del juego, sus participaciones regresan a la ciudad.',
           'Una jugada clásica: pedir un préstamo, comprar una participación de la aseguradora y luego convencer a la ciudad de subir las primas de seguro.'
@@ -890,11 +885,23 @@ export default {
     arizona: 'Arizona (Phoenix)', pacific: 'Pacífico (Los Ángeles)', alaska: 'Alaska (Anchorage)',
     hawaii: 'Hawái (Honolulu)', atlantic: 'Atlántico (Puerto Rico)', toronto: 'Toronto', mexicoCity: 'Ciudad de México',
     saoPaulo: 'São Paulo', london: 'Londres', berlin: 'Berlín', dubai: 'Dubái', bangkok: 'Bangkok', tokyo: 'Tokio',
-    sydney: 'Sídney', utc: 'UTC'
+    sydney: 'Sídney', moscow: 'Moscú', utc: 'UTC'
   },
 
   charts: {
     legend: 'Leyenda', highlight: 'Resaltar {name}', other: 'Otros', nothing: 'Nada este mes'
+  },
+
+  regions: {
+    north_america: 'Norteamérica', latin_america: 'Latinoamérica', europe: 'Europa', cis: 'Rusia y la CEI',
+    middle_east_africa: 'Medio Oriente y África', asia: 'Asia', oceania: 'Australia y Oceanía',
+    online: 'En línea: equipos de distintos países y regiones'
+  },
+
+  geo: {
+    country: 'País', state: 'Estado', region: 'Región', city: 'Ciudad o región', cityHint: 'Opcional.',
+    pickCountry: '— elige un país —', pickState: '— elige un estado —', pickRegion: '— elige una región —',
+    notSpecified: '— sin especificar —'
   },
 
   stars: {
@@ -970,8 +977,9 @@ export default {
     too_many_teams: 'Hasta {max} equipos por juego.',
     restaurant_taken: 'Otro equipo ya usa ese nombre de restaurante.',
     bad_state: 'Elige un estado.',
-    bad_country: 'Escribe tu país.',
-    bad_location: 'Dinos dónde haces negocios.',
+    bad_country: 'Elige un país.',
+    bad_ru_region: 'Elige una región.',
+    bad_region: 'Elige dónde se juega.',
     empty: 'Llena todos los campos.',
     bad_code: 'Escribe el código del juego.',
     bad_game: 'No se encontró el juego.',

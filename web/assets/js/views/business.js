@@ -9,9 +9,8 @@ import { t, errorText } from '../i18n.js';
 import { h, $, replace, toast, confirmDialog, busy, field, moneyInput, card } from '../dom.js';
 import { usd, usdSigned, int, dec2, pct, pctRaw, parseMoney, dateTime } from '../fmt.js';
 import { act } from '../api.js';
-import { US_STATES, teamName, starsBadge } from './common.js';
-
-export { US_STATES };
+import { teamName, starsBadge } from './common.js';
+import { ONLINE, countryOptions, hasAreaList, areaOptions } from '../geo.js';
 
 const CHANNELS = ['seo', 'promo', 'maps', 'social', 'outdoor', 'affiliate'];
 const CHANNEL_FIELD = {
@@ -130,35 +129,43 @@ export function createBusiness(root, ctx) {
 
   // ----------------------------------------------------------------- профиль
 
+  /**
+   * Где команда ведёт бизнес — только в онлайн-игре. В игре в одном месте
+   * его задал ведущий: команда вводит лишь имя и название ресторана.
+   * Страна — из списка; в США — штат, в России — регион, в других странах
+   * город или регион текстом, по желанию.
+   */
   function locationFields(s) {
+    if (s.game.location?.region !== ONLINE) return null;
     const loc = s.player.location || {};
-    const kind = loc.kind || 'state';
-    const radios = [
-      ['state', t('profile.inState')], ['multistate', t('profile.multistate')], ['international', t('profile.international')]
-    ].map(([v, label]) => h('label', { class: 'radio' },
-      h('input', { type: 'radio', name: 'loc-kind', value: v, checked: v === kind }), label));
-    const stateSel = h('select', { class: 'input' },
-      h('option', { value: '' }, '—'),
-      US_STATES.map(([code, name]) => h('option', { value: code, selected: loc.state === code }, name)));
-    const country = h('input', { class: 'input', type: 'text', autocomplete: 'country-name', value: loc.country || '', maxlength: 60 });
-    const stateField = field(t('profile.state'), stateSel);
-    const countryField = field(t('profile.country'), country);
-    const group = h('div', {},
-      h('div', { class: 'field__label' }, t('profile.where')),
-      h('div', { class: 'radio-list' }, radios), stateField, countryField);
-    const sync = () => {
-      const k = group.querySelector('input[name="loc-kind"]:checked')?.value;
-      stateField.hidden = k !== 'state';
-      countryField.hidden = k !== 'international';
+    const country = h('select', { class: 'input', autocomplete: 'country' },
+      h('option', { value: '' }, t('geo.pickCountry')),
+      countryOptions(null).map(([code, name]) => h('option', { value: code, selected: code === loc.country }, name)));
+    const areaBox = h('div', {});
+    let area = null;
+    const paint = () => {
+      const c = country.value;
+      const mine = c === loc.country ? loc.area || '' : '';
+      if (hasAreaList(c)) {
+        area = h('select', { class: 'input' },
+          h('option', { value: '' }, t(c === 'US' ? 'geo.pickState' : 'geo.pickRegion')),
+          areaOptions(c).map(([code, name]) => h('option', { value: code, selected: code === mine }, name)));
+        replace(areaBox, field(t(c === 'US' ? 'geo.state' : 'geo.region'), area));
+      } else if (c) {
+        area = h('input', { class: 'input', type: 'text', maxlength: 60, autocomplete: 'address-level2', value: mine });
+        replace(areaBox, field(t('geo.city'), area, t('geo.cityHint')));
+      } else {
+        area = null;
+        replace(areaBox);
+      }
     };
-    group.addEventListener('change', sync);
-    sync();
+    country.addEventListener('change', paint);
+    paint();
     return {
-      el: group,
-      value: () => ({
-        locationKind: group.querySelector('input[name="loc-kind"]:checked')?.value,
-        locationState: stateSel.value, locationCountry: country.value.trim()
-      })
+      el: h('fieldset', { class: 'fieldset' },
+        h('legend', { class: 'field__label' }, t('profile.where')),
+        field(t('geo.country'), country), areaBox),
+      value: () => ({ locationCountry: country.value, locationArea: area ? area.value.trim() : '' })
     };
   }
 
@@ -169,9 +176,9 @@ export function createBusiness(root, ctx) {
     const btn = h('button', { class: 'btn btn--primary', type: 'submit' }, submitLabel);
     return h('form', { onsubmit: (e) => {
       e.preventDefault();
-      run(btn, 'setProfile', { displayName: name.value.trim(), restaurantName: rest.value.trim(), ...loc.value() })
+      run(btn, 'setProfile', { displayName: name.value.trim(), restaurantName: rest.value.trim(), ...loc?.value() })
         .then((res) => { if (res?.ok) onDone?.(); });
-    } }, field(t('profile.name'), name), field(t('profile.restaurant'), rest), loc.el, btn);
+    } }, field(t('profile.name'), name), field(t('profile.restaurant'), rest), loc?.el ?? null, btn);
   }
 
   function profilePart() {

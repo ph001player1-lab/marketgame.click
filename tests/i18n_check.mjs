@@ -73,6 +73,11 @@ const dynamic = {
   'ocean.summary.': ['earned', 'lost'],
   'ocean.driver.': ['priceWar', 'priceOk', 'adRace', 'adOk', 'crowded', 'roomy', 'feedsHow', 'quality', 'noQuality']
 };
+// Регионы мира — из списка geo.js и «онлайн».
+const geoSrc = readFileSync(join(root, 'web/assets/js/geo.js'), 'utf8');
+const regionList = /export const REGIONS = \{([\s\S]*?)\n\};/.exec(geoSrc);
+if (!regionList) missing.add('(could not read REGIONS from geo.js)');
+else dynamic['regions.'] = [...regionList[1].matchAll(/^  ([a-z_]+):/gm)].map((m) => m[1]).concat('online');
 for (const c of ['seo', 'promo', 'maps', 'social', 'outdoor', 'affiliate']) {
   dynamic['channels.' + c + '.'] = ['name', 'blurb'];
 }

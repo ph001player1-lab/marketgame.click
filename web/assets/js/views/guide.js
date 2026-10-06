@@ -17,6 +17,9 @@ const CHANNELS = ['seo', 'promo', 'maps', 'social', 'outdoor', 'affiliate'];
 /** $30 или $32.50 — центы только там, где они есть. */
 const money = (v) => (Number.isInteger(Number(v)) ? usd(v) : usdc(v));
 
+/** Закупочная цена блюда при качестве q: продукты дорожают с качеством. */
+const cogsAt = (r, q) => Math.round(r.cogsPerMeal * (1 + r.qualityCogsAdd * q) * 100) / 100;
+
 /** Текст с **жирным** — без innerHTML: безопасно при любой строке. */
 function rich(text) {
   const out = [];
@@ -61,6 +64,8 @@ function varsFor(rules, game) {
     feedsText: tn('ocean.nRestaurants', Math.max(1, Math.floor((r.marketBase * margin) / r.fixedTotal))),
     floor: money(r.priceFloor), ceiling: money(r.priceCeiling), softCap: money(r.priceSoftCap),
     cogs: money(r.cogsPerMeal), qadd: pct(r.qualityCogsAdd),
+    // Закупочная цена блюда при качестве 1, 2 и 3 — как в расчёте месяца.
+    cogs1: money(cogsAt(r, 1)), cogs2: money(cogsAt(r, 2)), cogs3: money(cogsAt(r, 3)),
     marketBase: int(r.marketBase), gain: pct(r.marketQualityGain), catMin: decimal(r.marketPriceMin), catMax: decimal(r.marketPriceMax),
     capacityBase: int(r.capacityBase), step: int(r.shiftStepCapacity), cost: usd(r.shiftStepCost),
     min: r.shiftsMin, max: r.shiftsMax,

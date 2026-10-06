@@ -14,7 +14,7 @@ export function renderLogin(root, { onSignedIn, note = null }) {
   stepEmail('');
 
   function brand() {
-    return h('div', {}, h('div', { class: 'login__brand' }, t('brand')), h('p', { class: 'login__tagline' }, t('tagline')));
+    return h('div', { class: 'login__brand' }, t('brand'));
   }
 
   function stepEmail(prefill) {

@@ -9,6 +9,7 @@ import {
   businessReset, addLedger, addNotice, moneyTarget, available, OFF_BUSINESS, usd, teamLabel,
   INSTITUTIONS, directImageUrl, starsNow, type RoundRow
 } from './lib.ts';
+import { ONLINE, playerLocation, teamLocation } from './geo.ts';
 
 // ----------------------------------------------------------------- общее
 
@@ -19,6 +20,8 @@ export function gameMeta(game: Row, round: RoundRow) {
     id: String(game.id), code: String(game.code), title: String(game.title),
     league, leagueName: LEAGUES[league]?.name ?? league, totalRounds: total,
     language: String(game.language ?? 'en'),
+    // Где идёт игра; в онлайн-игре страну указывает каждая команда.
+    location: { region: String(game.region ?? ONLINE), country: game.country ?? null, area: game.area ?? null },
     practice: !!game.practice, status: String(game.status),
     roundNumber: num(round.round_number), roundStatus: round.status,
     deadline: round.status === 'open' ? round.deadline : null,
@@ -111,11 +114,11 @@ export function formatResult(r: Row | undefined) {
   };
 }
 
-function publicPlayer(p: Row) {
+function publicPlayer(game: Row, p: Row) {
   return {
     id: String(p.id), restaurant: teamLabel(p), displayName: p.display_name ?? null,
     status: String(p.status),
-    location: { kind: p.location_kind ?? null, state: p.location_state ?? null, country: p.location_country ?? null }
+    location: teamLocation(game, p)
   };
 }
 
@@ -176,20 +179,22 @@ export async function dashboard(sql: Sql, game: Row, playerId: string, impersona
     player: {
       id: String(player.id), displayName: player.display_name ?? '',
       restaurant: player.restaurant_name ?? '',
-      location: { kind: player.location_kind ?? null, state: player.location_state ?? null,
-                  country: player.location_country ?? null },
+      // Что команда сама указала о себе — для формы профиля в онлайн-игре.
+      location: { country: player.location_country ?? null, area: player.location_area ?? null },
       status: String(player.status),
       cash: num(player.cash), savings: num(player.employment_savings),
       stars
     },
     // Данные из прошлой игры подставлены, но команда подтверждает их в
-    // каждой новой игре: название ресторана часто меняют.
-    needsProfile: !player.joined_at || !player.display_name || !player.restaurant_name || !player.location_kind,
+    // каждой новой игре: название ресторана часто меняют. Место не
+    // спрашиваем: его задал ведущий, а в онлайн-игре оно обязательно при
+    // первом входе (setProfile).
+    needsProfile: !player.joined_at || !player.display_name || !player.restaurant_name,
     lastResult: formatResult(last),
     notices: notices.map((n) => ({
       id: num(n.id), kind: n.kind, message: n.message, params: n.params ?? null, roundNumber: num(n.round_number)
     })),
-    others: others.filter((o) => o.restaurant_name).map(publicPlayer),
+    others: others.filter((o) => o.restaurant_name).map((o) => publicPlayer(game, o)),
     stakes,
     careerOptions: { civilServiceSalary: cfg.CIVIL_SERVICE_SALARY, reopenThreshold: cfg.REOPEN_THRESHOLD },
     reportToken: impersonating ? null : String(player.report_token)
@@ -210,7 +215,7 @@ export async function dashboard(sql: Sql, game: Row, playerId: string, impersona
         ? await sql`select * from players where id = ${player.employer_id}` : [];
       Object.assign(employment, {
         professionName: player.custom_profession_name ?? '',
-        employer: employer ? publicPlayer(employer) : null,
+        employer: employer ? publicPlayer(game, employer) : null,
         proposedSalary: num(player.proposed_salary),
         approved: !!player.employment_approved,
         paidThisRound: !!player.salary_paid_this_round
@@ -278,26 +283,18 @@ async function lockPlayer(tx: Sql, playerId: string): Promise<Row> {
   return p;
 }
 
-const LOCATION_KINDS = ['state', 'multistate', 'international'];
-
-// 50 штатов и округ Колумбия — как на marketgame.biz.
-export const US_STATES = new Set([
-  'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'DC', 'FL', 'GA', 'HI', 'ID', 'IL', 'IN', 'IA',
-  'KS', 'KY', 'LA', 'ME', 'MD', 'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ', 'NM',
-  'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC', 'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA',
-  'WV', 'WI', 'WY'
-]);
-
+/**
+ * Профиль команды: имя и название ресторана. Место в игре в одном месте
+ * задал ведущий — его не спрашиваем и не трогаем. В онлайн-игре команда
+ * указывает страну и штат, регион или город (geo.ts playerLocation).
+ */
 export async function setProfile(sql: Sql, game: Row, playerId: string, b: Row) {
   const displayName = String(b.displayName ?? '').trim().slice(0, 60);
   const restaurant = String(b.restaurantName ?? '').trim().slice(0, 60);
-  const kind = String(b.locationKind ?? '');
-  const state = String(b.locationState ?? '').trim().toUpperCase();
-  const country = String(b.locationCountry ?? '').trim().slice(0, 60);
   if (!displayName || !restaurant) fail('empty');
-  if (!LOCATION_KINDS.includes(kind)) fail('bad_location');
-  if (kind === 'state' && !US_STATES.has(state)) fail('bad_state');
-  if (kind === 'international' && !country) fail('bad_country');
+  const place = game.region === ONLINE
+    ? playerLocation({ country: b.locationCountry, area: b.locationArea })
+    : null;
 
   const [dup] = await sql`
     select 1 from players where game_id = ${game.id} and id <> ${playerId}
@@ -306,9 +303,7 @@ export async function setProfile(sql: Sql, game: Row, playerId: string, b: Row) 
 
   await sql`update players set ${sql({
     display_name: displayName, restaurant_name: restaurant,
-    location_kind: kind,
-    location_state: kind === 'state' ? state : null,
-    location_country: kind === 'international' ? country : null,
+    ...(place ? { location_country: place.country, location_area: place.area } : {}),
     joined_at: new Date()
   })} where id = ${playerId}`;
   return { ok: true };

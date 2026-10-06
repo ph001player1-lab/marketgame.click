@@ -4,7 +4,6 @@
 
 export default {
   brand: 'Market Game',
-  tagline: 'Rumo a novas águas — não à briga',
 
   common: {
     loading: 'Carregando…',
@@ -66,7 +65,7 @@ export default {
 
   login: {
     title: 'Entrar',
-    lead: 'Use o e-mail que o facilitador cadastrou no jogo. Vamos enviar um código de 6 dígitos — não precisa de senha.',
+    lead: 'Para se registrar no jogo, informe seu e-mail — enviaremos um código de verificação para ele.',
     email: 'E-mail',
     sendCode: 'Enviar código',
     codeSent: 'Enviamos um código de 6 dígitos para {email}. Ele vale por uma hora.',
@@ -101,11 +100,6 @@ export default {
     name: 'Seu nome',
     restaurant: 'Nome do restaurante',
     where: 'Onde vocês fazem negócios?',
-    inState: 'Em um estado',
-    multistate: 'Em vários estados dos EUA',
-    international: 'Fora dos EUA',
-    state: 'Estado',
-    country: 'País',
     start: 'Começar a jogar',
     edit: 'Editar perfil'
   },
@@ -450,9 +444,6 @@ export default {
     months: '{n} meses',
     filter: 'Onde',
     all: 'Em todo lugar',
-    multistate: 'Em vários estados dos EUA',
-    usShort: 'EUA',
-    international: 'Fora dos EUA',
     gamesList: '{n} jogos',
     gamesList_one: '{n} jogo',
     gameLine: '{place}º lugar de {rivals}, {capital}, ×{mult}',
@@ -519,7 +510,7 @@ export default {
     confirmGrantAll: 'Dar {amount} a cada equipe fora do negócio?',
     massDone: 'Pronto: equipes {n}, {total} no total.',
     sharesTitle: 'Participação da cidade',
-    sharesLead: 'Quanto de cada empresa pertence à cidade. O resto é das equipes (cotas) e de donos privados. Todo mês a cidade recebe sua parte do lucro de cada empresa.',
+    sharesLead: 'Quanto de cada empresa pertence à cidade; num jogo novo, 100%. O resto é das equipes (cotas) e de donos privados. Todo mês a cidade recebe sua parte do lucro de cada empresa.',
     cityPct: 'A cidade tem, %',
     cityShareSaved: 'Agora a cidade tem {pct} {inst}.',
     stakesTitle: 'Cotas',
@@ -539,6 +530,10 @@ export default {
     gameInfo: 'Dados do jogo',
     language: 'Idioma do jogo',
     languageHint: 'Todos veem o jogo neste idioma, a menos que escolham outro no menu.',
+    place: 'Onde o jogo acontece',
+    worldRegion: 'Região do mundo',
+    placeFixed: 'As equipes ficam aqui automaticamente: ao entrar, só informam o próprio nome e o nome do restaurante.',
+    placeOnline: 'Cada equipe informa o país ao entrar; nos EUA, também o estado, e na Rússia, a região.',
     title: 'Nome do jogo', titlePlaceholder: 'ex.: Câmara de Austin, turma de outono',
     organizer: 'Organizador', organizerPlaceholder: 'ex.: Câmara de Comércio de Austin',
     scheduled: 'Data e hora', scheduledHint: 'No fuso horário do jogo.',
@@ -739,12 +734,12 @@ export default {
         ]
       },
       price: {
-        title: 'Preço',
+        title: 'Preço de venda e custo de compra',
         body: [
-          'Preço de referência: **{pRef}**. Você pode cobrar de {floor} a {ceiling}.',
+          'O **preço de venda** é o que o cliente paga por uma refeição. Preço de referência: **{pRef}**; você pode cobrar de {floor} a {ceiling}.',
           '- Os clientes prestam atenção no preço: 10% mais barato deixa você cerca de 26% mais atraente; 10% mais caro, cerca de 19% menos.',
           '- Acima de **{softCap}** é o ponto de dor: os clientes vão embora de uma vez, não aos poucos.',
-          '- Cada refeição custa {cogs} em alimentos e insumos, mais com qualidade maior. Não cobre menos que isso.',
+          '- O **custo de compra** é o que você paga aos fornecedores por uma refeição: **{cogs}** com qualidade 0; {cogs1} com qualidade 1, {cogs2} com 2, {cogs3} com 3 (+{qadd} por ponto). Cobre sempre mais que isso.',
           '- Um preço que parece justo para a sua qualidade faz a marca crescer mais rápido.'
         ]
       },
@@ -829,7 +824,7 @@ export default {
         title: 'Locador, banco, seguradora, concessionária — e cotas',
         body: [
           'O aluguel, os juros, o seguro e as contas que os restaurantes pagam são receita de quatro empresas. Todo mês cada empresa distribui o lucro aos donos na proporção das cotas — depois de cobrir os próprios prejuízos anteriores. O banco perde os empréstimos que as equipes falidas nunca pagaram.',
-          'A cidade tem parte de cada empresa (o facilitador decide quanto); donos privados têm o resto. A cidade pode vender parte das suas cotas a uma equipe: a partir daí, essa equipe recebe todo mês sua parte do lucro como dividendos. Recompras e acordos entre equipes também passam pelo facilitador.',
+          'Essas empresas pertencem à cidade — inteiras no início do jogo; o facilitador pode passar parte delas a donos privados. A cidade pode vender parte das suas cotas a uma equipe: a partir daí, essa equipe recebe todo mês sua parte do lucro como dividendos. Recompras e acordos entre equipes também passam pelo facilitador.',
           '> Cotas não contam no capital final — só o dinheiro conta. Vale comprar uma cota se os dividendos a pagarem antes do fim do jogo.',
           'Quando uma equipe sai do jogo, as cotas dela voltam para a cidade.',
           'Uma jogada clássica: pegar um empréstimo, comprar cotas da seguradora e depois convencer a cidade a aumentar os prêmios de seguro.'
@@ -890,11 +885,23 @@ export default {
     arizona: 'Arizona (Phoenix)', pacific: 'Pacífico (Los Angeles)', alaska: 'Alasca (Anchorage)',
     hawaii: 'Havaí (Honolulu)', atlantic: 'Atlântico (Porto Rico)', toronto: 'Toronto', mexicoCity: 'Cidade do México',
     saoPaulo: 'São Paulo', london: 'Londres', berlin: 'Berlim', dubai: 'Dubai', bangkok: 'Bangkok', tokyo: 'Tóquio',
-    sydney: 'Sydney', utc: 'UTC'
+    sydney: 'Sydney', moscow: 'Moscou', utc: 'UTC'
   },
 
   charts: {
     legend: 'Legenda', highlight: 'Destacar {name}', other: 'Outros', nothing: 'Nada neste mês'
+  },
+
+  regions: {
+    north_america: 'América do Norte', latin_america: 'América Latina', europe: 'Europa', cis: 'Rússia e CEI',
+    middle_east_africa: 'Oriente Médio e África', asia: 'Ásia', oceania: 'Austrália e Oceania',
+    online: 'Online — equipes de países e regiões diferentes'
+  },
+
+  geo: {
+    country: 'País', state: 'Estado', region: 'Região', city: 'Cidade ou região', cityHint: 'Opcional.',
+    pickCountry: '— escolha um país —', pickState: '— escolha um estado —', pickRegion: '— escolha uma região —',
+    notSpecified: '— não informado —'
   },
 
   stars: {
@@ -970,8 +977,9 @@ export default {
     too_many_teams: 'Até {max} equipes por jogo.',
     restaurant_taken: 'Outra equipe já usa esse nome de restaurante.',
     bad_state: 'Escolha um estado.',
-    bad_country: 'Informe o seu país.',
-    bad_location: 'Conte onde vocês fazem negócios.',
+    bad_country: 'Escolha um país.',
+    bad_ru_region: 'Escolha uma região.',
+    bad_region: 'Escolha onde o jogo acontece.',
     empty: 'Preencha todos os campos.',
     bad_code: 'Digite o código do jogo.',
     bad_game: 'Jogo não encontrado.',
