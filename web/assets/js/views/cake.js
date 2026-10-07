@@ -276,7 +276,21 @@ export function createCake(root, { big = false } = {}) {
   replace(root, el);
 
   let frame = 0;
-  const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(() => schedule()) : null;
+  // Перерисовываем, когда меняется ширина (на проекторе — и высота). Высоту
+  // в игре задаёт сам пирог: на неё не реагируем, иначе перерисовка
+  // зациклилась бы на появлении полосы прокрутки.
+  // Если ширина прыгает туда-обратно (полоса прокрутки то есть, то нет),
+  // второй раз подряд за секунду на тот же размер не перерисовываем.
+  const sizes = [];
+  const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(() => {
+    const key = pies.clientWidth + (big ? 'x' + pies.clientHeight : '');
+    const now = Date.now();
+    if (sizes.length && sizes[sizes.length - 1].key === key) return;
+    const back = sizes.length >= 2 && sizes[sizes.length - 2].key === key && now - sizes[sizes.length - 2].at < 1000;
+    sizes.push({ key, at: now });
+    if (sizes.length > 3) sizes.shift();
+    if (!back) schedule();
+  }) : null;
   ro?.observe(pies);
   function schedule() {
     cancelAnimationFrame(frame);
