@@ -426,6 +426,7 @@ export default {
     share: '{pct} of the market',
     guests: '{served} served',
     guestsLost: '{attracted} attracted → {served} served',
+    price: '{amount} per meal',
     cashFlow: '{amount} cash flow',
     plus: 'positive cash flow', minus: 'negative',
     lostNote: 'attracted → served: the rest found no seat',

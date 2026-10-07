@@ -432,6 +432,7 @@ export default {
     share: '{pct} рынка',
     guests: '{served} обслужено',
     guestsLost: '{attracted} привлечено → {served} обслужено',
+    price: 'розничная цена {amount}',
     cashFlow: '{amount} денежный поток',
     plus: 'денежный поток в плюсе', minus: 'в минусе',
     lostNote: 'привлечено → обслужено: остальным гостям не хватило мест',

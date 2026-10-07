@@ -413,7 +413,12 @@ select.input.input--inline,.input.input--inline{width:auto;max-width:100%;min-he
 .cake--big .cake__pies{flex:1;min-height:0}
 .cake--big .cake__row--side{height:100%}
 .cake--big .cake__panel{display:flex;flex-direction:column;min-height:0}
-.cake--big .cake__plot{flex:1;min-height:0;display:flex;align-items:center;justify-content:center}
+.cake--big .cake__plot{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;gap:16px}
+.cake--big .cake__list{flex:0 1 auto;min-width:240px;max-height:100%;overflow:hidden;margin:0;font-size:15px}
+.cake--big .cake__list li{padding:4px 0}
+.cake--big .cake__plot>.cake__svg:not(:only-child){flex-shrink:0}
+.cake__list--two{columns:2;column-gap:20px}
+.cake__list--two li{break-inside:avoid}
 .cake--big .cake__title{font-size:24px}
 .cake--big .cake__summary{font-size:22px}
 .cake--big .cake__h{font-size:24px}

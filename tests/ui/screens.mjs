@@ -59,6 +59,29 @@ async function page(browser, kind, email) {
 
 const shot = (p, name, full = false) => p.screenshot({ path: `${OUT}/${name}.png`, fullPage: full });
 
+/**
+ * «Кусок Пирога»: пирог денег во столько раз больше пунктира (базового
+ * рынка) по диаметру, во сколько выручка больше базы (×N в строке рынка), а
+ * первый пирог — размером с пунктир. У команд подписана розничная цена.
+ */
+async function checkCake(p, where) {
+  const got = await p.evaluate(() => {
+    const radius = (svg) => { const g = svg?.querySelector('g'); if (!g) return 0; const b = g.getBBox(); return Math.max(b.width, b.height) / 2; };
+    const ring = document.querySelector('.cake__panel--money .cake__base');
+    return {
+      ring: ring ? Number(ring.getAttribute('r')) : 0,
+      share: radius(document.querySelector('.cake__panel--share .cake__svg')),
+      money: radius(document.querySelector('.cake__panel--money .cake__svg')),
+      times: Number((document.querySelector('.cake__summary')?.textContent.match(/×([\d.,]+)/) || [])[1]?.replace(',', '.'))
+    };
+  });
+  assert.ok(got.ring > 0 && got.money > 0 && got.times > 0, where + ': pie, dashed base and ×N are shown ' + JSON.stringify(got));
+  assert.ok(Math.abs(got.money / got.ring - got.times) < 0.012,
+    where + ': money pie / dashed base = revenue / base market ' + JSON.stringify(got));
+  assert.ok(Math.abs(got.share - got.ring) < 0.5, where + ': share pie is the size of the base market ' + JSON.stringify(got));
+  await p.locator('.cake__panel--share :is(tspan, li span)', { hasText: /per meal/ }).first().waitFor();
+}
+
 try {
   console.log('Seeding games…');
   // Сыгранная до конца онлайн-игра — для рейтинга и отчёта: команды из
@@ -226,6 +249,7 @@ try {
       await p.goto(base + '#/g/' + live.gameId);
       await p.locator('.pane--board .cake__svg').first().waitFor();
       await p.waitForTimeout(300);
+      await checkCake(p, kind);
       await shot(p, kind + '-00-cake');
       await p.locator('.pane--board').getByRole('button', { name: 'Teams', exact: true }).click();
       await p.locator('.table--standings').waitFor();
@@ -451,9 +475,11 @@ try {
     assert.equal(await cells.count(), played, 'a mini pair for every played month');
     assert.equal(await p.locator('.cake__cell.is-future').count(), 12 - played, 'future months are placeholders');
     await p.waitForTimeout(400);
+    await checkCake(p, 'projector');
     await shot(p, 'projector-00-cake');
     await cells.nth(1).click();
     await p.locator('.cake__title', { hasText: 'Month 2 of 12' }).waitFor();
+    await checkCake(p, 'projector, month 2');
     await p.keyboard.press('ArrowLeft');
     await p.locator('.cake__title', { hasText: 'Month 1 of 12' }).waitFor();
     await shot(p, 'projector-00-cake-month1');
