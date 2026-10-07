@@ -141,9 +141,20 @@ try {
     await shot(p, 'phone-03-business');
     await shot(p, 'phone-03-business-full', true);
     await p.locator('.tab--board').click();
-    await p.locator('.table--standings').waitFor();
+    // Табло открывается «Куском Пирога»: два пирога и цифры списком.
+    await p.locator('.cake__svg').first().waitFor();
     assert.equal(await p.locator('.pane--main').isVisible(), false, 'business pane hidden on the scoreboard tab');
+    await p.locator('.cake__list').first().getByText('Taco Town (you)').waitFor();
     await p.waitForTimeout(300);
+    await shot(p, 'phone-04-cake', true);
+    // На телефоне месяц выбирают списком со стрелками; лента мини-пар не нужна.
+    assert.equal(await p.locator('.cake__strip').isVisible(), false);
+    await p.getByLabel('Month', { exact: true }).selectOption('1');
+    await p.locator('.cake__title', { hasText: 'Month 1 of 12' }).waitFor();
+    await p.getByRole('button', { name: 'Next month' }).click();
+    await p.locator('.cake__title', { hasText: 'Month 2 of 12' }).waitFor();
+    await p.getByRole('button', { name: 'Teams', exact: true }).click();
+    await p.locator('.table--standings').waitFor();
     await shot(p, 'phone-04-scoreboard');
     await p.getByRole('button', { name: 'Economy' }).click();
     await p.getByText('Market size, guests a month').waitFor();
@@ -213,6 +224,10 @@ try {
     await step(kind + ': business with scoreboard / guide side by side', async () => {
       const p = await page(browser, kind, TEAMS[1].email);
       await p.goto(base + '#/g/' + live.gameId);
+      await p.locator('.pane--board .cake__svg').first().waitFor();
+      await p.waitForTimeout(300);
+      await shot(p, kind + '-00-cake');
+      await p.locator('.pane--board').getByRole('button', { name: 'Teams', exact: true }).click();
       await p.locator('.table--standings').waitFor();
       await p.locator('.chart__svg').first().waitFor();
       assert.equal(await p.locator('.pane--main').isVisible(), true);
@@ -233,6 +248,7 @@ try {
   await step('laptop: chart tooltip and table view', async () => {
     const p = await page(browser, 'laptop', TEAMS[1].email);
     await p.goto(base + '#/g/' + live.gameId);
+    await p.locator('.pane--board').getByRole('button', { name: 'Teams', exact: true }).click();
     const plot = p.locator('.pane--board .chart__plot').first();
     await plot.waitFor();
     await plot.scrollIntoViewIfNeeded();
@@ -299,6 +315,7 @@ try {
     // Место по языку сайта ведущего: Северная Америка, США. Штат подставляет пояс.
     assert.equal(await p.getByLabel('World region').inputValue(), 'north_america');
     assert.equal(await p.getByLabel('Country').inputValue(), 'US');
+    assert.equal(await p.getByLabel('Game currency').inputValue(), 'USD');
     await p.getByLabel('State').selectOption('NY');
     assert.equal(await p.getByLabel('Time zone').inputValue(), 'America/New_York', 'time zone from the state');
     await p.getByText('Growth · 24 months').click();
@@ -337,11 +354,21 @@ try {
     await p.getByLabel('Название игры').fill('Екатеринбург · весна');
     await p.getByLabel('Регион', { exact: true }).selectOption('SVE');
     assert.equal(await p.getByLabel('Часовой пояс').inputValue(), 'Asia/Yekaterinburg', 'time zone from the region');
+    // Игра в России — в рублях.
+    assert.equal(await p.getByLabel('Валюта игры').inputValue(), 'RUB', 'rubles for a game in Russia');
     await shot(p, 'lang-ru-03-create', true);
     await p.getByRole('button', { name: 'Создать игру' }).click();
     await p.getByText('Всё готово к старту').waitFor();
-    const [g] = await server.sql`select region, country, area, timezone, language from games where title = 'Екатеринбург · весна'`;
-    assert.deepEqual({ ...g }, { region: 'cis', country: 'RU', area: 'SVE', timezone: 'Asia/Yekaterinburg', language: 'ru' });
+    const [g] = await server.sql`select region, country, area, timezone, language, currency, config->>'P_REF' as pref,
+                                        config->>'PROFIT_TAX_RATE' as tax from games where title = 'Екатеринбург · весна'`;
+    assert.deepEqual({ ...g }, { region: 'cis', country: 'RU', area: 'SVE', timezone: 'Asia/Yekaterinburg', language: 'ru',
+      currency: 'RUB', pref: '1500', tax: '0.25' });
+    // Суммы игры — в рублях: и в настройках ведущего, и в подписях полей.
+    await p.getByRole('button', { name: 'Настройки', exact: true }).click();
+    await p.getByLabel('Аренда, ₽').waitFor();
+    assert.equal(await p.getByLabel('Аренда, ₽').inputValue(), '375000');
+    await p.getByText('Валюта игры: Российский рубль (₽).').waitFor();
+    await shot(p, 'lang-ru-04-rubles', true);
     await p.close();
   });
 
@@ -417,6 +444,20 @@ try {
     await p.getByLabel('Email').fill(ADMIN);
     await p.getByRole('button', { name: 'Send me a code' }).click();
     await p.getByLabel('Code from the email').fill('123456');
+    // Главный экран проектора — «Кусок Пирога»: два пирога и лента месяцев.
+    await p.locator('.cake__svg').first().waitFor();
+    const cells = p.locator('button.cake__cell');
+    const [{ played }] = await server.sql`select count(distinct round_number)::int as played from results where game_id = ${live.gameId}`;
+    assert.equal(await cells.count(), played, 'a mini pair for every played month');
+    assert.equal(await p.locator('.cake__cell.is-future').count(), 12 - played, 'future months are placeholders');
+    await p.waitForTimeout(400);
+    await shot(p, 'projector-00-cake');
+    await cells.nth(1).click();
+    await p.locator('.cake__title', { hasText: 'Month 2 of 12' }).waitFor();
+    await p.keyboard.press('ArrowLeft');
+    await p.locator('.cake__title', { hasText: 'Month 1 of 12' }).waitFor();
+    await shot(p, 'projector-00-cake-month1');
+    await p.getByRole('button', { name: 'Teams and charts' }).click();
     await p.locator('.table--standings').waitFor();
     await p.locator('.chart__svg').first().waitFor();
     await p.waitForTimeout(400);
@@ -433,6 +474,9 @@ try {
     await p.getByRole('button', { name: 'Rating' }).click();
     await p.locator('.table--rating').waitFor();
     await shot(p, 'projector-04-rating');
+    // Обратно на главный экран.
+    await p.getByRole('button', { name: 'Piece of Cake' }).click();
+    await p.locator('.cake__svg').first().waitFor();
     await p.close();
   });
 
@@ -473,7 +517,8 @@ try {
     await p.goto(base + '#/g/' + es.gameId);
     await p.getByRole('button', { name: 'Enviar decisión' }).or(p.getByRole('button', { name: 'Actualizar decisión' })).waitFor();
     assert.equal(await p.evaluate(() => document.documentElement.lang), 'es');
-    await p.locator('.chart__svg').first().waitFor();
+    await p.locator('.cake__svg').first().waitFor();
+    await p.getByText('Cuota de mercado').first().waitFor();
     await p.waitForTimeout(400);
     await shot(p, 'lang-es-01-game');
     // Меню → Настройки → Язык: русский — и сайт, и игра по-русски.
@@ -529,6 +574,7 @@ try {
 
     const p = await page(browser, 'laptop', TEAMS[0].email);
     await p.goto(base + '#/g/' + live.gameId);
+    await p.locator('.pane--board').getByRole('button', { name: 'Teams', exact: true }).click();
     const row = p.locator('.table--standings tr', { hasText: 'Taco Town' });
     await row.locator('.stars').waitFor();
     assert.equal(await row.locator('.stars').getAttribute('aria-label'), '2 quality stars out of 3');
@@ -541,6 +587,7 @@ try {
 
     const b = await page(browser, 'projector', ADMIN);
     await b.goto(base + 'board/?code=' + live.code);
+    await b.getByRole('button', { name: 'Teams and charts' }).click();
     await b.locator('.table--standings .stars').first().waitFor();
     await b.waitForTimeout(400);
     await shot(b, 'stars-02-projector');

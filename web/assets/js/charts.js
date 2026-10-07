@@ -24,6 +24,14 @@ import { t } from './i18n.js';
 export const PALETTE = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7', '#e34948'];
 export const OTHER = '#A9A8A0';
 export const INK = '#16161A';
+
+// Цвета «Куда ушли деньги» — по смыслу статьи, одни и те же в схеме денег
+// и в «Куске Пирога»: расходы ресторанов серые, арендодатель, страховая,
+// коммунальщики и банк — фиолетовые, город — оранжевый, прибыль — зелёная,
+// убытки, покрытые капиталом и кредитами, — жёлтые.
+export const FLOW_COLORS = {
+  cost: '#C9C8C0', institution: PALETTE[6], city: PALETTE[1], kept: PALETTE[2], losses: PALETTE[3]
+};
 const GRID = '#E4E3DC';
 const AXIS = '#9C9B93';
 const SURFACE = '#FBFAF6';

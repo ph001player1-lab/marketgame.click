@@ -9,7 +9,7 @@
 
 import { computeCapacity, type Config } from './economy.ts';
 import {
-  configForLeague, isLeague, isLanguage, EDITABLE_CONFIG, DEFAULT_CITY_SHARE_PCT, LEAGUES
+  configFor, isLeague, isLanguage, isCurrency, editableFor, DEFAULT_CITY_SHARE_PCT, LEAGUES, type Currency
 } from './presets.ts';
 import {
   type Sql, type Row, fail, num, cents, round2, normEmail, isEmail, currentRound, accountingRound,
@@ -17,7 +17,7 @@ import {
   OFF_BUSINESS, INSTITUTIONS, isInstitution, usd, teamLabel, STARTUP_LOAN_TIER, directImageUrl, starsNow
 } from './lib.ts';
 import { gameMeta, rulesFor, upcomingChanges } from './player.ts';
-import { gameLocation, teamLocation } from './geo.ts';
+import { gameLocation, teamLocation, ONLINE } from './geo.ts';
 import { cityBudget, institutionsState, oceanByMonth } from './board.ts';
 
 const INSTITUTION_NAMES: Record<string, string> = {
@@ -118,16 +118,27 @@ function validTimezone(v: unknown): string {
   }
 }
 
+/**
+ * Валюта новой игры, если ведущий её не выбрал: рубли — для игры в России и
+ * для онлайн-игры на русском, иначе доллары.
+ */
+function defaultCurrency(place: Row, language: unknown): Currency {
+  return place.country === 'RU' || (place.region === ONLINE && language === 'ru') ? 'RUB' : 'USD';
+}
+
 export async function createGame(sql: Sql, hostEmail: string, b: Row) {
   const title = text(b.title, 80);
   if (!title) fail('empty_title');
   if (!isLeague(b.league)) fail('bad_league');
   const league = b.league;
-  const cfg = configForLeague(league);
   const scheduledAt = b.scheduledAt ? new Date(String(b.scheduledAt)) : null;
   if (scheduledAt && isNaN(scheduledAt.getTime())) fail('bad_date');
   if (b.language !== undefined && !isLanguage(b.language)) fail('bad_language');
+  if (b.currency !== undefined && b.currency !== null && !isCurrency(b.currency)) fail('bad_currency');
   const place = gameLocation(b);
+  // Валюта задаётся при создании игры: от неё зависят все суммы настроек.
+  const currency: Currency = isCurrency(b.currency) ? b.currency : defaultCurrency(place, b.language);
+  const cfg = configFor(league, currency);
 
   return await sql.begin(async (tx: Sql) => {
     let code = newCode();
@@ -143,7 +154,7 @@ export async function createGame(sql: Sql, hostEmail: string, b: Row) {
       sponsor_url: url(b.sponsorUrl), timezone: validTimezone(b.timezone),
       scheduled_at: scheduledAt, open_book: b.openBook === undefined ? true : !!b.openBook,
       language: isLanguage(b.language) ? b.language : 'en',
-      ...place,
+      ...place, currency,
       config: tx.json(cfg)
     })} returning *`;
     const logo = await saveLogo(tx, game, b);
@@ -320,7 +331,7 @@ export async function monitor(sql: Sql, game: Row) {
     rules: rulesFor(cfg),
     upcomingChanges: await upcomingChanges(sql, game, round),
     config: game.config,
-    editable: EDITABLE_CONFIG,
+    editable: editableFor(game.currency),
     players: (players as Row[]).map((p) => {
       const off = OFF_BUSINESS.includes(String(p.status));
       const noBiz = p.status !== 'active';
@@ -351,8 +362,9 @@ export async function updateConfig(sql: Sql, game: Row, actor: string, b: Row) {
   const applied: Record<string, number> = {};
   // Причины отказа — кодами (host.configWhy на сайте).
   const rejected: Record<string, Row> = {};
+  const editable = editableFor(game.currency);
   for (const [key, raw] of Object.entries(updates)) {
-    const rule = EDITABLE_CONFIG[key];
+    const rule = editable[key];
     if (!rule) { rejected[key] = { code: 'not_editable' }; continue; }
     const v = Number(raw);
     if (!Number.isFinite(v)) { rejected[key] = { code: 'not_number' }; continue; }
@@ -641,7 +653,7 @@ export async function playAgain(sql: Sql, game: Row, actor: string,
     sponsorName: game.sponsor_name, sponsorLogoUrl: game.sponsor_logo_url, sponsorUrl: game.sponsor_url,
     sponsorLogoData: logo?.data ?? null,
     timezone: game.timezone, openBook: game.open_book, language: game.language,
-    region: game.region, country: game.country, area: game.area
+    region: game.region, country: game.country, area: game.area, currency: game.currency
   });
   const newId = created.gameId;
   // Настройки, которые ведущий подкрутил, переносим; длина — по лиге.

@@ -4,6 +4,7 @@
 import { t, errorText, setLanguage, pickLanguage } from '../i18n.js';
 import { h, replace } from '../dom.js';
 import { read } from '../api.js';
+import { setCurrency } from '../fmt.js';
 import { renderReport } from '../views/history.js';
 
 const root = document.getElementById('app');
@@ -22,6 +23,7 @@ read('report', { token }, { auth: false }).then(async (res) => {
   }
   // Отчёт — на языке игры, если читатель не выбрал свой.
   await setLanguage(pickLanguage(res.game.language));
+  setCurrency(res.game.currency);
   replace(root, topbar(), page);
   document.title = (res.teamName || res.game.title) + ' · ' + t('history.title');
   replace(page);

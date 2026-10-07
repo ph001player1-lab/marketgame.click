@@ -1,25 +1,39 @@
-// Числа, деньги и даты — по языку сайта. Деньги в игре всегда доллары США,
-// а записаны так, как привычно читателю: $12,340 по-английски и по-испански
-// (как в США), US$ 12.340 по-португальски (Бразилия), 12 340 $ по-русски.
+// Числа, деньги и даты — по языку сайта. Деньги — в валюте игры: доллары
+// США или рубли (игры в России). Записаны так, как привычно читателю:
+// $12,340 по-английски и по-испански (как в США), US$ 12.340
+// по-португальски (Бразилия), 12 340 $ по-русски; рубли — 12 340 ₽.
 // Минус — настоящий знак минуса, а не дефис.
 
 const LOCALES = { en: 'en-US', es: 'es-US', pt: 'pt-BR', ru: 'ru-RU' };
 let locale = 'en-US';
+let currency = 'USD';
 let F = formats(locale);
 
 function formats(l) {
-  const money = (digits, extra = {}) => new Intl.NumberFormat(l, {
-    style: 'currency', currency: 'USD', minimumFractionDigits: digits, maximumFractionDigits: digits, ...extra
-  });
   return {
     n0: new Intl.NumberFormat(l, { maximumFractionDigits: 0 }),
     n1: new Intl.NumberFormat(l, { maximumFractionDigits: 1 }),
     n2: new Intl.NumberFormat(l, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-    usd0: money(0), usd2: money(2), signed: money(0, { signDisplay: 'exceptZero' }),
+    money: {},
     pct: {},
     // Десятичный знак языка: «,» по-португальски и по-русски.
     decimal: new Intl.NumberFormat(l).formatToParts(1.5).find((x) => x.type === 'decimal')?.value || '.'
   };
+}
+
+/** Формат денег: kind — 0 (целые), 2 (с копейками), 's' (со знаком). */
+function moneyFormat(cur, kind) {
+  const key = cur + kind;
+  if (!F.money[key]) {
+    const digits = kind === 2 ? 2 : 0;
+    F.money[key] = new Intl.NumberFormat(locale, {
+      style: 'currency', currency: cur, minimumFractionDigits: digits, maximumFractionDigits: digits,
+      // Рубль — знаком ₽ на любом языке; доллар — как привычно языку (US$ в Бразилии).
+      ...(cur === 'RUB' ? { currencyDisplay: 'narrowSymbol' } : {}),
+      ...(kind === 's' ? { signDisplay: 'exceptZero' } : {})
+    });
+  }
+  return F.money[key];
 }
 
 /** Язык форматов: en, es, pt, ru. Зовёт i18n.setLanguage. */
@@ -29,25 +43,42 @@ export function setLocale(lang) {
 }
 export const currentLocale = () => locale;
 
+/** Валюта игры: USD или RUB. Зовут, открывая игру; вне игры — доллары. */
+export function setCurrency(code) {
+  currency = code === 'RUB' ? 'RUB' : 'USD';
+}
+export const currentCurrency = () => currency;
+const curOf = (cur) => (cur === 'RUB' || cur === 'USD' ? cur : currency);
+
+/** Знак валюты для подписей полей: «Сумма, $», «Сумма, ₽». */
+export function currencySign(cur) {
+  const c = curOf(cur);
+  if (c === 'RUB') return '₽';
+  return locale === 'pt-BR' ? 'US$' : '$';
+}
+
 const missing = (v) => v === null || v === undefined || v === '' || Number.isNaN(Number(v));
 const minus = (s) => s.replace(/-/g, '−');
 const noNegZero = (n) => (Object.is(n, -0) ? 0 : n);
 
-/** $12,340 — целые доллары. */
-export function usd(v) {
+/**
+ * $12,340 / 12 340 ₽ — целые суммы в валюте игры. cur — валюта, если сумма
+ * из другой игры (списки игр, рейтинг).
+ */
+export function usd(v, cur) {
   if (missing(v)) return '—';
-  return minus(F.usd0.format(noNegZero(Math.round(Number(v)))));
+  return minus(moneyFormat(curOf(cur), 0).format(noNegZero(Math.round(Number(v)))));
 }
 
-/** $1,234.56 — с центами, для точных сумм. */
-export function usdc(v) {
+/** $1,234.56 — с центами (копейками), для точных сумм. */
+export function usdc(v, cur) {
   if (missing(v)) return '—';
-  return minus(F.usd2.format(noNegZero(Number(v))));
+  return minus(moneyFormat(curOf(cur), 2).format(noNegZero(Number(v))));
 }
 
 /** +$1,200 / −$300 — для движений денег. */
-export function usdSigned(v) {
-  return minus(F.signed.format(noNegZero(Math.round(Number(v) || 0))));
+export function usdSigned(v, cur) {
+  return minus(moneyFormat(curOf(cur), 's').format(noNegZero(Math.round(Number(v) || 0))));
 }
 
 export const int = (v) => (missing(v) ? '—' : minus(F.n0.format(noNegZero(Math.round(Number(v))))));
@@ -102,7 +133,7 @@ export function clock(sec) {
  * «1,500» — как тысячу пятьсот по-английски и полторы по-русски.
  */
 export function parseMoney(text) {
-  let s = String(text ?? '').replace(/[\s  $]|US|R\$/g, '').replace(/[−–]/g, '-');
+  let s = String(text ?? '').replace(/[\s  $₽]|US|R\$|руб\.?/g, '').replace(/[−–]/g, '-');
   if (s === '' || s === '-') return s === '' ? 0 : NaN;
   const lastDot = s.lastIndexOf('.');
   const lastComma = s.lastIndexOf(',');
@@ -139,15 +170,16 @@ export function short(v) {
   return sign + (a < 10 && a % 1 ? trim(a) : Math.round(a));
 }
 
-/** Деньги коротко: $12k, US$ 12 mil, 12 тыс. $. */
-export function usdShort(v) {
+/** Деньги коротко: $12k, US$ 12 mil, 12 тыс. $, 1,5 млн ₽. */
+export function usdShort(v, cur) {
   const n = Number(v);
   if (!Number.isFinite(n)) return '—';
   const body = short(Math.abs(n));
   const sign = n < 0 ? '−' : '';
-  if (locale === 'pt-BR') return sign + 'US$ ' + body;
-  if (locale === 'ru-RU') return sign + body + ' $';
-  return sign + '$' + body;
+  const sym = currencySign(cur);
+  if (locale === 'pt-BR') return sign + sym + ' ' + body;
+  if (locale === 'ru-RU') return sign + body + ' ' + sym;
+  return sign + sym + body;
 }
 
 // ----------------------------------------------------------------- часовые пояса

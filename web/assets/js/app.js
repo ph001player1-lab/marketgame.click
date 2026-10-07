@@ -15,7 +15,7 @@ import {
   language, languageName, isLanguage
 } from './i18n.js';
 import { h, $, replace, toast } from './dom.js';
-import { usd, clock } from './fmt.js';
+import { usd, clock, setCurrency, currentCurrency } from './fmt.js';
 import { read, poll, markFresh, setAuthLostHandler, actionsInFlight } from './api.js';
 import { currentEmail, signOut } from './auth.js';
 import { renderLogin } from './views/login.js';
@@ -78,6 +78,12 @@ function knownGameLanguage(gameId) {
   return g?.language ?? null;
 }
 
+/** Валюта игры из списков me — чтобы первые же цифры были в ней. */
+function knownGameCurrency(gameId) {
+  const g = [...(me?.playing || []), ...(me?.hosting || [])].find((x) => x.id === gameId);
+  return g?.currency ?? 'USD';
+}
+
 async function loadMe() {
   const res = await read('me');
   if (res.ok) me = res;
@@ -131,6 +137,7 @@ async function route() {
     const known = [...(me.playing || []), ...(me.hosting || [])].some((g) => g.id === r.gameId);
     if (!known && !me.isAdmin) await loadMe().catch(() => {});
     await setLanguage(pickLanguage(knownGameLanguage(r.gameId)));
+    setCurrency(knownGameCurrency(r.gameId));
     openGame(r.gameId, r.asPlayerId);
     return;
   }
@@ -140,6 +147,7 @@ async function route() {
     replace(root, h('div', { class: 'spinner', role: 'status', 'aria-label': t('common.loading') }));
     const res = await read('gameReport', { gameId: r.gameId });
     await setLanguage(pickLanguage(res.ok ? res.game.language : knownGameLanguage(r.gameId)));
+    setCurrency(res.ok ? res.game.currency : knownGameCurrency(r.gameId));
     const page = h('div', { class: 'page' });
     replace(root, topbarSimple(), page);
     document.title = t('history.title') + ' · ' + t('brand');
@@ -151,6 +159,8 @@ async function route() {
     return;
   }
   await setLanguage(pickLanguage(null));
+  // Вне игры — доллары; суммы чужих игр (списки, рейтинг) — в валюте своей игры.
+  setCurrency('USD');
 
   const page = h('div', { class: 'page' });
   replace(root, topbarSimple(), page);
@@ -338,6 +348,12 @@ function openGame(gameId, asPlayerId) {
     // Язык игры стал известен только сейчас (игра не из списков me) или
     // ведущий его сменил — перерисовываем экран на нём, если человек не
     // выбрал свой язык в меню.
+    // Валюта игры не та, что в списках (игру открыли по ссылке) — рисуем заново в ней.
+    if (g.currency && g.currency !== currentCurrency()) {
+      setCurrency(g.currency);
+      queueMicrotask(() => { if (!stopped) { stopCurrentGame(); openGame(gameId, asPlayerId); } });
+      return;
+    }
     if (!preferredLanguage() && isLanguage(g.language) && g.language !== language() && !switching) {
       switching = true;
       setLanguage(g.language).then((changed) => {

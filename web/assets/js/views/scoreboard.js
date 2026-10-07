@@ -1,4 +1,5 @@
-// Табло: команды, экономика города, «Куда ушли деньги», рейтинг лиги.
+// Табло: «Кусок Пирога», команды, экономика города, «Куда ушли деньги»,
+// рейтинг лиги.
 //
 // Одно и то же табло живёт в трёх местах: в игре (правая панель или вкладка
 // на телефоне), на проекторе (board/) и в отчёте после игры. Почт здесь нет:
@@ -8,12 +9,13 @@ import { t, tn } from '../i18n.js';
 import { h, replace } from '../dom.js';
 import { usd, usdc, int, dec2, decimal, pct, pctRaw, usdShort, short } from '../fmt.js';
 import { read } from '../api.js';
-import { lineChart, barChart, sankey, PALETTE, OTHER, INK } from '../charts.js';
+import { lineChart, barChart, sankey, PALETTE, OTHER, INK, FLOW_COLORS } from '../charts.js';
 import {
   locationBadge, statusBadge, swatch, sponsorBanner, chartCard, simpleTable, teamName, starsBadge
 } from './common.js';
 import { ratingTable } from './rating.js';
 import { waterChip, oceanCard } from './ocean.js';
+import { createCake } from './cake.js';
 
 // Что можно показать на графике команд. zero: false — ось не от нуля (цена).
 const METRICS = [
@@ -36,9 +38,6 @@ const METRICS = [
 // Цвета экономики закреплены за смыслом во всех её графиках: город всегда
 // оранжевый, команды-совладельцы синие, частные владельцы серые.
 export const OWNER_COLORS = { city: PALETTE[1], players: PALETTE[0], private: OTHER };
-const FLOW_COLORS = {
-  cost: '#C9C8C0', institution: PALETTE[6], city: PALETTE[1], kept: PALETTE[2], losses: PALETTE[3]
-};
 const CITY_SERIES = [
   { key: 'profitTax', color: PALETTE[0] },
   { key: 'companies', color: PALETTE[6] },
@@ -46,11 +45,13 @@ const CITY_SERIES = [
   { key: 'spending', color: PALETTE[7] }
 ];
 
-const VIEWS = ['teams', 'economy', 'money', 'rating'];
+const ALL_VIEWS = ['cake', 'teams', 'economy', 'money', 'rating'];
 
 export function createScoreboard(root, opts = {}) {
   const mode = opts.mode || 'app';
   const big = mode === 'projector';
+  // На проекторе «Кусок Пирога» — отдельная страница, здесь его нет.
+  const VIEWS = opts.views || ALL_VIEWS;
   const storeKey = 'mg-board-' + mode + '-';
   const load = (k, d) => { try { return sessionStorage.getItem(storeKey + k) ?? d; } catch { return d; } };
   const save = (k, v) => { try { sessionStorage.setItem(storeKey + k, v); } catch { /* приватный режим */ } };
@@ -58,11 +59,15 @@ export function createScoreboard(root, opts = {}) {
   let data = null;
   let myId = opts.myId || null;
   let sig = '';
-  let view = VIEWS.includes(load('view')) ? load('view') : 'teams';
+  // «Кусок Пирога» — главный дашборд игры: он и открывается первым.
+  let view = VIEWS.includes(load('view')) ? load('view') : VIEWS[0];
   let metric = METRICS.some((m) => m.key === load('metric')) ? load('metric') : 'capital';
   let metricTable = load('metricTable', '0') === '1';
   let ratingCache = null;
   let cards = [];
+  // «Кусок Пирога» живёт между перерисовками: выбранный месяц не сбрасывается.
+  let cake = null;
+  const cakeBox = h('div', {});
 
   const buttons = VIEWS.map((v) => h('button', { type: 'button', 'aria-pressed': 'false', onclick: () => setView(v) },
     t('board.views.' + v)));
@@ -100,7 +105,11 @@ export function createScoreboard(root, opts = {}) {
     replace(sponsorBox, data ? sponsorBanner(data.game.sponsor, data.game.id) : null);
     if (!data) { replace(body, h('div', { class: 'spinner', role: 'status' })); return; }
     replace(body);
-    if (view === 'teams') renderTeams();
+    if (view === 'cake') {
+      cake ||= createCake(cakeBox, { big });
+      body.append(cakeBox);
+      cake.update(data, myId);
+    } else if (view === 'teams') renderTeams();
     else if (view === 'economy') renderEconomy();
     else if (view === 'money') renderMoney();
     else renderRating();
@@ -510,6 +519,6 @@ export function createScoreboard(root, opts = {}) {
   return {
     update,
     showView: setView,
-    destroy() { destroyCards(); }
+    destroy() { destroyCards(); cake?.destroy(); }
   };
 }

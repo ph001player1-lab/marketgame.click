@@ -26,7 +26,7 @@ export function renderHome(root, me) {
           g.standing && g.standing.monthsPlayed > 0
             ? h('div', { class: 'game-item__meta' },
                 t('home.place', { place: g.standing.place, rivals: g.standing.rivals }) + ' · ' +
-                t('home.capital') + ' ' + usd(g.standing.capital) + ' · ×' + dec2(g.standing.multiplier) +
+                t('home.capital') + ' ' + usd(g.standing.capital, g.currency) + ' · ×' + dec2(g.standing.multiplier) +
                 ' · ' + t('home.share') + ' ' + pctRaw(g.standing.sharePct) +
                 (g.status === 'finished' ? ' · ' + (g.rated ? t('common.rated') : t('common.notRated')) : ''))
             : null),

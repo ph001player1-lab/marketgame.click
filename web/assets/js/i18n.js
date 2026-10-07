@@ -10,9 +10,10 @@
 //
 // t('decision.title', { n: 3 }) → строка с подстановкой {n};
 // tn('board.teamsCount', 5) → форма по числу (one / few / many / other).
+// {cur} подставляется сам — знак валюты игры: «Сумма, $», «Сумма, ₽».
 
 import EN from './i18n/en.js';
-import { setLocale } from './fmt.js';
+import { setLocale, currencySign } from './fmt.js';
 
 /** Языки — названиями на самих языках: так их находят в списке. */
 export const LANGUAGES = [
@@ -102,7 +103,7 @@ export function t(path, vars) {
   if (v === undefined && current !== EN) v = lookup(EN, path);
   if (v === undefined) v = path;
   if (typeof v !== 'string') return v;
-  return fill(v, vars);
+  return fill(v, v.includes('{cur}') ? { cur: currencySign(), ...vars } : vars);
 }
 
 /**

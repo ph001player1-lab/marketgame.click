@@ -39,7 +39,7 @@ export function ratingTable(players, { limit = 50 } = {}) {
           h('summary', {}, tn('rating.gamesList', p.history.length)),
           h('ul', {}, p.history.map((g) => h('li', {},
             g.title + (g.organizer ? ' · ' + g.organizer : '') + ' · ' + dateOnly(g.finishedAt) + ': ' +
-            t('rating.gameLine', { place: g.place, rivals: g.rivals, capital: usd(g.capital), mult: dec2(g.multiplier) }))))) : null),
+            t('rating.gameLine', { place: g.place, rivals: g.rivals, capital: usd(g.capital, g.currency), mult: dec2(g.multiplier) }))))) : null),
       h('td', {}, placeText(locOf(p), true) || '—'),
       opt(p.games), opt(p.wins), num('×' + dec2(p.avg_multiplier)), opt(dec2(p.avg_place_score)),
       opt(pctRaw(p.avg_share_pct)), h('td', { class: 'r' }, h('b', {}, dec2(p.score))))))));

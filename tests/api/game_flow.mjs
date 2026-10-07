@@ -410,6 +410,7 @@ await step('рейтинг обновился сразу после финала
   assert.ok(start.players.every((p) => p.history.length === 1 && p.player_key));
   // Место в рейтинге — где шла игра: Техас, США.
   assert.ok(start.players.every((p) => p.location_country === 'US' && p.location_area === 'TX'), 'место команд — место игры');
+  assert.ok(start.players.every((p) => p.history.every((g) => g.currency === 'USD')), 'у игры в истории — её валюта');
 });
 
 await step('история: My games, открытые решения, отчёт по ссылке', async () => {
@@ -487,6 +488,35 @@ await step('онлайн-игра: место указывает каждая к
   const [row] = await sql`select location_country, location_area from players where game_id = ${gid} and email = ${ANN}`;
   assert.deepEqual({ ...row }, { location_country: 'US', location_area: 'NY' });
   ok(await call(HOST, 'deleteGame', { gameId: gid }));
+});
+
+await step('игра в России — в рублях, налог на прибыль 25%', async () => {
+  err(await call(HOST, 'createGame', { title: 'x', league: 'start', currency: 'EUR' }), 'bad_currency');
+  // Валюту не выбрали — для России рубли.
+  const g = await call(HOST, 'createGame', { title: 'Казань · весна', league: 'start', language: 'ru',
+    region: 'cis', country: 'RU', area: 'TA' });
+  ok(g);
+  const m = await call(HOST, 'monitor', { gameId: g.gameId });
+  assert.equal(m.game.currency, 'RUB');
+  assert.equal(m.rules.pRef, 1500, 'чек 1 500 ₽');
+  assert.equal(m.rules.taxRate, 0.25);
+  assert.equal(m.config.START_CAPITAL, 500000);
+  assert.equal(m.editable.RENT.max, 50_000_000, 'диапазоны ведущего — в рублях');
+  const cfg = await call(HOST, 'updateConfig', { gameId: g.gameId, updates: { RENT: 400000, P_REF: 20 } });
+  assert.equal(cfg.applied.RENT, 400000);
+  assert.equal(cfg.rejected.P_REF.code, 'range', '20 ₽ за блюдо — ниже допустимого');
+  ok(await call(HOST, 'setRoster', { gameId: g.gameId, emails: [ANN] }));
+  const d = await dash(ANN, g.gameId);
+  assert.equal(d.player.cash, 500000);
+  assert.equal(d.game.currency, 'RUB');
+  ok(await call(HOST, 'deleteGame', { gameId: g.gameId }));
+  // Ведущий выбрал доллары сам — так и будет.
+  const u = await call(HOST, 'createGame', { title: 'Moscow expats', league: 'start', region: 'cis', country: 'RU', currency: 'USD' });
+  const mu = await call(HOST, 'monitor', { gameId: u.gameId });
+  assert.equal(mu.game.currency, 'USD');
+  assert.equal(mu.rules.pRef, 30);
+  assert.equal(mu.rules.taxRate, 0.21);
+  ok(await call(HOST, 'deleteGame', { gameId: u.gameId }));
 });
 
 await step('учебная игра, законченная раньше, в рейтинг не идёт', async () => {

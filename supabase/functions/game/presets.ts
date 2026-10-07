@@ -64,9 +64,42 @@ export const US_V5: Config = {
   MARKET_QUALITY_GAIN: 0.15
 };
 
-/** Настройки новой игры: пресет, длина — по лиге. */
+/**
+ * Валюта игры. Игра в рублях — тот же баланс, все денежные настройки × 50:
+ * чек $30 → 1 500 ₽, стартовый капитал $10,000 → 500 000 ₽. Как и переход
+ * из батов в доллары, это другой пресет, а не новые правила
+ * (tests/v5_check.mjs проверяет, что игра считается так же). Налог на
+ * прибыль — российский: 25%.
+ */
+export const CURRENCIES = {
+  USD: { scale: 1, profitTax: 0.21 },
+  RUB: { scale: 50, profitTax: 0.25 }
+} as const;
+export type Currency = keyof typeof CURRENCIES;
+export function isCurrency(v: unknown): v is Currency {
+  return v === 'USD' || v === 'RUB';
+}
+
+/** Денежные настройки: в другой валюте умножаются на её масштаб. */
+export const MONEY_KEYS = [
+  'P_REF', 'P_FLOOR', 'CAPACITY_STEP_COST', 'RENT', 'INSURANCE', 'UTILITIES', 'PAYROLL_BASE',
+  'START_CAPITAL', 'CIVIL_SERVICE_SALARY', 'REOPEN_THRESHOLD', 'SEO_REF', 'PROMO_REF', 'MAPS_REF',
+  'SOCIAL_REF', 'OUTDOOR_REF', 'OUTDOOR_MIN_SPEND', 'AFFILIATE_MIN_SPEND', 'QUALITY_UPKEEP',
+  'QUALITY_INVEST_DIVISOR', 'LOAN_TIER1_LIMIT', 'LOAN_TIER2_LIMIT', 'LOAN_TIER3_LIMIT'
+] as const;
+
+/** Настройки новой игры: пресет в валюте игры, длина — по лиге. */
+export function configFor(league: League, currency: Currency = 'USD'): Config {
+  const { scale, profitTax } = CURRENCIES[currency];
+  const cfg: Config = { ...US_V5, TOTAL_ROUNDS: LEAGUES[league].months, PROFIT_TAX_RATE: profitTax };
+  const money = cfg as unknown as Record<string, number>;
+  for (const key of MONEY_KEYS) money[key] = money[key] * scale;
+  return cfg;
+}
+
+/** Настройки игры в долларах — как раньше. */
 export function configForLeague(league: League): Config {
-  return { ...US_V5, TOTAL_ROUNDS: LEAGUES[league].months };
+  return configFor(league, 'USD');
 }
 
 /**
@@ -98,3 +131,12 @@ export const EDITABLE_CONFIG: Record<string, { min: number; max: number; int?: b
   LOAN_TERM_MONTHS: { min: 1, max: 36, int: true },
   PROFIT_TAX_RATE: { min: 0, max: 0.9 }
 };
+
+/** Что ведущий может менять — с диапазонами денег в валюте игры. */
+export function editableFor(currency: unknown): typeof EDITABLE_CONFIG {
+  const scale = isCurrency(currency) ? CURRENCIES[currency].scale : 1;
+  if (scale === 1) return EDITABLE_CONFIG;
+  const money = new Set<string>(MONEY_KEYS);
+  return Object.fromEntries(Object.entries(EDITABLE_CONFIG).map(([key, rule]) =>
+    [key, money.has(key) ? { ...rule, min: rule.min * scale, max: rule.max * scale } : rule]));
+}

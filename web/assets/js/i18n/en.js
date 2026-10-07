@@ -41,7 +41,7 @@ export default {
     city: 'City',
     private: 'Private owners',
     sponsoredBy: 'Sponsored by',
-    sponsorNote: 'The sponsor does not take part in the game. Loans, rates and terms in the game are fictional and are not an offer of credit.',
+    sponsorNote: 'The game is held with the support of the sponsor.',
     serverTime: 'Server time',
     newTeam: 'New team',
     someone: 'A player'
@@ -174,7 +174,7 @@ export default {
     overCash: 'That is more than your cash.',
     submit: 'Send decision',
     resubmit: 'Update decision',
-    perMonthPlaceholder: '$ this month',
+    perMonthPlaceholder: '{cur} this month',
     needed: 'Decision needed'
   },
 
@@ -209,7 +209,7 @@ export default {
     balance: 'Loan balance', rate: 'Rate', nextPayment: 'Next payment (principal + interest)',
     termLeft: 'Payments left', available: 'Available to borrow', limit: 'Credit limit',
     noCredit: 'Credit isn\'t available right now.',
-    borrow: 'Borrow', repay: 'Repay early', amount: 'Amount, $',
+    borrow: 'Borrow', repay: 'Repay early', amount: 'Amount, {cur}',
     note: 'The bank in this game is fictional. Your capital counts cash minus the loan: borrowing alone doesn\'t make you richer.',
     capital: 'Your capital (cash − loan)',
     received: 'Loan received: {amount}.',
@@ -219,7 +219,7 @@ export default {
   transfer: {
     title: 'Send money to another team',
     lead: 'Out of your cash. Useful for deals, helping an ally or buying a share of their business.',
-    to: 'Recipient', amount: 'Amount, $', send: 'Send', nobody: 'No other teams yet.',
+    to: 'Recipient', amount: 'Amount, {cur}', send: 'Send', nobody: 'No other teams yet.',
     sent: 'Sent {amount} to {team}.'
   },
 
@@ -271,7 +271,7 @@ export default {
     savings: 'Savings', threshold: 'Needed to reopen', toReopen: 'Needed to open a new restaurant: {threshold}',
     reopen: 'Open a new restaurant', reopenWhat: 'Fresh start: brand, reputation, quality and ads begin from zero. Your savings become the new business cash.',
     salary: 'Salary {salary}/mo, paid when each month is calculated.',
-    offer: 'Offer your work to a team', employer: 'Team', salaryAsk: 'Monthly salary, $',
+    offer: 'Offer your work to a team', employer: 'Team', salaryAsk: 'Monthly salary, {cur}',
     offerSend: 'Send offer', offerPending: 'Waiting for {team} to answer.',
     offerApproved: 'You work for {team} for {salary}/mo.', paidThisMonth: 'Paid this month.',
     switchPath: 'Switch to another path',
@@ -281,7 +281,7 @@ export default {
 
   board: {
     title: 'Scoreboard',
-    views: { teams: 'Teams', economy: 'Economy', money: 'Where the money went', rating: 'Rating' },
+    views: { cake: 'Piece of Cake', teams: 'Teams', economy: 'Economy', money: 'Where the money went', rating: 'Rating' },
     metrics: {
       capital: 'Capital', cash: 'Cash', profit: 'Profit', marketSharePct: 'Market share', served: 'Guests served',
       price: 'Price', brand: 'Brand', reputation: 'Reputation', quality: 'Quality',
@@ -357,6 +357,7 @@ export default {
     open: 'Open scoreboard',
     fullscreen: 'Full screen',
     rotate: 'Rotate views every 20 seconds',
+    classicPage: 'Teams and charts',
     decisionsOpen: 'decisions open',
     signInLead: 'The scoreboard is only for this game\'s teams, its host and admins. Sign in with your email to show it.'
   },
@@ -411,6 +412,24 @@ export default {
       ]
     },
     empty: 'The color of the water appears after the first month.'
+  },
+
+  cake: {
+    empty: 'Piece of Cake appears after the first month.',
+    month: 'Month', months: 'Months of the game', prev: 'Previous month', next: 'Next month',
+    summary: 'This month’s market: {guests} guests → {revenue}',
+    vsBase: '×{x} the base market of {base} (dashed circle)',
+    shareTitle: 'Market Share',
+    shareCaption: 'Who got which slice of the market, how many guests they served and whether they made money',
+    moneyTitle: 'Total Market',
+    moneyCaption: 'All the money guests paid this month — {revenue} — and where it went',
+    share: '{pct} of the market',
+    guests: '{served} served',
+    guestsLost: '{attracted} attracted → {served} served',
+    cashFlow: '{amount} cash flow',
+    plus: 'positive cash flow', minus: 'negative',
+    lostNote: 'attracted → served: the rest found no seat',
+    losses: 'Restaurants spent {amount} more than they took in — capital and loans covered the gap.'
   },
 
   money: {
@@ -502,7 +521,7 @@ export default {
     cityLead: 'You play the city. Fines, taxes and stake sales go to the city budget; grants, government salaries and buybacks come out of it.',
     lastMonthNet: 'Last month, net',
     adjustTitle: 'Fine or grant one team',
-    amount: 'Amount, $', reason: 'Reason', reasonPlaceholder: 'Shown to the team',
+    amount: 'Amount, {cur}', reason: 'Reason', reasonPlaceholder: 'Shown to the team',
     fine: 'Fine', grant: 'Grant', fined: 'Fine applied.', granted: 'Grant paid.',
     pickTeam: 'Pick a team.',
     massTitle: 'Everyone at once',
@@ -519,7 +538,7 @@ export default {
     stakesLead: 'Sell part of the city\'s share to a team, buy it back, or record a deal between teams. The team pays or gets the price at once; dividends follow every month.',
     sell: 'City sells', buyback: 'City buys back', deal: 'Deal between teams',
     company: 'Company', buyer: 'Buyer', seller: 'Seller', holder: 'From team',
-    pct: 'Share, %', price: 'Price, $',
+    pct: 'Share, %', price: 'Price, {cur}',
     stakeHint: 'Over the last months each 1% paid about {perPct} a year. {left} month(s) left: {pct} would pay about {est} by the end.',
     cityOwns: 'The city owns {pct}.',
     stakeSubmit: 'Record',
@@ -532,6 +551,9 @@ export default {
     gameInfo: 'Game details',
     language: 'Game language',
     languageHint: 'Everyone sees the game in this language unless they pick another one in the menu.',
+    currency: 'Game currency',
+    currencyHint: 'Set when the game is created. In rubles every amount is ×50 — a $30 meal costs 1,500 ₽ — and the profit tax is 25%, as in Russia. The balance of the game is the same.',
+    currencyFixed: 'Game currency: {currency}. It is also set when the game is created.',
     place: 'Where the game takes place',
     worldRegion: 'World region',
     placeFixed: 'Teams land here automatically: when they join, they only enter their name and restaurant name.',
@@ -546,7 +568,7 @@ export default {
     league: 'League',
     leagueFixed: '{league} league · {total} months. The league is set when the game is created.',
     sponsorTitle: 'Sponsor (optional)',
-    sponsorLead: 'Shown as a clearly marked ad on the scoreboard. The sponsor doesn\'t take part in the game.',
+    sponsorLead: 'Shown on the scoreboard as a clearly marked ad, with the note “The game is held with the support of the sponsor.”',
     sponsorName: 'Sponsor name', sponsorUrl: 'Website (https://…)',
     logo: 'Logo', logoUpload: 'Upload logo file', logoRemove: 'Remove', logoNone: 'No logo',
     logoLink: 'Or paste a link to the image', logoPreviewAlt: 'Logo preview',
@@ -896,6 +918,8 @@ export default {
     legend: 'Legend', highlight: 'Highlight {name}', other: 'Other', nothing: 'Nothing this month'
   },
 
+  currency: { USD: 'US dollar ($)', RUB: 'Russian ruble (₽)' },
+
   regions: {
     north_america: 'North America', latin_america: 'Latin America', europe: 'Europe', cis: 'Russia & CIS',
     middle_east_africa: 'Middle East & Africa', asia: 'Asia', oceania: 'Australia & Oceania',
@@ -977,6 +1001,7 @@ export default {
     bad_logo: 'That logo can\'t be used. Upload a PNG or JPG file.',
     bad_timezone: 'Pick a time zone.',
     bad_language: 'Pick a language.',
+    bad_currency: 'Choose a currency.',
     bad_date: 'Check the date.',
     too_many_teams: 'Up to {max} teams per game.',
     restaurant_taken: 'Another team already uses that restaurant name.',

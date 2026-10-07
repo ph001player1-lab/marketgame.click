@@ -200,11 +200,11 @@ function logoField(values, onChange) {
  * России или город. Онлайн — команды из разных мест: каждая укажет своё при
  * входе. Выбрали штат или регион — onZone(пояс) подставит часовой пояс.
  */
-function placeField(values, lang, mark, onZone) {
+function placeField(values, lang, mark, onZone, onChange) {
   const fresh = !values?.region;
   const start = fresh ? { ...(DEFAULT_PLACE[lang] || DEFAULT_PLACE.en), area: null } : values;
   let touched = false;
-  const change = () => { touched = true; mark(); };
+  const change = () => { touched = true; mark(); onChange?.(); };
 
   const region = h('select', { class: 'input' },
     [...REGION_KEYS, ONLINE].map((r) => h('option', { value: r, selected: r === start.region }, regionName(r))));
@@ -256,7 +256,7 @@ function placeField(values, lang, mark, onZone) {
       field(t('host.worldRegion'), region), countryBox, areaBox, hint),
     /** Новая игра: сменили язык, а место ещё не трогали — место по языку. */
     languageChanged(code) {
-      if (fresh && !touched) set({ ...(DEFAULT_PLACE[code] || DEFAULT_PLACE.en), area: null });
+      if (fresh && !touched) { set({ ...(DEFAULT_PLACE[code] || DEFAULT_PLACE.en), area: null }); onChange?.(); }
     },
     read() {
       if (region.value === ONLINE) return { region: ONLINE, country: null, area: null };
@@ -297,9 +297,21 @@ export function gameForm(values = {}, { withLeague = true, lockPractice = false 
   };
   // Язык игры: по умолчанию — язык, на котором сейчас сайт у ведущего.
   const lang = values.language || language();
-  const place = placeField(values.location, lang, mark, setZone);
-  const gameLanguage = h('select', { class: 'input', onchange: () => { mark(); place.languageChanged(gameLanguage.value); } },
-    LANGUAGES.map((l) => h('option', { value: l.code, selected: l.code === lang, lang: l.code }, l.name)));
+  const place = placeField(values.location, lang, mark, setZone, () => syncCurrency());
+  const gameLanguage = h('select', { class: 'input', onchange: () => {
+    mark(); place.languageChanged(gameLanguage.value); syncCurrency();
+  } }, LANGUAGES.map((l) => h('option', { value: l.code, selected: l.code === lang, lang: l.code }, l.name)));
+  // Валюта — только при создании игры: от неё зависят все суммы. Рубли — для
+  // игры в России и онлайн-игры на русском, пока ведущий не выбрал сам.
+  let currencyTouched = false;
+  const currency = withLeague ? h('select', { class: 'input', onchange: () => { currencyTouched = true; mark(); } },
+    ['USD', 'RUB'].map((c) => h('option', { value: c }, t('currency.' + c)))) : null;
+  function syncCurrency() {
+    if (!currency || currencyTouched) return;
+    const p = place.read();
+    currency.value = p.country === 'RU' || (p.region === ONLINE && gameLanguage.value === 'ru') ? 'RUB' : 'USD';
+  }
+  syncCurrency();
   const when = h('input', { class: 'input', type: 'datetime-local', value: isoToZoned(values.scheduledAt, tz), oninput: mark });
   const openBook = h('input', { type: 'checkbox', checked: values.openBook !== false, onchange: mark });
   const practice = h('input', { type: 'checkbox', checked: !!values.practice, disabled: lockPractice, onchange: mark });
@@ -321,6 +333,7 @@ export function gameForm(values = {}, { withLeague = true, lockPractice = false 
     field(t('host.title'), title),
     field(t('host.language'), gameLanguage, t('host.languageHint')),
     place.el,
+    currency ? field(t('host.currency'), currency, t('host.currencyHint')) : null,
     leagueBox,
     h('label', { class: 'check' }, practice, h('span', {}, t('host.practiceLabel'),
       lockPractice ? h('span', { class: 'muted small', style: { display: 'block' } }, t('host.practiceLocked')) : null)),
@@ -344,6 +357,7 @@ export function gameForm(values = {}, { withLeague = true, lockPractice = false 
         title: title.value.trim(), league, practice: practice.checked, organizer: organizer.value.trim(),
         timezone: zone.value, scheduledAt, openBook: openBook.checked, language: gameLanguage.value,
         ...place.read(),
+        ...(currency ? { currency: currency.value } : {}),
         sponsorName: sponsorName.value.trim(), sponsorUrl: sponsorUrl.value.trim(),
         ...logo.change()
       };

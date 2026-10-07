@@ -39,7 +39,7 @@ export default {
     city: 'Ciudad',
     private: 'Dueños privados',
     sponsoredBy: 'Patrocinado por',
-    sponsorNote: 'El patrocinador no participa en el juego. Los préstamos, tasas y condiciones del juego son ficticios y no son una oferta de crédito.',
+    sponsorNote: 'El juego se realiza con el apoyo del patrocinador.',
     serverTime: 'Hora del servidor',
     newTeam: 'Equipo nuevo',
     someone: 'Un jugador'
@@ -172,7 +172,7 @@ export default {
     overCash: 'Es más de lo que tienes en caja.',
     submit: 'Enviar decisión',
     resubmit: 'Actualizar decisión',
-    perMonthPlaceholder: '$ este mes',
+    perMonthPlaceholder: '{cur} este mes',
     needed: 'Falta tu decisión'
   },
 
@@ -207,7 +207,7 @@ export default {
     balance: 'Saldo del préstamo', rate: 'Tasa', nextPayment: 'Próximo pago (capital + intereses)',
     termLeft: 'Pagos restantes', available: 'Disponible para pedir', limit: 'Límite de crédito',
     noCredit: 'El crédito no está disponible en este momento.',
-    borrow: 'Pedir prestado', repay: 'Pagar por adelantado', amount: 'Monto, $',
+    borrow: 'Pedir prestado', repay: 'Pagar por adelantado', amount: 'Monto, {cur}',
     note: 'El banco del juego es ficticio. Tu capital es la caja menos el préstamo: pedir prestado no te hace más rico.',
     capital: 'Tu capital (caja − préstamo)',
     received: 'Préstamo recibido: {amount}.',
@@ -217,7 +217,7 @@ export default {
   transfer: {
     title: 'Enviar dinero a otro equipo',
     lead: 'Sale de tu caja. Útil para acuerdos, para ayudar a un aliado o para comprar parte de su negocio.',
-    to: 'Destinatario', amount: 'Monto, $', send: 'Enviar', nobody: 'Todavía no hay otros equipos.',
+    to: 'Destinatario', amount: 'Monto, {cur}', send: 'Enviar', nobody: 'Todavía no hay otros equipos.',
     sent: 'Enviaste {amount} a {team}.'
   },
 
@@ -269,7 +269,7 @@ export default {
     savings: 'Ahorros', threshold: 'Necesario para reabrir', toReopen: 'Para abrir un restaurante nuevo necesitas: {threshold}',
     reopen: 'Abrir un restaurante nuevo', reopenWhat: 'Desde cero: marca, reputación, calidad y publicidad empiezan en cero. Tus ahorros se vuelven la caja del nuevo negocio.',
     salary: 'Sueldo de {salary}/mes, se paga al calcular cada mes.',
-    offer: 'Ofrece tu trabajo a un equipo', employer: 'Equipo', salaryAsk: 'Sueldo mensual, $',
+    offer: 'Ofrece tu trabajo a un equipo', employer: 'Equipo', salaryAsk: 'Sueldo mensual, {cur}',
     offerSend: 'Enviar oferta', offerPending: 'Esperando la respuesta de {team}.',
     offerApproved: 'Trabajas para {team} por {salary}/mes.', paidThisMonth: 'Pagado este mes.',
     switchPath: 'Cambiar de camino',
@@ -279,7 +279,7 @@ export default {
 
   board: {
     title: 'Marcador',
-    views: { teams: 'Equipos', economy: 'Economía', money: 'A dónde fue el dinero', rating: 'Ranking' },
+    views: { cake: 'Piece of Cake', teams: 'Equipos', economy: 'Economía', money: 'A dónde fue el dinero', rating: 'Ranking' },
     metrics: {
       capital: 'Capital', cash: 'Caja', profit: 'Utilidad', marketSharePct: 'Cuota de mercado', served: 'Clientes atendidos',
       price: 'Precio', brand: 'Marca', reputation: 'Reputación', quality: 'Calidad',
@@ -355,6 +355,7 @@ export default {
     open: 'Abrir marcador',
     fullscreen: 'Pantalla completa',
     rotate: 'Cambiar de vista cada 20 segundos',
+    classicPage: 'Equipos y gráficos',
     decisionsOpen: 'decisiones abiertas',
     signInLead: 'El marcador es solo para los equipos de este juego, su facilitador y los administradores. Inicia sesión con tu correo para mostrarlo.'
   },
@@ -409,6 +410,24 @@ export default {
       ]
     },
     empty: 'El color del agua aparece después del primer mes.'
+  },
+
+  cake: {
+    empty: 'Piece of Cake aparece después del primer mes.',
+    month: 'Mes', months: 'Meses del juego', prev: 'Mes anterior', next: 'Mes siguiente',
+    summary: 'Mercado del mes: {guests} clientes → {revenue}',
+    vsBase: '×{x} respecto al mercado base de {base} (círculo punteado)',
+    shareTitle: 'Cuota de mercado',
+    shareCaption: 'Quién se llevó qué parte del mercado, cuántos clientes atendió y si ganó dinero',
+    moneyTitle: 'Mercado total',
+    moneyCaption: 'Todo el dinero que pagaron los clientes este mes ({revenue}) y adónde fue',
+    share: '{pct} del mercado',
+    guests: '{served} atendidos',
+    guestsLost: '{attracted} atraídos → {served} atendidos',
+    cashFlow: '{amount} de flujo de caja',
+    plus: 'flujo de caja positivo', minus: 'negativo',
+    lostNote: 'atraídos → atendidos: los demás no encontraron lugar',
+    losses: 'Los restaurantes gastaron {amount} más de lo que ingresaron: el capital y los préstamos cubrieron la diferencia.'
   },
 
   money: {
@@ -500,7 +519,7 @@ export default {
     cityLead: 'Tú juegas como la ciudad. Las multas, los impuestos y la venta de participaciones entran al presupuesto de la ciudad; los subsidios, los sueldos del empleo público y las recompras salen de él.',
     lastMonthNet: 'Último mes, neto',
     adjustTitle: 'Multa o subsidio a un equipo',
-    amount: 'Monto, $', reason: 'Motivo', reasonPlaceholder: 'Lo verá el equipo',
+    amount: 'Monto, {cur}', reason: 'Motivo', reasonPlaceholder: 'Lo verá el equipo',
     fine: 'Multa', grant: 'Subsidio', fined: 'Multa aplicada.', granted: 'Subsidio pagado.',
     pickTeam: 'Elige un equipo.',
     massTitle: 'A todos a la vez',
@@ -517,7 +536,7 @@ export default {
     stakesLead: 'Vende a un equipo parte de lo que posee la ciudad, recómprala o registra un trato entre equipos. El equipo paga o cobra el precio de inmediato; los dividendos llegan cada mes.',
     sell: 'La ciudad vende', buyback: 'La ciudad recompra', deal: 'Trato entre equipos',
     company: 'Empresa', buyer: 'Comprador', seller: 'Vendedor', holder: 'Del equipo',
-    pct: 'Participación, %', price: 'Precio, $',
+    pct: 'Participación, %', price: 'Precio, {cur}',
     stakeHint: 'En los últimos meses cada 1 % pagó unos {perPct} al año. Meses restantes: {left}; el {pct} pagaría unos {est} hasta el final.',
     cityOwns: 'La ciudad posee el {pct}.',
     stakeSubmit: 'Registrar',
@@ -530,6 +549,9 @@ export default {
     gameInfo: 'Datos del juego',
     language: 'Idioma del juego',
     languageHint: 'Todos ven el juego en este idioma, salvo que elijan otro en el menú.',
+    currency: 'Moneda del juego',
+    currencyHint: 'Se define al crear el juego. En rublos todos los montos se multiplican por 50 —una comida de $30 cuesta 1 500 ₽— y el impuesto sobre la renta es del 25 %, como en Rusia. El equilibrio del juego es el mismo.',
+    currencyFixed: 'Moneda del juego: {currency}. También se define al crear el juego.',
     place: 'Dónde se juega',
     worldRegion: 'Región del mundo',
     placeFixed: 'Los equipos quedan aquí automáticamente: al entrar solo escriben su nombre y el de su restaurante.',
@@ -544,7 +566,7 @@ export default {
     league: 'Liga',
     leagueFixed: 'Liga {league} · {total} meses. La liga se fija al crear el juego.',
     sponsorTitle: 'Patrocinador (opcional)',
-    sponsorLead: 'Aparece en el marcador como un anuncio claramente identificado. El patrocinador no participa en el juego.',
+    sponsorLead: 'Aparece en el marcador como un anuncio claramente identificado, con la nota «El juego se realiza con el apoyo del patrocinador».',
     sponsorName: 'Nombre del patrocinador', sponsorUrl: 'Sitio web (https://…)',
     logo: 'Logotipo', logoUpload: 'Subir archivo del logotipo', logoRemove: 'Quitar', logoNone: 'Sin logotipo',
     logoLink: 'O pega un enlace a la imagen', logoPreviewAlt: 'Vista previa del logotipo',
@@ -892,6 +914,8 @@ export default {
     legend: 'Leyenda', highlight: 'Resaltar {name}', other: 'Otros', nothing: 'Nada este mes'
   },
 
+  currency: { USD: 'Dólar estadounidense ($)', RUB: 'Rublo ruso (₽)' },
+
   regions: {
     north_america: 'Norteamérica', latin_america: 'Latinoamérica', europe: 'Europa', cis: 'Rusia y la CEI',
     middle_east_africa: 'Medio Oriente y África', asia: 'Asia', oceania: 'Australia y Oceanía',
@@ -973,6 +997,7 @@ export default {
     bad_logo: 'Ese logotipo no se puede usar. Sube un archivo PNG o JPG.',
     bad_timezone: 'Elige una zona horaria.',
     bad_language: 'Elige un idioma.',
+    bad_currency: 'Elige una moneda.',
     bad_date: 'Revisa la fecha.',
     too_many_teams: 'Hasta {max} equipos por juego.',
     restaurant_taken: 'Otro equipo ya usa ese nombre de restaurante.',

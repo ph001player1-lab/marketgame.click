@@ -58,7 +58,7 @@ const dynamic = {
   'institutions.': ['landlord', 'bank', 'insurer', 'utility', 'landlordWhat', 'bankWhat', 'insurerWhat', 'utilityWhat'],
   'institutionsOf.': ['landlord', 'bank', 'insurer', 'utility'],
   'leagues.': ['start', 'growth', 'elite', 'startWho', 'growthWho', 'eliteWho'],
-  'board.views.': ['teams', 'economy', 'money', 'rating'],
+  'board.views.': ['cake', 'teams', 'economy', 'money', 'rating'],
   'board.metrics.': ['capital', 'cash', 'profit', 'marketSharePct', 'served', 'price', 'brand', 'reputation', 'quality',
     'capacity', 'marketingTotal', 'qualityInvest', 'tax', 'dividends'],
   'board.citySeries.': ['profitTax', 'companies', 'otherIncome', 'spending'],
@@ -71,7 +71,8 @@ const dynamic = {
   'ocean.water.': ['red', 'choppy', 'blue'],
   'ocean.questions.': ['red', 'choppy', 'blue'],
   'ocean.summary.': ['earned', 'lost'],
-  'ocean.driver.': ['priceWar', 'priceOk', 'adRace', 'adOk', 'crowded', 'roomy', 'feedsHow', 'quality', 'noQuality']
+  'ocean.driver.': ['priceWar', 'priceOk', 'adRace', 'adOk', 'crowded', 'roomy', 'feedsHow', 'quality', 'noQuality'],
+  'currency.': ['USD', 'RUB']
 };
 // Регионы мира — из списка geo.js и «онлайн».
 const geoSrc = readFileSync(join(root, 'web/assets/js/geo.js'), 'utf8');
@@ -87,7 +88,9 @@ for (const s of ['goal', 'ocean', 'month', 'pnl', 'market', 'choice', 'price', '
 }
 // Часовые пояса формы игры: [пояс, ключ] в create.js.
 const create = readFileSync(join(root, 'web/assets/js/views/create.js'), 'utf8');
-dynamic['tz.'] = [...create.matchAll(/\['[A-Za-z_/]+', '([a-zA-Z]+)'\]/g)].map((m) => m[1]);
+const tzList = /export const TIME_ZONES = \[([\s\S]*?)\n\];/.exec(create);
+if (!tzList) missing.add('(could not read TIME_ZONES from create.js)');
+else dynamic['tz.'] = [...tzList[1].matchAll(/\['[A-Za-z_/]+', '([a-zA-Z]+)'\]/g)].map((m) => m[1]);
 // Столбцы CSV: списки ключей в history.js (TEAM_COLS и […].map(colName)).
 const history = readFileSync(join(root, 'web/assets/js/views/history.js'), 'utf8');
 const colLists = [...history.matchAll(/TEAM_COLS = \[([\s\S]*?)\];|\[([^\[\]]*)\]\s*\.map\(colName\)/g)]
@@ -111,7 +114,7 @@ for (const m of missing) problems.push('en: missing ' + m);
 
 const PLURAL_FORMS = { es: ['one'], pt: ['one'], ru: ['one', 'few', 'many'] };
 // Текст, который во всех языках одинаков: названия, сокращения, коды.
-const SAME_OK = /^(Market Game|OK|SEO|Google Maps|UTC|Total|Toronto|Bangkok|Dubai|São Paulo|Sydney|Capital|Marketing|Menu|Ranking|Elite|No)$/;
+const SAME_OK = /^(Market Game|OK|SEO|Google Maps|UTC|Total|Toronto|Bangkok|Dubai|São Paulo|Sydney|Capital|Marketing|Menu|Ranking|Elite|No|Piece of Cake)$/;
 
 const placeholders = (s) => new Set([...String(s).matchAll(/\{(\w+)\}/g)].map((m) => m[1]));
 const bold = (s) => (String(s).match(/\*\*/g) || []).length;

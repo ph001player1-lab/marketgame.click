@@ -161,16 +161,32 @@ export async function oceanByMonth(sql: Sql, gameId: string) {
  * Потоки денег за всю игру: гости → рестораны → все, кому рестораны
  * платят, → владельцы. Строится из записанных итогов, экономику не трогает.
  */
+// Куда ушли деньги гостей: те же статьи, что в отчёте ресторана.
+const moneyFlows = (sql: Sql) => sql`
+  coalesce(sum(revenue), 0) as revenue, coalesce(sum(cogs_total), 0) as suppliers,
+  coalesce(sum(payroll + shift_cost), 0) as staff,
+  coalesce(sum(marketing_total), 0) as advertising,
+  coalesce(sum(quality_upkeep + quality_invest), 0) as quality,
+  coalesce(sum(rent), 0) as landlord, coalesce(sum(insurance), 0) as insurer,
+  coalesce(sum(utilities), 0) as utility, coalesce(sum(interest), 0) as bank,
+  coalesce(sum(tax), 0) as tax, coalesce(sum(profit), 0) as kept`;
+
+function restaurantsTo(r: Row) {
+  return {
+    suppliers: cents(num(r.suppliers)), staff: cents(num(r.staff)),
+    advertising: cents(num(r.advertising)), quality: cents(num(r.quality)),
+    landlord: cents(num(r.landlord)), insurer: cents(num(r.insurer)),
+    utility: cents(num(r.utility)), bank: cents(num(r.bank)),
+    cityTax: cents(num(r.tax)), keptByRestaurants: cents(num(r.kept))
+  };
+}
+
 export async function moneyMap(sql: Sql, gameId: string) {
-  const [[r], inst, [c], [t]]: Row[][] = await Promise.all([sql`
-    select coalesce(sum(revenue), 0) as revenue, coalesce(sum(cogs_total), 0) as suppliers,
-           coalesce(sum(payroll + shift_cost), 0) as staff,
-           coalesce(sum(marketing_total), 0) as advertising,
-           coalesce(sum(quality_upkeep + quality_invest), 0) as quality,
-           coalesce(sum(rent), 0) as landlord, coalesce(sum(insurance), 0) as insurer,
-           coalesce(sum(utilities), 0) as utility, coalesce(sum(interest), 0) as bank,
-           coalesce(sum(tax), 0) as tax, coalesce(sum(profit), 0) as kept
-    from results where game_id = ${gameId}`, sql`
+  const [[r], months, inst, [c], [t]]: Row[][] = await Promise.all([
+    sql`select ${moneyFlows(sql)} from results where game_id = ${gameId}`,
+    // По месяцам — для «Куска Пирога»: размер рынка и куда ушли деньги месяца.
+    sql`select round_number, ${moneyFlows(sql)} from results where game_id = ${gameId}
+        group by round_number order by round_number`, sql`
     select kind, sum(income) as income, sum(write_offs) as write_offs,
            sum(to_city) as to_city, sum(to_players) as to_players, sum(to_private) as to_private
     from institution_months where game_id = ${gameId} group by kind`, sql`
@@ -185,13 +201,10 @@ export async function moneyMap(sql: Sql, gameId: string) {
 
   return {
     guestsToRestaurants: cents(num(r.revenue)),
-    restaurantsTo: {
-      suppliers: cents(num(r.suppliers)), staff: cents(num(r.staff)),
-      advertising: cents(num(r.advertising)), quality: cents(num(r.quality)),
-      landlord: cents(num(r.landlord)), insurer: cents(num(r.insurer)),
-      utility: cents(num(r.utility)), bank: cents(num(r.bank)),
-      cityTax: cents(num(r.tax)), keptByRestaurants: cents(num(r.kept))
-    },
+    restaurantsTo: restaurantsTo(r),
+    months: months.map((m) => ({
+      round: num(m.round_number), guestsToRestaurants: cents(num(m.revenue)), restaurantsTo: restaurantsTo(m)
+    })),
     institutions: Object.fromEntries(inst.map((i) => [i.kind, {
       income: cents(num(i.income)), writeOffs: cents(num(i.write_offs)),
       toCity: cents(num(i.to_city)), toPlayers: cents(num(i.to_players)),
@@ -237,6 +250,8 @@ async function timeline(sql: Sql, game: Row) {
       profit: Math.round(num(r.profit)), cash: Math.round(num(r.cash_after)),
       capital: Math.round(num(r.cash_after) - num(r.loan_balance_after)),
       marketSharePct: round2(num(r.market_share) * 100), served: Math.round(num(r.served)),
+      // Привлечено гостей (сколько пришло бы, хватай мест) и денежный поток месяца.
+      demand: Math.round(num(r.demand)), cashFlow: Math.round(num(r.cash_flow)),
       price: round2(num(r.price)), brand: round2(num(r.brand_after)),
       reputation: round2(num(r.reputation_after)), quality: round2(num(r.quality)),
       capacity: Math.round(num(r.capacity)), marketingTotal: Math.round(num(r.marketing_total)),
@@ -335,7 +350,7 @@ export async function myGames(sql: Sql, email: string, isAdmin: boolean) {
     id: String(g.id), code: String(g.code), title: String(g.title), league: String(g.league),
     totalRounds: num(g.total_rounds), currentRound: num(g.current_round), status: String(g.status),
     practice: !!g.practice, organizer: g.organizer ?? null, createdAt: g.created_at,
-    language: String(g.language ?? 'en'),
+    language: String(g.language ?? 'en'), currency: String(g.currency ?? 'USD'),
     finishedAt: g.finished_at ?? null, scheduledAt: g.scheduled_at ?? null, timezone: String(g.timezone)
   });
 

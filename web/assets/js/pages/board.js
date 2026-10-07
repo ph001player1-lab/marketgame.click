@@ -1,6 +1,11 @@
 // Табло для проектора: board/?code=ABC123. Крупный шрифт, таймер месяца по
 // часам сервера, код игры и адрес сайта для входа команд.
 //
+// Две страницы. Главная — «Кусок Пирога»: два больших пирога выбранного
+// месяца и внизу лента мини-пар по всем месяцам; по ней ведущий
+// комментирует игру. Кнопка внизу переключает на прежнее табло — команды,
+// экономика, деньги и рейтинг с графиками и таблицами — и обратно.
+//
 // Табло видят только участники игры, её ведущий и администраторы, поэтому
 // на проекторе тоже нужно войти — обычно почтой ведущего. Язык табло —
 // язык игры: его читает зал.
@@ -8,12 +13,13 @@
 import { CONFIG } from '../config.js';
 import { t, errorText, setLanguage, pickLanguage } from '../i18n.js';
 import { h, replace } from '../dom.js';
-import { clock } from '../fmt.js';
+import { clock, setCurrency } from '../fmt.js';
 import { read } from '../api.js';
 import { currentEmail, signOut } from '../auth.js';
 import { renderLogin } from '../views/login.js';
 import { createScoreboard } from '../views/scoreboard.js';
-import { siteBase } from '../views/common.js';
+import { createCake } from '../views/cake.js';
+import { siteBase, sponsorBanner } from '../views/common.js';
 
 const root = document.getElementById('app');
 const params = new URLSearchParams(location.search);
@@ -74,6 +80,7 @@ async function start(gameCode) {
     return;
   }
   await setLanguage(first.game.language);
+  setCurrency(first.game.currency);
 
   const titleEl = h('h1', {}, t('common.loading'));
   const subEl = h('div', { class: 'projector__sub' }, '');
@@ -83,17 +90,40 @@ async function start(gameCode) {
     h('div', {}, t('board.code'), ' ', h('b', { class: 'code code--inline' }, gameCode)));
   const fullBtn = h('button', { class: 'btn btn--ghost btn--small no-print', type: 'button', onclick: toggleFull }, t('board.fullscreen'));
   const rotate = h('input', { type: 'checkbox' });
+  const rotateBox = h('label', { class: 'check' }, rotate, h('span', {}, t('board.rotate')));
+  // Спонсор на главном экране — внизу, рядом с кнопками (у прежнего табло — своя плашка).
+  const sponsorEl = h('div', { class: 'projector__sponsor' });
   const errorEl = h('div', {});
+  const cakeBox = h('div', {});
   const boardBox = h('div', {});
-  replace(root, h('div', { class: 'projector' },
+  const pageBtn = h('button', { class: 'btn btn--small no-print', type: 'button', onclick: () => showPage(page === 'cake' ? 'board' : 'cake') });
+  const shell = h('div', { class: 'projector' },
     h('header', { class: 'projector__head' },
       h('div', { class: 'projector__title' }, titleEl, subEl),
       timerEl, joinEl),
-    errorEl, boardBox,
-    h('footer', { class: 'projector__foot no-print' },
-      h('label', { class: 'check' }, rotate, h('span', {}, t('board.rotate'))), fullBtn)));
+    errorEl, h('div', { class: 'projector__body' }, cakeBox, boardBox),
+    h('footer', { class: 'projector__foot no-print' }, rotateBox, sponsorEl,
+      h('div', { class: 'btn-row' }, pageBtn, fullBtn)));
+  replace(root, shell);
 
-  const board = createScoreboard(boardBox, { mode: 'projector' });
+  const cake = createCake(cakeBox, { big: true });
+  const board = createScoreboard(boardBox, { mode: 'projector', views: ['teams', 'economy', 'money', 'rating'] });
+  let lastData = null;
+  let page = 'cake';
+  try { page = sessionStorage.getItem('mg-projector-page') === 'board' ? 'board' : 'cake'; } catch { /* нет хранилища */ }
+
+  function showPage(p) {
+    page = p;
+    try { sessionStorage.setItem('mg-projector-page', p); } catch { /* нет хранилища */ }
+    shell.classList.toggle('projector--cake', p === 'cake');
+    cakeBox.hidden = p !== 'cake';
+    boardBox.hidden = p === 'cake';
+    rotateBox.hidden = p === 'cake';
+    sponsorEl.hidden = p !== 'cake';
+    pageBtn.textContent = p === 'cake' ? t('board.classicPage') : t('board.views.cake');
+    if (lastData) (p === 'cake' ? cake : board).update(lastData, null);
+  }
+  showPage(page);
 
   let clockOffset = 0;
   let deadline = null;
@@ -124,14 +154,22 @@ async function start(gameCode) {
     document.title = g.title + ' · ' + t('board.title');
     if (g.serverNow) clockOffset = new Date(g.serverNow).getTime() - Date.now();
     deadline = g.deadline ? new Date(g.deadline).getTime() : null;
-    board.update(data, null);
+    lastData = data;
+    // Плашку перерисовываем, только если спонсор сменился: логотип не мигает.
+    const sponsorSig = JSON.stringify(g.sponsor || null);
+    if (sponsorSig !== sponsorEl.dataset.sig) {
+      sponsorEl.dataset.sig = sponsorSig;
+      replace(sponsorEl, sponsorBanner(g.sponsor, g.id));
+    }
+    // Обновляем видимую страницу; другая получит данные, когда её откроют.
+    (page === 'cake' ? cake : board).update(data, null);
   }
 
   // Смена разделов по кругу — для перерыва, когда табло висит само по себе.
   const views = ['teams', 'economy', 'money', 'rating'];
   let viewIdx = 0;
   setInterval(() => {
-    if (!rotate.checked) return;
+    if (!rotate.checked || page !== 'board') return;
     viewIdx = (viewIdx + 1) % views.length;
     board.showView(views[viewIdx]);
   }, 20000);

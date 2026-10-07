@@ -5,7 +5,7 @@
 
 import { t, errorText } from '../i18n.js';
 import { h, replace, toast, confirmDialog, busy, field, moneyInput, card } from '../dom.js';
-import { usd, int, dec2, pct, pctRaw, parseMoney } from '../fmt.js';
+import { usd, int, dec2, pct, pctRaw, parseMoney, currencySign } from '../fmt.js';
 import { act } from '../api.js';
 import { locationBadge, statusBadge, copyText, siteBase, teamName as named, starsBadge } from './common.js';
 import { OWNER_COLORS } from './scoreboard.js';
@@ -485,7 +485,7 @@ export function createConsole(root, ctx) {
           inputs[key] = input;
           const range = isPct ? pctRaw(rule.min * 100) + ' – ' + pctRaw(rule.max * 100)
             : MONEY_KEYS.has(key) ? usd(rule.min) + ' – ' + usd(rule.max) : int(rule.min) + ' – ' + int(rule.max);
-          configGrid.append(field(t('upcoming.keys.' + key) + (isPct ? ', %' : MONEY_KEYS.has(key) ? ', $' : ''), input,
+          configGrid.append(field(t('upcoming.keys.' + key) + (isPct ? ', %' : MONEY_KEYS.has(key) ? ', ' + currencySign() : ''), input,
             t('host.allowed', { range })));
         }
       }
@@ -506,11 +506,12 @@ export function createConsole(root, ctx) {
       const g = s.game;
       // Форму данных игры пересобираем, только если ведущий её не трогал.
       const key = JSON.stringify([g.title, g.organizer, g.timezone, g.scheduledAt, g.openBook, g.practice, g.sponsor,
-        g.language, g.roundNumber > 0]);
+        g.language, g.location, g.roundNumber > 0]);
       if (!form || (!form.dirty && key !== formKey)) {
         formKey = key;
         form = gameForm(g, { withLeague: false, lockPractice: g.roundNumber > 0 });
-        replace(detailsBox, h('p', { class: 'muted small' }, t('host.leagueFixed', { league: t('leagues.' + g.league), total: g.totalRounds })), form.el);
+        replace(detailsBox, h('p', { class: 'muted small' }, t('host.leagueFixed', { league: t('leagues.' + g.league), total: g.totalRounds }),
+          ' ', t('host.currencyFixed', { currency: t('currency.' + (g.currency || 'USD')) })), form.el);
       }
       paintConfig(s, false);
       const canDelete = g.roundNumber === 0 || (g.roundNumber === 1 && g.roundStatus === 'open');
