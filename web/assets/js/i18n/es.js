@@ -425,10 +425,12 @@ export default {
     guests: '{served} atendidos',
     guestsLost: '{attracted} atraídos → {served} atendidos',
     price: '{amount} por comida',
+    profit: '{amount} de ganancia',
     cashFlow: '{amount} de flujo de caja',
     plus: 'flujo de caja positivo', minus: 'negativo',
     lostNote: 'atraídos → atendidos: los demás no encontraron lugar',
-    losses: 'Los restaurantes gastaron {amount} más de lo que ingresaron: el capital y los préstamos cubrieron la diferencia.'
+    losses: 'Los restaurantes gastaron {amount} más de lo que ingresaron: el capital y los préstamos cubrieron la diferencia.',
+    loanNote: 'flujo de caja = ganancia − capital del préstamo devuelto este mes; la suma de las ganancias es «Se quedó en los restaurantes»'
   },
 
   money: {

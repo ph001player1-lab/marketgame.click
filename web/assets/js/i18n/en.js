@@ -427,10 +427,12 @@ export default {
     guests: '{served} served',
     guestsLost: '{attracted} attracted → {served} served',
     price: '{amount} per meal',
+    profit: '{amount} profit',
     cashFlow: '{amount} cash flow',
     plus: 'positive cash flow', minus: 'negative',
     lostNote: 'attracted → served: the rest found no seat',
-    losses: 'Restaurants spent {amount} more than they took in — capital and loans covered the gap.'
+    losses: 'Restaurants spent {amount} more than they took in — capital and loans covered the gap.',
+    loanNote: 'cash flow = profit − loan principal repaid this month; all teams’ profits add up to «Kept by restaurants»'
   },
 
   money: {

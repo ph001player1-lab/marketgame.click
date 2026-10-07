@@ -98,7 +98,7 @@ function monthOf(data, round, myId) {
     const demand = Math.max(Number(e.demand ?? e.served) || 0, Number(e.served) || 0);
     if (!(demand > 0)) continue;
     teams.push({ id: p.id, name: p.restaurant, mine: p.id === myId, demand, served: Number(e.served) || 0,
-      price: Number(e.price) || 0, cashFlow: Number(e.cashFlow) || 0 });
+      price: Number(e.price) || 0, profit: Number(e.profit) || 0, cashFlow: Number(e.cashFlow) || 0 });
   }
   const attracted = teams.reduce((a, x) => a + x.demand, 0);
   for (const x of teams) x.share = attracted > 0 ? x.demand / attracted : 0;
@@ -416,6 +416,7 @@ export function createCake(root, { big = false } = {}) {
         x.served < x.demand ? t('cake.guestsLost', { attracted: int(x.demand), served: int(x.served) })
           : t('cake.guests', { served: int(x.served) }),
         x.price > 0 ? money('cake.price', priceText(x.price)) : null,
+        money('cake.profit', usdSigned(x.profit)),
         money('cake.cashFlow', usdSigned(x.cashFlow))
       ].filter(Boolean),
       inside: shareText(x.share)
@@ -478,7 +479,8 @@ export function createCake(root, { big = false } = {}) {
     const lostKey = shown(lost(m), rest.some(lost));
     const keys1 = h('div', { class: 'owner-keys cake__keys' },
       h('span', {}, swatch(GOOD), t('cake.plus')), h('span', {}, swatch(BAD), t('cake.minus')),
-      lostKey ? h('span', { class: 'muted', ...lostKey }, t('cake.lostNote')) : null);
+      lostKey ? h('span', { class: 'muted', ...lostKey }, t('cake.lostNote')) : null,
+      m.teams.some((x) => Math.round(x.profit) !== Math.round(x.cashFlow)) ? h('span', { class: 'muted' }, t('cake.loanNote')) : null);
     const keys2 = h('div', { class: 'owner-keys cake__keys' },
       h('span', {}, swatch(FLOW_COLORS.cost), t('money.groupCost')),
       h('span', {}, swatch(FLOW_COLORS.institution), t('money.groupInstitutions')),
