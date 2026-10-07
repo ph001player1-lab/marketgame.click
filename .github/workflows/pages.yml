@@ -7,7 +7,9 @@ name: Deploy site
 #   Settings → Pages → Custom domain: marketgame.click, Enforce HTTPS
 # DNS у регистратора (Dynadot) — см. README.
 #
-# Сайт публикуется только с основной ветки репозитория.
+# Сайт публикуется только с основной ветки репозитория и только вместе с
+# сервером: если этот коммит выкладывает и сервер (Deploy Supabase), сайт
+# ждёт его и без него не выходит. Иначе новый сайт попал бы на старый сервер.
 
 on:
   workflow_dispatch:
@@ -17,6 +19,7 @@ on:
       - '.github/workflows/pages.yml'
 
 permissions:
+  actions: read
   contents: read
   pages: write
   id-token: write
@@ -34,6 +37,29 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v5
+      - name: Wait for the server deploy of this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          api="repos/${{ github.repository }}/actions/workflows/deploy-supabase.yml/runs?head_sha=${{ github.sha }}"
+          for i in $(seq 1 80); do
+            run=$(gh api "$api" --jq '.workflow_runs[0] // empty | "\(.status) \(.conclusion)"')
+            if [ -z "$run" ]; then
+              # Выкладки сервера для этого коммита нет — минуту ждём, вдруг она ещё создаётся.
+              if [ "$i" -ge 5 ]; then echo "No server deploy for this commit"; exit 0; fi
+            else
+              set -- $run
+              echo "Deploy Supabase: $1 $2"
+              if [ "$1" = "completed" ]; then
+                if [ "$2" = "success" ] || [ "$2" = "skipped" ]; then exit 0; fi
+                echo "::error::Deploy Supabase finished with '$2' — the site is not published, so it stays in step with the server."
+                exit 1
+              fi
+            fi
+            sleep 15
+          done
+          echo "::error::Timed out waiting for Deploy Supabase"
+          exit 1
       # Тестовый вход (любой код) не должен попасть на живой сайт.
       - name: Check the live config
         run: |

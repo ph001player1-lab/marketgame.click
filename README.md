@@ -130,10 +130,21 @@ GitHub Actions запускает всё это при каждом измене
 - настройки входа: регистрация выключена, код из 6 цифр, наш шаблон письма;
 - пробный запрос в конце.
 
+Сайт (**Deploy site**) выходит только после сервера: если коммит меняет и
+`supabase/`, сайт ждёт удачной выкладки сервера, а без неё не публикуется.
+Так новый сайт не попадает на старый сервер.
+
 ### Один раз
 
 1. **Токен Supabase:** supabase.com → аватар → **Account preferences** →
-   **Access Tokens** → **Generate new token**.
+   **Access Tokens** → **Generate new token**. Токену с ограниченными
+   правами (scoped) нужны: **Project Settings**, **API Keys**, **API Key
+   Secrets** — *Read*; **Edge Functions** — *Read-write*; для настроек
+   входа ещё **Auth Config** и **Project Settings** — *Read-write*; при
+   секрете `ADMIN_EMAILS` — **Edge Function Secrets** — *Read-write*.
+   Токен только на чтение не подойдёт: выкладка остановится на шаге
+   *Token can deploy the function*, ничего не изменив. Срок действия токена
+   лучше ставить большой: истёкший токен — тоже остановка выкладки.
 2. **Секреты в GitHub:** репозиторий → **Settings** → **Secrets and
    variables** → **Actions** → **New repository secret**:
    - `SUPABASE_ACCESS_TOKEN` — токен из шага 1;

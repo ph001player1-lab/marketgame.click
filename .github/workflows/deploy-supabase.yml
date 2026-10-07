@@ -6,7 +6,16 @@ name: Deploy Supabase
 # Автоматически — при изменениях в supabase/ на основной ветке репозитория.
 #
 # Секреты репозитория (Settings → Secrets and variables → Actions):
-#   SUPABASE_ACCESS_TOKEN  личный токен Supabase (Account → Access Tokens)
+#   SUPABASE_ACCESS_TOKEN  личный токен Supabase (Account → Access Tokens).
+#                          Токену с ограниченными правами нужны:
+#                            Project Settings, API Keys, API Key Secrets — Read
+#                              (подключение к проекту);
+#                            Edge Functions — Read-write (выкладка функции);
+#                            Auth Config и Project Settings — Read-write
+#                              (настройки входа; без них — только предупреждение);
+#                            Edge Function Secrets — Read-write, если задан
+#                              ADMIN_EMAILS.
+#                          Миграции идут по паролю базы и прав токена не требуют.
 #   SUPABASE_DB_PASSWORD   пароль базы проекта
 #   ADMIN_EMAILS           необязательно: администраторы через запятую
 #   SMTP_PASS              необязательно: ключ почтового сервиса (Resend);
@@ -56,6 +65,26 @@ jobs:
 
       - name: Link project
         run: supabase link --project-ref "$PROJECT_REF"
+
+      # Функция выкладывается после миграций. Если токен не может выложить
+      # функцию, база обновится, а функция останется старой — и сайт
+      # сломается. Поэтому права проверяем до миграций: безобидная запись
+      # (verify_jwt и так выключен) проходит, только если токену можно
+      # выкладывать функции. Иначе выкладка останавливается, ничего не меняя.
+      - name: Token can deploy the function
+        run: |
+          code=$(curl -s -o resp.json -w '%{http_code}' -X PATCH \
+            "https://api.supabase.com/v1/projects/$PROJECT_REF/functions/game" \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H 'Content-Type: application/json' \
+            -d '{"verify_jwt": false}')
+          echo "HTTP $code"
+          if [ "$code" = "404" ]; then
+            echo "::warning::Function game is not deployed yet — the token check is skipped"
+          elif [ "$code" != "200" ]; then
+            cat resp.json; echo
+            echo "::error::SUPABASE_ACCESS_TOKEN cannot deploy Edge Functions (HTTP $code). Give the token Edge Functions: Read-write. Nothing was changed."
+            exit 1
+          fi
 
       - name: Tables before migrations (for the log)
         run: supabase inspect db table-stats --linked || true
