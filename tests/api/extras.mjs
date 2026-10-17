@@ -312,6 +312,56 @@ await step('звёзды качества: строго за полный пун
   assert.equal((await dash(ANN, gid)).player.stars, 0);
 });
 
+await step('сбой подключения к базе: сервер повторяет сам, действие не задваивается и не теряется', async () => {
+  // Первая игра этого файла (уже закончена: поправки ведущего после финала разрешены).
+  const playerId = ids[BOB];
+  const grants = async () => (await sql`
+    select count(*)::int as n from ledger where player_id = ${playerId} and reason = 'Reliability check'`)[0].n;
+  // База: первые два подключения отказывают («нет мест»), а запись ответа
+  // действия один раз обрывается посреди транзакции.
+  let refuse = 2;
+  let breakAnswer = 1;
+  const connectError = () => Object.assign(new Error('Max client connections reached'), { code: 'XX000' });
+  const flaky = new Proxy(sql, {
+    apply(target, self, args) {
+      if (refuse > 0) { refuse--; return Promise.reject(connectError()); }
+      return Reflect.apply(target, self, args);
+    },
+    get(target, prop) {
+      if (prop !== 'begin') return Reflect.get(target, prop);
+      return (fn) => target.begin((tx) => fn(new Proxy(tx, {
+        get(t, p) {
+          if (p === 'json' && breakAnswer > 0) { breakAnswer--; return () => { throw new Error('connection lost'); }; }
+          return Reflect.get(t, p);
+        }
+      })));
+    }
+  });
+  const handler = createHandler({ sql: flaky, adminEmails: [ADMIN], allowedOrigins: [],
+    verifyToken: async (t) => t.slice(5), ensureAuthUser: async () => {} });
+  const send = (requestId) => handler(new Request('http://x/game', {
+    method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer test:' + HOST },
+    body: JSON.stringify({ action: 'adjust', gameId, playerId, amount: 10, reason: 'Reliability check', requestId })
+  }));
+  const requestId = crypto.randomUUID();
+  const before = await grants();
+  // 1. Два отказа подключения сервер переживает сам; обрыв при записи ответа
+  //    откатывает и действие, и отметку запроса: ответ 500, денег не прибавилось.
+  const first = await send(requestId);
+  assert.equal(refuse, 0, 'сервер повторил запрос после отказов подключения');
+  assert.equal(first.status, 500);
+  assert.equal(await grants(), before, 'сорвавшееся действие не оставило следа');
+  // 2. Повтор с тем же requestId выполняет действие — не «Уже сделано».
+  const second = await send(requestId);
+  assert.equal(second.status, 200);
+  ok(await second.json(), 'повтор после обрыва');
+  assert.equal(await grants(), before + 1);
+  // 3. Ещё один повтор — сохранённый ответ, второй раз деньги не начисляются.
+  ok(await (await send(requestId)).json(), 'повтор выполненного');
+  assert.equal(await grants(), before + 1, 'деньги начислены один раз');
+  await moneyInvariants(sql, gameId);
+});
+
 await step('CORS: только разрешённые сайты', async () => {
   const handler = createHandler({
     sql, adminEmails: [], allowedOrigins: ['https://marketgame.click'],

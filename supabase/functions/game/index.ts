@@ -12,8 +12,9 @@
 //    ALLOWED_ORIGINS  сайты, с которых можно звать функцию; по умолчанию
 //                     marketgame.click, его адрес на github.io и локальная
 //                     разработка
-//    DB_URL           строка подключения к базе, если встроенная
-//                     SUPABASE_DB_URL не подходит
+//    DB_URL           строка подключения к базе через пулер Supabase в
+//                     режиме транзакций (порт 6543): Connect → Transaction
+//                     pooler. Без неё — встроенная SUPABASE_DB_URL
 //    SERVICE_KEY      секретный ключ (sb_secret_…), если встроенного
 //                     SUPABASE_SERVICE_ROLE_KEY в проекте нет
 // ============================================================================
@@ -25,11 +26,22 @@ import { createHandler } from './handler.ts';
 const env = (k: string) => Deno.env.get(k) ?? '';
 const list = (v: string) => v.split(',').map((s) => s.trim()).filter(Boolean);
 
-const sql = postgres(env('DB_URL') || env('SUPABASE_DB_URL'), {
+// Копий функции много — у каждой свои подключения. Напрямую база держит
+// всего несколько десятков, и при игре на два десятка команд они кончались:
+// «Попробуйте через минуту». Пулер в режиме транзакций делит между копиями
+// небольшой общий набор подключений, поэтому подключаемся через него.
+const dbUrl = env('DB_URL') || env('SUPABASE_DB_URL');
+try {
+  const u = new URL(dbUrl);
+  console.log('db:', u.hostname, u.port || '5432', u.port === '6543' ? '(transaction pooler)' : '');
+} catch { /* в логи — только адрес, без пароля */ }
+
+const sql = postgres(dbUrl, {
   // Через пулер Supabase подготовленные запросы не работают.
   prepare: false,
   max: 3,
-  idle_timeout: 20,
+  // Свободное подключение отпускаем быстро: его ждут другие копии.
+  idle_timeout: 5,
   connect_timeout: 10,
   // Деньги в базе — numeric, счётчики — bigint. Отдаём их числами, иначе
   // postgres.js вернёт строки и сложение превратится в склейку.

@@ -106,13 +106,45 @@ export function createHandler(deps: Deps) {
     const token = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : '';
 
     try {
-      return json(await route(deps, body, token), 200, cors);
+      return json(await retried(() => route(deps, body, token)), 200, cors);
     } catch (e) {
       if (e instanceof ApiError) return json({ ok: false, error: e.code, ...e.details }, 200, cors);
       console.error(e);
       return json({ ok: false, error: 'server_error' }, 500, cors);
     }
   };
+}
+
+/**
+ * База не дала подключиться: нет свободных подключений, она перезапускается,
+ * подключение не установилось. Запрос до базы не дошёл — его можно повторить.
+ * Обрыв уже установленного подключения сюда не входит: там неизвестно,
+ * успела ли запись.
+ */
+export function isConnectFailure(e: unknown): boolean {
+  const err = (e ?? {}) as { code?: unknown; message?: unknown };
+  const code = String(err.code ?? '');
+  if (['53300', '57P03', '08001', '08004', 'CONNECT_TIMEOUT', 'ECONNREFUSED'].includes(code)) return true;
+  return /max client connections|too many clients|too many connections|remaining connection slots/i
+    .test(String(err.message ?? ''));
+}
+
+/**
+ * Запрос целиком ещё раз, если база не дала подключиться: через 0,3 и 0,8
+ * секунды (со случайной добавкой, чтобы повторы разных игроков не совпали).
+ * Действия повторять безопасно: отметка запроса и само действие — одна
+ * транзакция (см. once), второй раз деньги не спишутся.
+ */
+async function retried<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
+  for (let i = 1; ; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (i >= attempts || !isConnectFailure(e)) throw e;
+      console.warn('db connect failed, retry', i, String((e as Error)?.message ?? e));
+      await new Promise((r) => setTimeout(r, (i === 1 ? 300 : 800) + Math.random() * 200));
+    }
+  }
 }
 
 /**
@@ -251,7 +283,7 @@ async function route(deps: Deps, b: Row, token: string): Promise<Row> {
     if (!isGameHost) fail('not_host');
     if (action === 'monitor') return await H.monitor(sql, game);
     const result = await once(deps, b, game.id, me.email, action,
-      () => HOST_ACTIONS[action](deps, game, b, me.email));
+      (tx) => HOST_ACTIONS[action]({ ...deps, sql: tx }, game, b, me.email));
     if (NO_STATE.has(action) || result.ok !== true) return result;
     const [fresh] = await sql`select * from games where id = ${gameId}`;
     return { ...result, state: await H.monitor(sql, fresh) };
@@ -276,7 +308,7 @@ async function route(deps: Deps, b: Row, token: string): Promise<Row> {
 
     const actor = impersonating ? me.email + ' (host)' : me.email;
     const result = await once(deps, b, game.id, me.email, action,
-      () => PLAYER_ACTIONS[action](deps, game, playerId, b, actor));
+      (tx) => PLAYER_ACTIONS[action]({ ...deps, sql: tx }, game, playerId, b, actor));
     if (result.ok !== true) return result;
     const [fresh] = await sql`select * from games where id = ${gameId}`;
     return { ...result, state: await P.dashboard(sql, fresh, playerId, impersonating) };
@@ -289,26 +321,55 @@ async function route(deps: Deps, b: Row, token: string): Promise<Row> {
  * Защита от повторов. Клиент присылает requestId на каждое нажатие; повтор
  * того же запроса при обрыве связи вернёт сохранённый ответ, а не спишет
  * деньги второй раз.
+ *
+ * Отметка запроса, само действие и его ответ записываются одной
+ * транзакцией: либо всё, либо ничего. Сорвалось на середине (база не дала
+ * подключиться, функцию остановили) — не остаётся ни следа, и повтор
+ * выполнит действие заново. Повтор, пришедший, пока первый ещё идёт, ждёт
+ * его конца и получает тот же ответ.
  */
 async function once(deps: Deps, b: Row, gameId: string, email: string, action: string,
-                    run: () => Promise<Row>): Promise<Row> {
+                    run: (sql: Deps['sql']) => Promise<Row>): Promise<Row> {
   const id = typeof b.requestId === 'string' && /^[0-9a-f-]{36}$/i.test(b.requestId) ? b.requestId : null;
-  if (!id) return await run();
+  if (!id) return await run(deps.sql);
 
-  const [seen] = await deps.sql`select result from mutations where id = ${id}`;
-  if (seen) return seen.result ?? { ok: false, error: 'duplicate_request' };
-  const [claimed] = await deps.sql`
-    insert into mutations (id, game_id, email, action) values (${id}, ${gameId}, ${email}, ${action})
-    on conflict (id) do nothing returning id`;
-  if (!claimed) return { ok: false, error: 'duplicate_request' };
+  const stored = async () => {
+    const [seen] = await deps.sql`select result from mutations where id = ${id}`;
+    return seen ? (seen.result ?? { ok: false, error: 'duplicate_request' }) : null;
+  };
+  const seen = await stored();
+  if (seen) return seen;
 
-  let result: Row;
-  try {
-    result = await run();
-  } catch (e) {
-    if (e instanceof ApiError) result = { ok: false, error: e.code, ...e.details };
-    else { await deps.sql`delete from mutations where id = ${id}`; throw e; }
-  }
-  await deps.sql`update mutations set result = ${deps.sql.json(result)} where id = ${id}`;
-  return result;
+  const result = await deps.sql.begin(async (tx: Deps['sql']) => {
+    const [claimed] = await tx`
+      insert into mutations (id, game_id, email, action) values (${id}, ${gameId}, ${email}, ${action})
+      on conflict (id) do nothing returning id`;
+    if (!claimed) return null;
+    let out: Row;
+    try {
+      // Действие внутри точки сохранения: ошибка игрока (ApiError) откатывает
+      // его изменения, а отметка с ответом остаётся.
+      out = await tx.savepoint((sp: Deps['sql']) => run(nested(sp)));
+    } catch (e) {
+      if (!(e instanceof ApiError)) throw e;
+      out = { ok: false, error: e.code, ...e.details };
+    }
+    await tx`update mutations set result = ${tx.json(out)} where id = ${id}`;
+    return out;
+  });
+  return result ?? (await stored()) ?? { ok: false, error: 'duplicate_request' };
+}
+
+/**
+ * Транзакция для кода действий, который сам открывает транзакции
+ * (sql.begin): внутри уже открытой они становятся точками сохранения.
+ */
+function nested(tx: Deps['sql']): Deps['sql'] {
+  return new Proxy(tx, {
+    get(target, prop, receiver) {
+      // deno-lint-ignore no-explicit-any
+      if (prop === 'begin') return (...args: any[]) => target.savepoint(args[args.length - 1]);
+      return Reflect.get(target, prop, receiver);
+    }
+  });
 }

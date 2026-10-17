@@ -2,7 +2,8 @@
 //
 // Все запросы — POST с JSON. Действия с деньгами несут requestId: повтор
 // при обрыве связи уходит с тем же id, и сервер не спишет деньги дважды.
-// Поэтому действия, в отличие от v4.9, можно спокойно повторять.
+// Поэтому действия, в отличие от v4.9, можно спокойно повторять, и при
+// сбое сервера сайт сам повторяет их несколько раз, прежде чем показать ошибку.
 //
 // Защита от устаревших ответов (как в v4.9): фоновый опрос, начавшийся до
 // действия игрока, мог прийти после него и нарисовать старое состояние.
@@ -11,8 +12,15 @@
 import { CONFIG } from './config.js';
 import { getToken } from './auth.js';
 
-const RETRIES = 3;
-const RETRY_DELAY_MS = 900;
+// Сколько раз пробовать: действие игрока — терпеливо, секунд пятнадцать
+// (сбой у сервера обычно проходит за несколько секунд, а повтор действия
+// безопасен — у него тот же requestId); чтение — три раза; фоновый опрос —
+// один: следующий и так придёт через несколько секунд, а лишние повторы
+// всех игроков разом только нагружают сервер.
+const ATTEMPTS = { act: 5, read: 3, poll: 1 };
+// Пауза перед повтором: растёт с каждой попыткой, плюс случайная добавка,
+// чтобы повторы разных игроков не совпадали.
+const retryDelay = (attempt) => Math.min(5000, 700 * 2 ** (attempt - 1)) * (0.75 + Math.random() * 0.5);
 
 let generation = 0;        // растёт на каждое действие
 let inFlight = 0;          // сколько действий сейчас выполняется
@@ -50,14 +58,14 @@ function newRequestId() {
   return `${x.slice(0, 8)}-${x.slice(8, 12)}-${x.slice(12, 16)}-${x.slice(16, 20)}-${x.slice(20)}`;
 }
 
-async function send(body, withAuth) {
+async function send(body, withAuth, attempts = ATTEMPTS.read) {
   const headers = { 'content-type': 'application/json', apikey: CONFIG.publishableKey };
   if (withAuth) {
     const token = await getToken();
     if (token) headers.authorization = 'Bearer ' + token;
   }
   let lastError = null;
-  for (let attempt = 1; attempt <= RETRIES; attempt++) {
+  for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
       const res = await fetch(endpoint(), {
         method: 'POST', headers, body: JSON.stringify(body), cache: 'no-store'
@@ -70,15 +78,15 @@ async function send(body, withAuth) {
       return data;
     } catch (e) {
       lastError = e;
-      if (attempt < RETRIES) await sleep(RETRY_DELAY_MS * attempt);
+      if (attempt < attempts) await sleep(retryDelay(attempt));
     }
   }
   return { ok: false, error: /server|bad_response/.test(String(lastError)) ? 'server_error' : 'network' };
 }
 
 /** Чтение: табло, кабинет, пульт. */
-export function read(action, params = {}, { auth = true } = {}) {
-  return send({ action, ...params }, auth);
+export function read(action, params = {}, { auth = true, attempts = ATTEMPTS.read } = {}) {
+  return send({ action, ...params }, auth, attempts);
 }
 
 /** Действие: один requestId на все повторы. */
@@ -86,7 +94,7 @@ export async function act(action, params = {}) {
   generation++;
   inFlight++;
   try {
-    return await send({ action, requestId: newRequestId(), ...params }, true);
+    return await send({ action, requestId: newRequestId(), ...params }, true, ATTEMPTS.act);
   } finally {
     inFlight--;
   }
@@ -102,7 +110,7 @@ export async function poll(action, params = {}, opts = {}) {
   if (inFlight > 0) return null;
   const seq = ++pollSeq;
   const gen = generation;
-  const data = await read(action, params, opts);
+  const data = await read(action, params, { ...opts, attempts: ATTEMPTS.poll });
   if (gen !== generation || seq < lastShownSeq) return null;
   lastShownSeq = seq;
   return data;
