@@ -161,6 +161,32 @@ jobs:
             echo "::error::Resend did not send the backup email. The backup is still in Artifacts on this run's page."
             exit 1
           fi
+          echo "EMAIL_ID=$(jq -r '.id' resp.json)" >> "$GITHUB_ENV"
+
+      # Resend принял письмо — но дошло ли оно? Спрашиваем через минуту: если
+      # почта получателя его отклонила, запуск красный с причиной.
+      - name: Was the email delivered?
+        if: steps.go.outputs.run == 'true'
+        run: |
+          for i in 1 2 3 4; do
+            sleep 20
+            code=$(curl -s -o status.json -w '%{http_code}' "https://api.resend.com/emails/$EMAIL_ID" \
+              -H "Authorization: Bearer $SMTP_PASS")
+            if [ "$code" != 200 ]; then
+              echo "::notice::Resend did not show the email status (HTTP $code): the key may be send-only. Check resend.com → Emails."
+              cat status.json; echo; exit 0
+            fi
+            event=$(jq -r '.last_event // "unknown"' status.json)
+            echo "Attempt $i: $event"
+            case "$event" in
+              delivered) exit 0 ;;
+              bounced|failed|complained|suppressed)
+                jq . status.json
+                echo "::error::The backup email was not delivered ($event). The backup is still in Artifacts on this run's page."
+                exit 1 ;;
+            esac
+          done
+          echo "::warning::The email is still '$event' after a minute. Check resend.com → Emails."
 
       # Запомнить: по этой игре копия отправлена.
       - name: Remember
