@@ -1,0 +1,41 @@
+# Раз в день — короткий запрос к игре, чтобы база не засыпала.
+#
+# Бесплатный проект Supabase сам встаёт на паузу через 7 дней без запросов,
+# и тогда сайт не работает, пока его не восстановят вручную. Запрос рейтинга
+# идёт через функцию game в базу — этого достаточно.
+#
+# Заодно это проверка: если игра не ответила, запуск красный, и GitHub
+# присылает письмо. Тогда: Supabase → проект → Restore project.
+#
+# GitHub отключает расписание в публичном репозитории, если в нём 60 дней
+# не было коммитов, и пишет об этом на почту. Включить снова: Actions →
+# Keep database awake → Enable workflow.
+
+name: Keep database awake
+
+on:
+  schedule:
+    - cron: '17 3 * * *'   # каждый день в 03:17 UTC
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    env:
+      # Публичный ключ — не секрет: он и так уезжает в браузер каждому игроку.
+      PUBLISHABLE_KEY: sb_publishable_Q7RQ9We4D2h8qEiW1-ISjg_8P_Fq3_p
+      API: https://fzchwkwyicnjbtjkqack.supabase.co/functions/v1/game?forceFunctionRegion=us-west-1
+    steps:
+      - name: Ask the game for the rating (reads the database)
+        run: |
+          for i in 1 2 3; do
+            code=$(curl -s -o resp.json -w '%{http_code}' -X POST "$API" \
+              -H 'Content-Type: application/json' -H "apikey: $PUBLISHABLE_KEY" -d '{"action":"rating"}')
+            if [ "$code" = 200 ] && grep -q '"ok":true' resp.json; then echo "The game answered: OK"; exit 0; fi
+            echo "Attempt $i: HTTP $code"
+            sleep 30
+          done
+          echo "::error::The game did not answer (HTTP $code). If the project is paused: Supabase → project → Restore project."
+          exit 1
