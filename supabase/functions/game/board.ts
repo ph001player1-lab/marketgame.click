@@ -441,3 +441,18 @@ export async function publicReport(sql: Sql, b: Row) {
 }
 
 export type { Config };
+
+/**
+ * Когда закончилась последняя игра — для копии базы после каждой игры
+ * (GitHub Actions → Backup database). Без данных игроков: только сколько игр
+ * закончено, когда и как называется последняя.
+ */
+export async function lastFinished(sql: Sql) {
+  const [g] = await sql`
+    select count(*) over () as n, finished_at, title from games
+    where status = 'finished' order by finished_at desc nulls last limit 1`;
+  return {
+    ok: true, finished: g ? num(g.n) : 0,
+    at: g?.finished_at ? new Date(g.finished_at).toISOString() : null, title: g ? String(g.title ?? '') : null
+  };
+}

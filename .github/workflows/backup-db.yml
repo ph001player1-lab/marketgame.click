@@ -1,42 +1,116 @@
-# Резервная копия базы в архиве — по кнопке.
+# Копия базы — после сыгранных игр и по кнопке, на почту и в GitHub.
 #
-# Ежедневные копии Supabase на платном тарифе «физические»: их можно только
-# восстановить в панели, скачать нельзя, а на бесплатном тарифе копий нет
-# вовсе. Здесь — полная копия (схема и данные), которую можно скачать.
+# Раз в день спрашивает у игры, когда закончилась последняя игра. Если с
+# прошлой копии закончилась новая — делает полную копию базы (схема и
+# данные) и присылает её письмом на BACKUP_EMAIL. По кнопке (Actions →
+# Backup database → Run workflow) — копия и письмо сразу, без проверки.
+# Копия ещё 7 дней лежит на странице запуска, в Artifacts.
 #
-# Запуск: Actions → Backup database → Run workflow. Через пару минут внизу
-# страницы запуска, в Artifacts, — архив marketgame-backup-….
+# Этот же ежедневный запрос не даёт бесплатному проекту Supabase уснуть
+# (он засыпает через 7 дней без запросов). Если игра не ответила, запуск
+# красный и GitHub пишет на почту — тогда Supabase → проект → Restore project.
 #
-# Репозиторий публичный, а в базе почты игроков, поэтому архив зашифрован:
-# пароль — пароль базы (секрет SUPABASE_DB_PASSWORD). Открывается 7-Zip
-# (Windows) или Keka / The Unarchiver (Mac). Архив хранится 3 дня.
+# В базе почты игроков, а репозиторий публичный, поэтому архив зашифрован:
+# пароль — пароль базы (секрет SUPABASE_DB_PASSWORD). Открывается 7-Zip.
+# Письмо уходит через Resend — тот же ключ SMTP_PASS, что для кодов входа.
+#
+# GitHub отключает расписание в публичном репозитории после 60 дней без
+# коммитов и пишет об этом. Включить снова: Actions → Backup database →
+# Enable workflow.
 
 name: Backup database
 
 on:
+  schedule:
+    - cron: '17 3 * * *'   # каждый день в 03:17 UTC
   workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: backup-db
+  cancel-in-progress: false
 
 jobs:
   backup:
     runs-on: ubuntu-latest
     env:
       PROJECT_REF: fzchwkwyicnjbtjkqack
+      # Публичный ключ — не секрет: он и так уезжает в браузер каждому игроку.
+      PUBLISHABLE_KEY: sb_publishable_Q7RQ9We4D2h8qEiW1-ISjg_8P_Fq3_p
+      API: https://fzchwkwyicnjbtjkqack.supabase.co/functions/v1/game?forceFunctionRegion=us-west-1
+      BACKUP_EMAIL: ${{ vars.BACKUP_EMAIL || 'ph001player1@gmail.com' }}
+      SMTP_SENDER: ${{ vars.SMTP_SENDER || 'noreply@marketgame.click' }}
+      SMTP_PASS: ${{ secrets.SMTP_PASS }}
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
+      # Запрос к базе через игру: когда закончилась последняя игра. Он же
+      # будит проект. Не ответила трижды за полторы минуты — запуск красный.
+      - name: Last finished game
+        id: last
+        run: |
+          for i in 1 2 3; do
+            code=$(curl -s -o last.json -w '%{http_code}' -X POST "$API" \
+              -H 'Content-Type: application/json' -H "apikey: $PUBLISHABLE_KEY" -d '{"action":"lastFinished"}')
+            if [ "$code" = 200 ] && jq -e '.ok == true' last.json > /dev/null; then break; fi
+            echo "Attempt $i: HTTP $code"; code=fail; sleep 30
+          done
+          if [ "$code" = fail ]; then
+            echo "::error::The game did not answer. If the project is paused: Supabase → project → Restore project."
+            exit 1
+          fi
+          cat last.json; echo
+          stamp=$(jq -r '"\(.finished)-\(.at)"' last.json | tr -c 'A-Za-z0-9\n-' '-')
+          {
+            echo "stamp=$stamp"
+            echo "finished=$(jq -r '.finished' last.json)"
+            echo "title=$(jq -r '.title // ""' last.json | tr -d '\n')"
+            echo "at=$(jq -r '.at // ""' last.json)"
+          } >> "$GITHUB_OUTPUT"
+
+      # Копию по этой последней игре уже присылали — второй раз не нужно.
+      - name: Already sent for this game?
+        id: seen
+        if: github.event_name == 'schedule'
+        uses: actions/cache/restore@v4
+        with:
+          path: backup-sent.txt
+          key: backup-sent-${{ steps.last.outputs.stamp }}
+
+      - name: Decide
+        id: go
+        run: |
+          if [ "${{ github.event_name }}" != schedule ]; then echo "run=true" >> "$GITHUB_OUTPUT"; echo "Manual run: backup now."
+          elif [ "${{ steps.last.outputs.finished }}" = 0 ]; then echo "run=false" >> "$GITHUB_OUTPUT"; echo "No finished games yet."
+          elif [ "${{ steps.seen.outputs.cache-hit }}" = true ]; then echo "run=false" >> "$GITHUB_OUTPUT"; echo "No new games since the last backup."
+          else echo "run=true" >> "$GITHUB_OUTPUT"; echo "A new game finished: backup."; fi
+
       - uses: actions/checkout@v5
+        if: steps.go.outputs.run == 'true'
+
+      - name: Secrets are in place
+        if: steps.go.outputs.run == 'true'
+        run: |
+          missing=0
+          [ -n "$SUPABASE_ACCESS_TOKEN" ] || { echo "::error::Add repository secret SUPABASE_ACCESS_TOKEN"; missing=1; }
+          [ -n "$SUPABASE_DB_PASSWORD" ] || { echo "::error::Add repository secret SUPABASE_DB_PASSWORD"; missing=1; }
+          [ -n "$SMTP_PASS" ] || { echo "::error::Add repository secret SMTP_PASS (Resend key) to email the backup"; missing=1; }
+          exit $missing
 
       - uses: supabase/setup-cli@v1
+        if: steps.go.outputs.run == 'true'
         with:
           version: latest
 
       - name: Link project
+        if: steps.go.outputs.run == 'true'
         run: supabase link --project-ref "$PROJECT_REF"
 
       - name: Dump schema and data
+        if: steps.go.outputs.run == 'true'
         run: |
           supabase db dump --linked -f schema.sql
           supabase db dump --linked --data-only --use-copy -f data.sql
@@ -44,6 +118,7 @@ jobs:
           grep -c '^COPY ' data.sql | xargs echo "tables with data:"
 
       - name: Encrypt
+        if: steps.go.outputs.run == 'true'
         run: |
           name="marketgame-backup-$(date -u +%Y-%m-%d-%H%M)"
           echo "NAME=$name" >> "$GITHUB_ENV"
@@ -52,7 +127,48 @@ jobs:
           ls -l "$name.7z"
 
       - uses: actions/upload-artifact@v4
+        if: steps.go.outputs.run == 'true'
         with:
           name: ${{ env.NAME }}
           path: ${{ env.NAME }}.7z
-          retention-days: 3
+          retention-days: 7
+
+      - name: Email the backup
+        if: steps.go.outputs.run == 'true'
+        env:
+          TITLE: ${{ steps.last.outputs.title }}
+          AT: ${{ steps.last.outputs.at }}
+          MANUAL: ${{ github.event_name != 'schedule' }}
+        run: |
+          base64 -w0 "$NAME.7z" > attachment.b64
+          if [ "$MANUAL" = true ]; then subject="Market Game: копия базы (по кнопке)"
+          else subject="Market Game: копия базы после игры «$TITLE»"; fi
+          text="Во вложении — полная копия базы Market Game (схема и данные), $(date -u '+%d.%m.%Y %H:%M') UTC.
+          Последняя законченная игра: «$TITLE», ${AT:-—} (UTC).
+
+          Архив зашифрован. Пароль — пароль базы (секрет GitHub SUPABASE_DB_PASSWORD).
+          Открывается программой 7-Zip (7-zip.org): 7-Zip File Manager → выбрать файл → Extract.
+          Внутри: schema.sql — структура базы, data.sql — все данные.
+
+          Эта же копия 7 дней лежит в GitHub: $RUN_URL"
+          jq -n --arg from "Market Game <$SMTP_SENDER>" --arg to "$BACKUP_EMAIL" --arg subject "$subject" \
+            --arg text "$text" --arg file "$NAME.7z" --rawfile content attachment.b64 \
+            '{from: $from, to: [$to], subject: $subject, text: $text, attachments: [{filename: $file, content: $content}]}' > email.json
+          code=$(curl -s -o resp.json -w '%{http_code}' -X POST https://api.resend.com/emails \
+            -H "Authorization: Bearer $SMTP_PASS" -H 'Content-Type: application/json' --data @email.json)
+          echo "Resend: HTTP $code"; cat resp.json; echo
+          if [ "$code" != 200 ]; then
+            echo "::error::Resend did not send the backup email. The backup is still in Artifacts on this run's page."
+            exit 1
+          fi
+
+      # Запомнить: по этой игре копия отправлена.
+      - name: Remember
+        if: steps.go.outputs.run == 'true'
+        run: echo "${{ steps.last.outputs.stamp }}" > backup-sent.txt
+
+      - uses: actions/cache/save@v4
+        if: steps.go.outputs.run == 'true'
+        with:
+          path: backup-sent.txt
+          key: backup-sent-${{ steps.last.outputs.stamp }}

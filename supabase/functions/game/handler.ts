@@ -3,7 +3,8 @@
 //
 //  Все запросы — POST с JSON: { action, gameId?, ...параметры }. Вход — токен
 //  Supabase Auth в заголовке Authorization. Без токена открыты только рейтинг
-//  лиги, отчёт команды по её ссылке и проверка почты перед входом.
+//  лиги, отчёт команды по её ссылке, проверка почты перед входом и время
+//  конца последней игры (для резервной копии после игры).
 //
 //  Кто что видит: команда — только игры, где она играет; ведущий — свои игры;
 //  администратор — все. Табло игры тоже только для них.
@@ -218,6 +219,7 @@ async function route(deps: Deps, b: Row, token: string): Promise<Row> {
     case 'ping': return { ok: true, version: VERSION };
     case 'rating': return await B.rating(sql, b);
     case 'report': return await B.publicReport(sql, b);
+    case 'lastFinished': return await B.lastFinished(sql);
     case 'preflightLogin': return await preflightLogin(deps, b);
   }
 

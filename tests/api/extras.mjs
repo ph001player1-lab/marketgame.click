@@ -362,6 +362,17 @@ await step('сбой подключения к базе: сервер повто
   await moneyInvariants(sql, gameId);
 });
 
+await step('конец последней игры — без входа и без данных игроков', async () => {
+  const r = await call(null, 'lastFinished');
+  ok(r);
+  const [db] = await sql`select count(*)::int as n, max(finished_at) as at from games where status = 'finished'`;
+  assert.ok(db.n > 0, 'в этом файле уже есть законченная игра');
+  assert.equal(r.finished, db.n);
+  assert.equal(r.at, new Date(db.at).toISOString());
+  assert.equal(typeof r.title, 'string');
+  assert.deepEqual(Object.keys(r).sort(), ['at', 'finished', 'ok', 'title']);
+});
+
 await step('CORS: только разрешённые сайты', async () => {
   const handler = createHandler({
     sql, adminEmails: [], allowedOrigins: ['https://marketgame.click'],
