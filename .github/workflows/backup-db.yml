@@ -10,9 +10,11 @@
 # (он засыпает через 7 дней без запросов). Если игра не ответила, запуск
 # красный и GitHub пишет на почту — тогда Supabase → проект → Restore project.
 #
-# В базе почты игроков, а репозиторий публичный, поэтому архив зашифрован:
-# пароль — пароль базы (секрет SUPABASE_DB_PASSWORD). Открывается 7-Zip.
-# Письмо уходит через Resend — тот же ключ SMTP_PASS, что для кодов входа.
+# В письме — обычный zip (Gmail не принимает архивы под паролем: не может
+# их проверить и молча отклоняет письмо). Копия в Artifacts — в архиве под
+# паролем базы (секрет SUPABASE_DB_PASSWORD): репозиторий публичный, а в базе
+# почты игроков; открывается 7-Zip. Письмо уходит через Resend — тот же ключ
+# SMTP_PASS, что для кодов входа.
 #
 # GitHub отключает расписание в публичном репозитории после 60 дней без
 # коммитов и пишет об этом. Включить снова: Actions → Backup database →
@@ -117,14 +119,15 @@ jobs:
           ls -l schema.sql data.sql
           grep -c '^COPY ' data.sql | xargs echo "tables with data:"
 
-      - name: Encrypt
+      - name: Pack (7z with password for GitHub, plain zip for the email)
         if: steps.go.outputs.run == 'true'
         run: |
           name="marketgame-backup-$(date -u +%Y-%m-%d-%H%M)"
           echo "NAME=$name" >> "$GITHUB_ENV"
           7z a -t7z -mhe=on -p"$SUPABASE_DB_PASSWORD" "$name.7z" schema.sql data.sql > /dev/null
+          zip -9 -q "$name.zip" schema.sql data.sql
           rm schema.sql data.sql
-          ls -l "$name.7z"
+          ls -l "$name.7z" "$name.zip"
 
       - uses: actions/upload-artifact@v4
         if: steps.go.outputs.run == 'true'
@@ -140,19 +143,18 @@ jobs:
           AT: ${{ steps.last.outputs.at }}
           MANUAL: ${{ github.event_name != 'schedule' }}
         run: |
-          base64 -w0 "$NAME.7z" > attachment.b64
+          base64 -w0 "$NAME.zip" > attachment.b64
           if [ "$MANUAL" = true ]; then subject="Market Game: копия базы (по кнопке)"
           else subject="Market Game: копия базы после игры «$TITLE»"; fi
           text="Во вложении — полная копия базы Market Game (схема и данные), $(date -u '+%d.%m.%Y %H:%M') UTC.
           Последняя законченная игра: «$TITLE», ${AT:-—} (UTC).
 
-          Архив зашифрован. Пароль — пароль базы (секрет GitHub SUPABASE_DB_PASSWORD).
-          Открывается программой 7-Zip (7-zip.org): 7-Zip File Manager → выбрать файл → Extract.
+          Вложение — обычный zip, открывается распаковщиком Windows.
           Внутри: schema.sql — структура базы, data.sql — все данные.
 
-          Эта же копия 7 дней лежит в GitHub: $RUN_URL"
+          Эта же копия 7 дней лежит в GitHub (архив .7z под паролем базы, открывается 7-Zip): $RUN_URL"
           jq -n --arg from "Market Game <$SMTP_SENDER>" --arg to "$BACKUP_EMAIL" --arg subject "$subject" \
-            --arg text "$text" --arg file "$NAME.7z" --rawfile content attachment.b64 \
+            --arg text "$text" --arg file "$NAME.zip" --rawfile content attachment.b64 \
             '{from: $from, to: [$to], subject: $subject, text: $text, attachments: [{filename: $file, content: $content}]}' > email.json
           code=$(curl -s -o resp.json -w '%{http_code}' -X POST https://api.resend.com/emails \
             -H "Authorization: Bearer $SMTP_PASS" -H 'Content-Type: application/json' --data @email.json)
@@ -161,32 +163,6 @@ jobs:
             echo "::error::Resend did not send the backup email. The backup is still in Artifacts on this run's page."
             exit 1
           fi
-          echo "EMAIL_ID=$(jq -r '.id' resp.json)" >> "$GITHUB_ENV"
-
-      # Resend принял письмо — но дошло ли оно? Спрашиваем через минуту: если
-      # почта получателя его отклонила, запуск красный с причиной.
-      - name: Was the email delivered?
-        if: steps.go.outputs.run == 'true'
-        run: |
-          for i in 1 2 3 4; do
-            sleep 20
-            code=$(curl -s -o status.json -w '%{http_code}' "https://api.resend.com/emails/$EMAIL_ID" \
-              -H "Authorization: Bearer $SMTP_PASS")
-            if [ "$code" != 200 ]; then
-              echo "::notice::Resend did not show the email status (HTTP $code): the key may be send-only. Check resend.com → Emails."
-              cat status.json; echo; exit 0
-            fi
-            event=$(jq -r '.last_event // "unknown"' status.json)
-            echo "Attempt $i: $event"
-            case "$event" in
-              delivered) exit 0 ;;
-              bounced|failed|complained|suppressed)
-                jq . status.json
-                echo "::error::The backup email was not delivered ($event). The backup is still in Artifacts on this run's page."
-                exit 1 ;;
-            esac
-          done
-          echo "::warning::The email is still '$event' after a minute. Check resend.com → Emails."
 
       # Запомнить: по этой игре копия отправлена.
       - name: Remember
