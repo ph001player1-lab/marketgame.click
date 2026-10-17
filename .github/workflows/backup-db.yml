@@ -1,0 +1,58 @@
+# Резервная копия базы в архиве — по кнопке.
+#
+# Ежедневные копии Supabase на платном тарифе «физические»: их можно только
+# восстановить в панели, скачать нельзя, а на бесплатном тарифе копий нет
+# вовсе. Здесь — полная копия (схема и данные), которую можно скачать.
+#
+# Запуск: Actions → Backup database → Run workflow. Через пару минут внизу
+# страницы запуска, в Artifacts, — архив marketgame-backup-….
+#
+# Репозиторий публичный, а в базе почты игроков, поэтому архив зашифрован:
+# пароль — пароль базы (секрет SUPABASE_DB_PASSWORD). Открывается 7-Zip
+# (Windows) или Keka / The Unarchiver (Mac). Архив хранится 3 дня.
+
+name: Backup database
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    env:
+      PROJECT_REF: fzchwkwyicnjbtjkqack
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Link project
+        run: supabase link --project-ref "$PROJECT_REF"
+
+      - name: Dump schema and data
+        run: |
+          supabase db dump --linked -f schema.sql
+          supabase db dump --linked --data-only --use-copy -f data.sql
+          ls -l schema.sql data.sql
+          grep -c '^COPY ' data.sql | xargs echo "tables with data:"
+
+      - name: Encrypt
+        run: |
+          name="marketgame-backup-$(date -u +%Y-%m-%d-%H%M)"
+          echo "NAME=$name" >> "$GITHUB_ENV"
+          7z a -t7z -mhe=on -p"$SUPABASE_DB_PASSWORD" "$name.7z" schema.sql data.sql > /dev/null
+          rm schema.sql data.sql
+          ls -l "$name.7z"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.NAME }}
+          path: ${{ env.NAME }}.7z
+          retention-days: 3
