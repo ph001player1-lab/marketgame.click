@@ -89,17 +89,18 @@ jobs:
       - name: Tables before migrations (for the log)
         run: supabase inspect db table-stats --linked || true
 
+      # --yes: новая версия утилиты спрашивает подтверждение у каждого шага,
+      # который меняет проект, а в автоматическом запуске ответить некому —
+      # без него шаг ничего не меняет и падает.
       - name: Database migrations
-        # --yes: новая версия утилиты спрашивает подтверждение, а в автоматическом
-        # запуске ответить некому — без него миграции не применяются.
         run: supabase db push --linked --yes
 
       - name: Edge Function
-        run: supabase functions deploy game --project-ref "$PROJECT_REF" --no-verify-jwt --use-api
+        run: supabase functions deploy game --project-ref "$PROJECT_REF" --no-verify-jwt --use-api --yes
 
       - name: Function secrets
         if: env.ADMIN_EMAILS != ''
-        run: supabase secrets set --project-ref "$PROJECT_REF" ADMIN_EMAILS="$ADMIN_EMAILS"
+        run: supabase secrets set --project-ref "$PROJECT_REF" --yes ADMIN_EMAILS="$ADMIN_EMAILS"
 
       # Самостоятельной регистрации нет, письмо несёт 6 цифр вместо ссылки.
       - name: Sign-in settings
