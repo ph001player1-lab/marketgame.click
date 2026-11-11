@@ -60,7 +60,9 @@ jobs:
       - run: deno check --node-modules-dir=none supabase/functions/game/index.ts
 
   site:
-    runs-on: ubuntu-latest
+    # Браузер для проверок ставит Playwright, а он поддерживает не каждую
+    # новую систему: ubuntu-latest стала 26.04, и браузер не ставится.
+    runs-on: ubuntu-24.04
     services:
       postgres:
         image: postgres:16
