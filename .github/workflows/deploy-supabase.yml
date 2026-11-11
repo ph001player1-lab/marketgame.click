@@ -90,7 +90,9 @@ jobs:
         run: supabase inspect db table-stats --linked || true
 
       - name: Database migrations
-        run: supabase db push --linked
+        # --yes: новая версия утилиты спрашивает подтверждение, а в автоматическом
+        # запуске ответить некому — без него миграции не применяются.
+        run: supabase db push --linked --yes
 
       - name: Edge Function
         run: supabase functions deploy game --project-ref "$PROJECT_REF" --no-verify-jwt --use-api
