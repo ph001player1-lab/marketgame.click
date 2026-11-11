@@ -87,7 +87,11 @@ jobs:
       - run: npm ci
       # Синтаксис всех модулей сайта.
       - run: find web -name '*.js' -print0 | xargs -0 -n1 node --check
-      - run: npx playwright install --with-deps chromium
+      # Системные пакеты браузера ставятся из зеркала Ubuntu; когда зеркало у
+      # GitHub недоступно, ставим только сам браузер: нужные ему библиотеки на
+      # машинах GitHub уже есть (там стоит Chrome).
+      - name: Browser for the checks
+        run: timeout 300 npx playwright install --with-deps chromium || npx playwright install chromium
       # Словарь и весь сайт в браузере: телефон, планшет, ноутбук, проектор.
       - run: npm run test:ui
         env:
