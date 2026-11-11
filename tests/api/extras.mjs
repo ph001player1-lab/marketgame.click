@@ -456,6 +456,99 @@ await step('заявка по QR-коду: почта и ресторан, ве�
   await moneyInvariants(sql, gid);
 });
 
+await step('ссылка для входа команды; деньги: прибыль прибыльных и убытки убыточных; доля спроса', async () => {
+  const g = await call(HOST, 'createGame', { title: 'Link night', league: 'start', region: 'north_america', country: 'US' });
+  ok(g);
+  const gid = g.gameId;
+  ok(await call(HOST, 'setRoster', { gameId: gid, emails: [ANN, BOB, CAT].join('\n') }));
+  for (const [e, name] of [[ANN, 'Ann Diner'], [BOB, 'Bob Bistro'], [CAT, 'Cat Cafe']]) {
+    ok(await call(e, 'setProfile', { gameId: gid, displayName: e.split('@')[0], restaurantName: name }));
+  }
+  const bob = (await monitor(gid)).players.find((p) => p.email === BOB);
+
+  // Ссылку выдаёт только ведущий этой игры.
+  err(await call(HOST2, 'teamLink', { gameId: gid, playerId: bob.id }), 'not_host');
+  err(await call(BOB, 'teamLink', { gameId: gid, playerId: bob.id }), 'not_host');
+  err(await call(HOST, 'teamLink', { gameId: gid, playerId: crypto.randomUUID() }), 'player_not_found');
+  const l1 = await call(HOST, 'teamLink', { gameId: gid, playerId: bob.id, requestId: crypto.randomUUID() });
+  ok(l1);
+  assert.match(l1.token, /^[0-9a-f]{64}$/);
+  // В базе — только хеш ключа, и в журнале повторов ключа нет.
+  const [{ n: plain }] = await sql`select count(*)::int as n from mutations where result::text like ${'%' + l1.token + '%'}`;
+  assert.equal(plain, 0, 'the link key is not stored');
+  const [{ n: hashed }] = await sql`select count(*)::int as n from team_links where token_hash = encode(sha256(${l1.token}::bytea), 'hex')`;
+  assert.equal(hashed, 1);
+
+  // Куда ведёт ссылка: игра и команда.
+  const info = await call(null, 'linkInfo', { token: l1.token });
+  ok(info);
+  assert.deepEqual([info.gameId, info.email, info.restaurant, info.finished], [gid, BOB, 'Bob Bistro', false]);
+  err(await call(null, 'linkInfo', { token: 'f'.repeat(64) }), 'link_gone');
+
+  // Браузер со ссылкой играет за эту команду — только в этой игре.
+  const me = await call(null, 'me', { joinToken: l1.token });
+  ok(me);
+  assert.deepEqual([me.email, me.playing.map((x) => x.id)], [BOB, [gid]]);
+  ok(await call(null, 'dashboard', { gameId: gid, joinToken: l1.token }));
+  err(await call(null, 'dashboard', { gameId, joinToken: l1.token }), 'auth_required');
+  err(await call(null, 'monitor', { gameId: gid, joinToken: l1.token }), 'auth_required');
+  err(await call(null, 'teamLink', { gameId: gid, joinToken: l1.token, playerId: bob.id }), 'auth_required');
+
+  // Новая ссылка отменяет прежнюю.
+  const l2 = await call(HOST, 'teamLink', { gameId: gid, playerId: bob.id, requestId: crypto.randomUUID() });
+  ok(l2);
+  err(await call(null, 'dashboard', { gameId: gid, joinToken: l1.token }), 'auth_required');
+  err(await call(null, 'linkInfo', { token: l1.token }), 'link_gone');
+  ok(await call(null, 'dashboard', { gameId: gid, joinToken: l2.token }));
+
+  // Три месяца: одни в плюсе, другие в минусе.
+  for (let i = 0; i < 3; i++) {
+    ok(await call(HOST, 'openRound', { gameId: gid }));
+    for (const [e, price, social] of [[ANN, 32, 0], [BOB, 20, 3000], [CAT, 30, 0]]) {
+      const tok = e === BOB ? { joinToken: l2.token } : {};
+      const who = e === BOB ? null : e;
+      if ((await call(who, 'dashboard', { gameId: gid, ...tok })).lifecycle !== 'active') continue;
+      ok(await call(who, 'submitDecision', { gameId: gid, ...tok, requestId: crypto.randomUUID(),
+        price, seoSpend: 0, promoSpend: 0, mapsSpend: 0, socialSpend: social, outdoorSpend: 0, affiliateSpend: 0,
+        shiftsDelta: 0, qualityInvest: 0 }));
+    }
+    ok(await call(HOST, 'calculateRound', { gameId: gid }));
+  }
+  const board = await call(HOST, 'board', { gameId: gid });
+  ok(board);
+  const mm = board.moneyMap;
+  const near = (a, b) => Math.abs(a - b) < 0.02;
+  const perTeam = await sql`select player_id, sum(profit)::float as p from results where game_id = ${gid} group by player_id`;
+  const wins = perTeam.reduce((a, r) => a + Math.max(0, r.p), 0);
+  const losses = perTeam.reduce((a, r) => a + Math.max(0, -r.p), 0);
+  assert.ok(wins > 0 && losses > 0, 'some teams earn, some lose ' + JSON.stringify(perTeam));
+  assert.ok(near(mm.restaurantsTo.teamProfits, wins) && near(mm.restaurantsTo.teamLosses, losses),
+    'game: profits of winners and losses of losers ' + JSON.stringify(mm.restaurantsTo));
+  assert.ok(near(mm.restaurantsTo.teamProfits - mm.restaurantsTo.teamLosses, mm.restaurantsTo.keptByRestaurants));
+  for (const mo of mm.months) {
+    const rows = await sql`select profit::float as p from results where game_id = ${gid} and round_number = ${mo.round}`;
+    assert.ok(near(mo.restaurantsTo.teamProfits, rows.reduce((a, r) => a + Math.max(0, r.p), 0)), 'month ' + mo.round);
+    assert.ok(near(mo.restaurantsTo.teamProfits - mo.restaurantsTo.teamLosses, mo.restaurantsTo.keptByRestaurants));
+  }
+  // Доля спроса — от всех гостей города, как доля рынка, но по выбравшим.
+  for (const p of board.players) {
+    for (const e of p.series.filter((x) => x.inBusiness)) {
+      const [r] = await sql`select demand::float as d, served::float as s, market_total::float as m from results
+        where player_id = ${p.id} and round_number = ${e.round}`;
+      assert.ok(Math.abs(e.demandSharePct - Math.round((r.d / r.m) * 10000) / 100) < 0.011, 'demand share');
+      assert.ok(e.demandSharePct >= e.marketSharePct - 0.01, 'demand share ≥ market share');
+    }
+  }
+
+  // Игра закончилась — ссылка больше не действует, дальше вход по коду.
+  ok(await call(HOST, 'finishGame', { gameId: gid, requestId: crypto.randomUUID() }));
+  err(await call(null, 'dashboard', { gameId: gid, joinToken: l2.token }), 'auth_required');
+  assert.equal((await call(null, 'linkInfo', { token: l2.token })).finished, true);
+  err(await call(HOST, 'teamLink', { gameId: gid, playerId: bob.id, requestId: crypto.randomUUID() }), 'game_finished');
+  ok(await call(BOB, 'dashboard', { gameId: gid }));
+  await moneyInvariants(sql, gid);
+});
+
 await step('конец последней игры — без входа и без данных игроков', async () => {
   const r = await call(null, 'lastFinished');
   ok(r);

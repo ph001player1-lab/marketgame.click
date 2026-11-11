@@ -480,10 +480,19 @@ try {
     await phone.goto(base + '#/join/' + g.code.toLowerCase());
     await phone.getByRole('heading', { name: 'Join the game' }).waitFor();
     await phone.getByText('Bangkok night', { exact: true }).waitFor();
-    await phone.getByLabel('Email').fill('Somchai@Example.com');
+    // Опечатка в почте: подсказка и «Исправить»; кнопка не шире карточки.
+    await phone.getByLabel('Email').fill('Somchai@Example.con');
     await phone.getByLabel('Restaurant name').fill('Som Tam Shop');
+    const join = phone.getByRole('button', { name: 'Join the game' });
+    const fits = await join.evaluate((b) => b.scrollWidth <= b.clientWidth + 1
+      && b.getBoundingClientRect().right <= b.closest('.card').getBoundingClientRect().right + 0.5);
+    assert.equal(fits, true, 'the join button text stays inside the button');
+    await join.click();
+    await phone.getByText('did you mean somchai@example.com?').waitFor();
     await shot(phone, 'join-01-phone-form', true);
-    await phone.getByRole('button', { name: 'Join “Bangkok night”' }).click();
+    await phone.getByRole('button', { name: 'Fix it' }).click();
+    assert.equal(await phone.getByLabel('Email').inputValue(), 'somchai@example.com');
+    await join.click();
     await phone.getByRole('heading', { name: 'Request sent' }).waitFor();
     await phone.getByText('Waiting for the host…').waitFor();
     await shot(phone, 'join-02-phone-waiting', true);
@@ -522,7 +531,101 @@ try {
     await other.getByLabel('Game code').fill(g.code);
     await other.getByRole('button', { name: 'Join', exact: true }).click();
     await other.getByRole('heading', { name: 'Join the game' }).waitFor();
-    for (const x of [proj, phone, host, other]) await x.close();
+    // Вошли по коду — почта подставлена, но её можно исправить.
+    const signed = await page(browser, 'phone', 'someone@example.com');
+    await signed.goto(base + '#/join/' + g.code);
+    const mail = signed.getByLabel('Email');
+    await mail.waitFor();
+    assert.equal(await mail.inputValue(), 'someone@example.com');
+    assert.equal(await mail.isEditable(), true, 'the email can be changed');
+    for (const x of [proj, phone, host, other, signed]) await x.close();
+  });
+
+  await step('sign-in link for a team, typo warning, projector table with every team, demand share, money split', async () => {
+    // Шестнадцать команд, у одной почта с опечаткой.
+    const teams = Array.from({ length: 16 }, (_, i) => ({
+      email: i === 5 ? 'lee@gmial.com' : 'crowd' + (i + 1) + '@example.com',
+      name: 'Player ' + (i + 1), restaurant: 'Crowd Kitchen ' + (i + 1), country: 'US', area: 'TX'
+    }));
+    const g = await seedGame(server.sql, { months: 2, teams, title: 'Crowded town', sponsor: false });
+    const [{ round }] = await server.sql`select max(round_number)::int as round from results where game_id = ${g.gameId}`;
+    const inMonth = await server.sql`select p.restaurant_name from results r join players p on p.id = r.player_id
+      where r.game_id = ${g.gameId} and r.round_number = ${round} and r.demand > 0`;
+    assert.ok(inMonth.length >= 12, 'most teams still play: ' + inMonth.length);
+
+    // Проектор: в табличке рядом с пирогом видны все команды месяца.
+    const proj = await page(browser, 'projector', ADMIN);
+    await proj.goto(base + 'board/?code=' + g.code);
+    await proj.locator('.cake__table').first().waitFor();
+    const seen = await proj.evaluate(() => {
+      const box = document.querySelector('.cake__tables').getBoundingClientRect();
+      return [...document.querySelectorAll('.cake__table tbody tr')].map((tr) => {
+        const r = tr.getBoundingClientRect();
+        return { name: tr.cells[0].textContent.trim(), visible: r.top >= box.top - 0.5 && r.bottom <= box.bottom + 0.5
+          && r.left >= box.left - 0.5 && r.right <= box.right + 0.5 };
+      });
+    });
+    assert.deepEqual(seen.map((x) => x.name).sort(), inMonth.map((x) => x.restaurant_name).sort(), 'every team is listed');
+    assert.deepEqual(seen.filter((x) => !x.visible).map((x) => x.name), [], 'no team is cut off');
+    // Под пирогом денег — прибыль прибыльных и убытки убыточных.
+    const [{ lost }] = await server.sql`select count(*)::int as lost from results
+      where game_id = ${g.gameId} and round_number = ${round} and profit < 0`;
+    if (lost) await proj.locator('.cake__loss').getByText(/lost/).waitFor();
+    await shot(proj, 'crowd-01-projector-cake');
+
+    // Ведущий: предупреждение об опечатке в составе.
+    const host = await page(browser, 'wide', ADMIN);
+    await host.goto(base + '#/g/' + g.gameId);
+    await host.getByRole('button', { name: 'Teams', exact: true }).first().click();
+    await host.getByText('lee@gmial.com — did you mean lee@gmail.com?').waitFor();
+
+    // Доля спроса на графике; смена показателя не уводит страницу наверх.
+    const pane = host.locator('.pane--board');
+    await pane.getByRole('button', { name: 'Teams', exact: true }).click();
+    const metric = pane.getByLabel('Show', { exact: true });
+    await metric.waitFor();
+    await metric.scrollIntoViewIfNeeded();
+    const scrollOf = () => metric.evaluate((el) => {
+      for (let n = el.parentElement; n; n = n.parentElement) {
+        const st = getComputedStyle(n);
+        if (/(auto|scroll)/.test(st.overflowY) && n.scrollHeight > n.clientHeight) return n.scrollTop;
+      }
+      return document.scrollingElement.scrollTop;
+    });
+    const before = await scrollOf();
+    assert.ok(before > 50, 'the chart is scrolled into view: ' + before);
+    await metric.selectOption({ label: 'Demand share' });
+    await pane.getByRole('heading', { name: 'Demand share' }).waitFor();
+    assert.ok(Math.abs((await pane.getByLabel('Show', { exact: true }).evaluate((el) => {
+      for (let n = el.parentElement; n; n = n.parentElement) {
+        const st = getComputedStyle(n);
+        if (/(auto|scroll)/.test(st.overflowY) && n.scrollHeight > n.clientHeight) return n.scrollTop;
+      }
+      return document.scrollingElement.scrollTop;
+    })) - before) < 5, 'the page stays where it was');
+
+    // Ссылка для входа: команда открывает игру без кода.
+    const crowd3 = (await g.call(ADMIN, 'monitor', { gameId: g.gameId })).players.find((x) => x.email === 'crowd3@example.com');
+    const row = host.locator('tr', { hasText: 'crowd3@example.com' });
+    await row.getByRole('button', { name: 'Sign-in link' }).click();
+    await host.getByRole('heading', { name: 'Sign-in link: Crowd Kitchen 3' }).waitFor();
+    await host.locator('.join-host__qr svg.qr').last().waitFor();
+    await shot(host, 'crowd-02-host-link');
+    const url = (await host.locator('.join-host__url').last().textContent()).trim();
+    assert.match(url, /#\/t\/[0-9a-f]{64}$/);
+    const phone = await page(browser, 'phone');
+    await phone.goto(url);
+    await phone.waitForURL(new RegExp('#/g/' + g.gameId + '$'));
+    await phone.locator('.topbar__name', { hasText: 'Crowd Kitchen 3' }).waitFor();
+    await shot(phone, 'crowd-03-phone-by-link', true);
+    // Вошли по коду под другой почтой — сначала предложит выйти.
+    const other = await page(browser, 'phone', TEAMS[0].email);
+    await other.goto(url);
+    await other.getByRole('button', { name: 'Sign out and play as this team' }).click();
+    await other.locator('.topbar__name', { hasText: 'Crowd Kitchen 3' }).waitFor();
+    const [{ n }] = await server.sql`select count(*)::int as n from team_links where player_id = ${crowd3.id}`;
+    assert.equal(n, 1);
+    for (const x of [proj, host, phone, other]) await x.close();
   });
 
   await step('projector scoreboard: sign in first, then only this game\'s people see it', async () => {

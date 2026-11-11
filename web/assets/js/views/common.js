@@ -3,7 +3,7 @@
 
 import { endpoint } from '../api.js';
 import { t, tn } from '../i18n.js';
-import { currentLocale } from '../fmt.js';
+import { currentLocale, usd } from '../fmt.js';
 import { h, replace, toast } from '../dom.js';
 import { placeText } from '../geo.js';
 
@@ -169,4 +169,23 @@ export function fileSlug(text) {
 export function siteBase() {
   const path = location.pathname.replace(/(board|report|rating)\/(index\.html)?$/, '').replace(/index\.html$/, '');
   return location.origin + path;
+}
+
+/**
+ * Прибыль прибыльных команд и убытки убыточных. Старые данные без раскладки
+ * (до обновления сервера) — по общей сумме, как раньше.
+ */
+export function profitSplit(to) {
+  const kept = Number(to?.keptByRestaurants) || 0;
+  if (to && to.teamProfits !== undefined && to.teamLosses !== undefined) {
+    return { profits: Math.max(0, Number(to.teamProfits) || 0), losses: Math.max(0, Number(to.teamLosses) || 0) };
+  }
+  return { profits: Math.max(0, kept), losses: Math.max(0, -kept) };
+}
+
+/** «Прибыльные рестораны заработали X, убыточные потеряли Y — их покрыли капитал и кредиты». */
+export function splitNote(profits, losses, fmt = usd) {
+  if (!(losses > 0)) return null;
+  return profits > 0 ? t('money.split', { profits: fmt(profits), losses: fmt(losses) })
+    : t('money.lossesOnly', { losses: fmt(losses) });
 }

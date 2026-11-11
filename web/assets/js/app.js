@@ -9,6 +9,7 @@
 //   /hosts             ведущие (администратор)
 //   /rating            рейтинг
 //   /join/<код>        заявка на игру по QR-коду
+//   /t/<ключ>          ссылка для входа команды (выдаёт ведущий)
 
 import { CONFIG } from './config.js';
 import {
@@ -17,10 +18,10 @@ import {
 } from './i18n.js';
 import { h, $, replace, toast } from './dom.js';
 import { usd, clock, setCurrency, currentCurrency } from './fmt.js';
-import { read, poll, markFresh, setAuthLostHandler, actionsInFlight } from './api.js';
+import { read, poll, markFresh, setAuthLostHandler, pollShouldWait } from './api.js';
 import { signOut, signedInEmail, getJoin, setJoin } from './auth.js';
 import { renderLogin } from './views/login.js';
-import { renderJoin } from './views/join.js';
+import { renderJoin, renderTeamLink } from './views/join.js';
 import { renderHome } from './views/home.js';
 import { createBusiness } from './views/business.js';
 import { createConsole } from './views/console.js';
@@ -54,7 +55,7 @@ async function boot() {
   // Сессия и словарь страницы — разом.
   const [email] = await Promise.all([signedInEmail(), setLanguage(pickLanguage(null))]);
   // Заявка по QR-коду — без входа.
-  if (parseRoute().name === 'join') { route(); return; }
+  if (['join', 'link'].includes(parseRoute().name)) { route(); return; }
   if (!email) { showLogin(); return; }
   prefetchGame();
   await loadMe();
@@ -121,6 +122,7 @@ function parseRoute() {
     return { name: 'game', gameId: parts[1] };
   }
   if (parts[0] === 'join' && parts[1]) return { name: 'join', code: parts[1].toUpperCase() };
+  if (parts[0] === 't' && parts[1]) return { name: 'link', token: parts[1].toLowerCase() };
   if (parts[0] === 'new') return { name: 'new' };
   if (parts[0] === 'hosts') return { name: 'hosts' };
   if (parts[0] === 'rating') return { name: 'rating' };
@@ -133,6 +135,11 @@ async function route() {
   if (r.name === 'join') {
     // Заявку приняли — открываем игру: дальше браузер играет по ключу заявки.
     renderJoin(root, r.code, { onApproved: (gameId) => { me = null; location.hash = '#/g/' + gameId; } });
+    return;
+  }
+  if (r.name === 'link') {
+    // Ключ из ссылки запомнен — открываем игру; ключа в адресной строке больше нет.
+    renderTeamLink(root, r.token, { onOpen: (gameId) => { me = null; location.replace('#/g/' + gameId); } });
     return;
   }
   if (!me) {
@@ -434,9 +441,12 @@ function openGame(gameId, asPlayerId) {
     if (boardAgain) { boardAgain = false; refreshBoard(true); }
   }
 
+  let polledAt = 0;
+  let retryId = 0;
   async function tick(force, prefetchedMain = null) {
     if (document.hidden && !force) return;
-    if (actionsInFlight() > 0) return;
+    if (pollShouldWait()) return;
+    polledAt = Date.now();
     const action = isHostView ? 'monitor' : 'dashboard';
     const params = isHostView ? { gameId } : { gameId, asPlayerId };
     const res = prefetchedMain ? await prefetchedMain : await poll(action, params);
@@ -444,6 +454,11 @@ function openGame(gameId, asPlayerId) {
     if (!res.ok) {
       if (!last) replace(paneMain.firstChild, h('div', { class: 'banner banner--bad' }, errorText(res)),
         h('a', { class: 'btn', href: '#/' }, t('common.myGames')));
+      // Сбой связи — ещё раз через пару секунд, а не через целый круг опроса:
+      // иначе перевод или штраф игрок увидел бы только секунд через 15–20.
+      else if (!retryId && (res.error === 'network' || res.error === 'server_error')) {
+        retryId = setTimeout(() => { retryId = 0; tick(false); }, 2000);
+      }
       return;
     }
     render(res);
@@ -453,6 +468,9 @@ function openGame(gameId, asPlayerId) {
   const pollId = setInterval(() => tick(false), CONFIG.pollMs);
   const onVisible = () => { if (!document.hidden) tick(true); };
   document.addEventListener('visibilitychange', onVisible);
+  // Вернулись в окно игры (с другой вкладки или программы) — сразу свежие цифры.
+  const onFocus = () => { if (Date.now() - polledAt > 2000) tick(true); };
+  window.addEventListener('focus', onFocus);
   // Кабинет (или пульт) и табло — разом, а не друг за другом.
   tick(true, pre && pre.action === (isHostView ? 'monitor' : 'dashboard') ? pre.main : null);
   if (pre) {
@@ -470,7 +488,9 @@ function openGame(gameId, asPlayerId) {
     stopped = true;
     clearInterval(pollId);
     clearInterval(timerId);
+    clearTimeout(retryId);
     document.removeEventListener('visibilitychange', onVisible);
+    window.removeEventListener('focus', onFocus);
     window.removeEventListener('resize', onResize);
     main.destroy?.();
     board.destroy?.();

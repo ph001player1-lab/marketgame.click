@@ -87,13 +87,16 @@ export async function seedGame(sql, { months = 4, finish = false, title = 'Austi
     const byEmail = Object.fromEntries(mon.players.map((p) => [p.email, p]));
     if (m === 2) {
       // Город продаёт 10% страховой, штрафует и помогает; команды договариваются.
+      // Только в игре со стандартным составом (TEAMS).
       const taco = byEmail['team1@example.com'];
-      if (taco.status === 'active' && taco.money > 2500) {
+      if (taco?.status === 'active' && taco.money > 2500) {
         await ok(call(ADMIN, 'sellStake', { gameId, kind: 'insurer', playerId: taco.id, pct: 10, price: 2000 }), 'sellStake');
       }
-      await ok(call(ADMIN, 'adjust', { gameId, playerId: byEmail['team3@example.com'].id, amount: -500, reason: 'Health code violation' }), 'fine');
+      if (byEmail['team3@example.com']) {
+        await ok(call(ADMIN, 'adjust', { gameId, playerId: byEmail['team3@example.com'].id, amount: -500, reason: 'Health code violation' }), 'fine');
+      }
       const pizza = byEmail['team2@example.com'];
-      if (pizza.status === 'active' && pizza.money > 1000) {
+      if (pizza?.status === 'active' && pizza.money > 1000 && byEmail['team4@example.com']) {
         await ok(call('team2@example.com', 'transferMoney', { gameId, toPlayerId: byEmail['team4@example.com'].id, amount: 1000, note: 'Joint ad campaign' }), 'transfer');
       }
     }

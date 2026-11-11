@@ -18,16 +18,27 @@ import { getToken, joinToken } from './auth.js';
 // один: следующий и так придёт через несколько секунд, а лишние повторы
 // всех игроков разом только нагружают сервер.
 const ATTEMPTS = { act: 5, read: 3, poll: 1 };
+// Сколько ждать ответа на одну попытку. Без предела браузер при плохой связи
+// ждёт минутами, а пока висит действие, страница не обновляется. Действие
+// ждём дольше: расчёт месяца у ведущего идёт несколько секунд. Повтор
+// действия безопасен — тот же requestId; если первая попытка ещё идёт на
+// сервере, повтор дождётся её и вернёт тот же ответ.
+const TIMEOUT_MS = { act: 30000, read: 15000, poll: 10000 };
+// Действие висит дольше этого — фоновое обновление больше не ждёт его.
+const POLL_WAITS_FOR_ACTION_MS = 15000;
 // Пауза перед повтором: растёт с каждой попыткой, плюс случайная добавка,
 // чтобы повторы разных игроков не совпадали.
 const retryDelay = (attempt) => Math.min(5000, 700 * 2 ** (attempt - 1)) * (0.75 + Math.random() * 0.5);
 
 let generation = 0;        // растёт на каждое действие
 let inFlight = 0;          // сколько действий сейчас выполняется
+let inFlightSince = 0;     // когда началось самое раннее из них
 let onAuthLost = () => {};
 
 export function setAuthLostHandler(fn) { onAuthLost = fn; }
 export const actionsInFlight = () => inFlight;
+/** Ждать ли фоновому обновлению: действие идёт, но не висит слишком долго. */
+export const pollShouldWait = () => inFlight > 0 && Date.now() - inFlightSince < POLL_WAITS_FOR_ACTION_MS;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -58,7 +69,7 @@ function newRequestId() {
   return `${x.slice(0, 8)}-${x.slice(8, 12)}-${x.slice(12, 16)}-${x.slice(16, 20)}-${x.slice(20)}`;
 }
 
-async function send(body, withAuth, attempts = ATTEMPTS.read) {
+async function send(body, withAuth, attempts = ATTEMPTS.read, timeoutMs = TIMEOUT_MS.read) {
   const headers = { 'content-type': 'application/json', apikey: CONFIG.publishableKey };
   if (withAuth) {
     const token = await getToken();
@@ -68,9 +79,11 @@ async function send(body, withAuth, attempts = ATTEMPTS.read) {
   }
   let lastError = null;
   for (let attempt = 1; attempt <= attempts; attempt++) {
+    const ctrl = typeof AbortController === 'function' ? new AbortController() : null;
+    const timer = ctrl ? setTimeout(() => ctrl.abort(), timeoutMs) : 0;
     try {
       const res = await fetch(endpoint(), {
-        method: 'POST', headers, body: JSON.stringify(body), cache: 'no-store'
+        method: 'POST', headers, body: JSON.stringify(body), cache: 'no-store', signal: ctrl?.signal
       });
       const text = await res.text();
       let data;
@@ -81,22 +94,25 @@ async function send(body, withAuth, attempts = ATTEMPTS.read) {
     } catch (e) {
       lastError = e;
       if (attempt < attempts) await sleep(retryDelay(attempt));
+    } finally {
+      clearTimeout(timer);
     }
   }
   return { ok: false, error: /server|bad_response/.test(String(lastError)) ? 'server_error' : 'network' };
 }
 
 /** Чтение: табло, кабинет, пульт. */
-export function read(action, params = {}, { auth = true, attempts = ATTEMPTS.read } = {}) {
-  return send({ action, ...params }, auth, attempts);
+export function read(action, params = {}, { auth = true, attempts = ATTEMPTS.read, timeoutMs = TIMEOUT_MS.read } = {}) {
+  return send({ action, ...params }, auth, attempts, timeoutMs);
 }
 
 /** Действие: один requestId на все повторы. */
 export async function act(action, params = {}) {
   generation++;
+  if (inFlight === 0) inFlightSince = Date.now();
   inFlight++;
   try {
-    return await send({ action, requestId: newRequestId(), ...params }, true, ATTEMPTS.act);
+    return await send({ action, requestId: newRequestId(), ...params }, true, ATTEMPTS.act, TIMEOUT_MS.act);
   } finally {
     inFlight--;
   }
@@ -109,10 +125,10 @@ export async function act(action, params = {}) {
 let pollSeq = 0;
 let lastShownSeq = 0;
 export async function poll(action, params = {}, opts = {}) {
-  if (inFlight > 0) return null;
+  if (pollShouldWait()) return null;
   const seq = ++pollSeq;
   const gen = generation;
-  const data = await read(action, params, { ...opts, attempts: ATTEMPTS.poll });
+  const data = await read(action, params, { ...opts, attempts: ATTEMPTS.poll, timeoutMs: TIMEOUT_MS.poll });
   if (gen !== generation || seq < lastShownSeq) return null;
   lastShownSeq = seq;
   return data;

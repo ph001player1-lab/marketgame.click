@@ -216,3 +216,44 @@ export function isoToZoned(iso, timeZone) {
   const local = new Date(d.getTime() + tzOffsetMinutes(d.getTime(), timeZone) * 60000);
   return local.toISOString().slice(0, 16);
 }
+
+// ----------------------------------------------------------------- опечатки в почте
+
+// Почтовые сервисы, на которые чаще всего пишут с опечаткой.
+const MAIL_DOMAINS = ['gmail.com', 'googlemail.com', 'mail.ru', 'yandex.ru', 'ya.ru', 'bk.ru', 'inbox.ru', 'list.ru',
+  'rambler.ru', 'outlook.com', 'hotmail.com', 'icloud.com', 'yahoo.com', 'live.com', 'me.com', 'yandex.com',
+  'proton.me', 'protonmail.com', 'aol.com'];
+// Настоящие адреса, которые отличаются от сервисов выше одной буквой.
+const REAL_DOMAINS = new Set(['mail.com', 'email.com', 'ymail.com', 'gmx.com', 'mail.ua', 'list.ua', 'inbox.lv']);
+// Окончания, которых не бывает: .con вместо .com, .ry вместо .ru.
+const TLD_FIX = { con: 'com', cmo: 'com', ocm: 'com', comm: 'com', cpm: 'com', vom: 'com', xom: 'com', ry: 'ru' };
+
+/** Одна правка: буква лишняя, пропущена, другая или две соседние переставлены. */
+function oneEditAway(a, b) {
+  if (a === b || Math.abs(a.length - b.length) > 1) return false;
+  let i = 0;
+  while (i < a.length && i < b.length && a[i] === b[i]) i++;
+  if (a.length === b.length) {
+    if (a.slice(i + 1) === b.slice(i + 1)) return true;
+    return a[i] === b[i + 1] && a[i + 1] === b[i] && a.slice(i + 2) === b.slice(i + 2);
+  }
+  return a.length > b.length ? a.slice(i + 1) === b.slice(i) : a.slice(i) === b.slice(i + 1);
+}
+
+/**
+ * Похоже ли на опечатку в почте: janaboikobass@gmail.co → …@gmail.com.
+ * Возвращает исправленный адрес или null. Только подсказка: адрес может быть
+ * и настоящим, решает человек.
+ */
+export function emailTypo(email) {
+  const v = String(email || '').trim().toLowerCase();
+  const at = v.lastIndexOf('@');
+  if (at < 1) return null;
+  const domain = v.slice(at + 1);
+  if (!domain || MAIL_DOMAINS.includes(domain) || REAL_DOMAINS.has(domain)) return null;
+  const near = MAIL_DOMAINS.find((d) => oneEditAway(domain, d));
+  if (near) return v.slice(0, at + 1) + near;
+  const dot = domain.lastIndexOf('.');
+  const tld = TLD_FIX[domain.slice(dot + 1)];
+  return dot > 0 && tld ? v.slice(0, at + 1) + domain.slice(0, dot + 1) + tld : null;
+}

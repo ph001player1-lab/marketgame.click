@@ -9,6 +9,9 @@
 //  как обычно: почта уже внесена.
 //
 //  Ключ видит только браузер игрока; в базе — его хеш.
+//
+//  Ссылка для входа команды — тот же ключ, но его выдаёт ведущий уже
+//  внесённой команде, если код на почту не приходит (team_links).
 // ============================================================================
 
 import {
@@ -104,15 +107,62 @@ export async function joinStatus(sql: Sql, b: Row) {
   };
 }
 
-/** Кто играет по ключу браузера: почта и игра. Только принятая заявка в идущей игре. */
+/**
+ * Кто играет по ключу браузера: почта и игра. Принятая заявка или ссылка
+ * для входа команды — только в идущей игре.
+ */
 export async function joinIdentity(sql: Sql, token: unknown): Promise<{ email: string; gameId: string } | null> {
   if (!tokenOk(token)) return null;
+  const hash = await sha256(token);
   const [r] = await sql`
     select jr.email, jr.game_id from join_requests jr
     join games g on g.id = jr.game_id
-    where jr.token_hash = ${await sha256(token)} and jr.status = 'approved'
-      and jr.player_id is not null and g.status <> 'finished'`;
+    where jr.token_hash = ${hash} and jr.status = 'approved'
+      and jr.player_id is not null and g.status <> 'finished'
+    union all
+    select p.email, tl.game_id from team_links tl
+    join players p on p.id = tl.player_id
+    join games g on g.id = tl.game_id
+    where tl.token_hash = ${hash} and p.status <> 'left' and g.status <> 'finished'
+    limit 1`;
   return r ? { email: String(r.email), gameId: String(r.game_id) } : null;
+}
+
+/**
+ * Ведущий выдаёт команде ссылку для входа без кода на почту. Новая ссылка
+ * отменяет прежнюю. Возвращает ключ — он есть только в ссылке.
+ */
+export async function teamLink(sql: Sql, game: Row, actor: string, b: Row) {
+  const playerId = String(b.playerId ?? '');
+  if (!/^[0-9a-f-]{36}$/i.test(playerId)) fail('bad_params');
+  if (game.status === 'finished') fail('game_finished');
+  const [p] = await sql`select id, email, status from players where id = ${playerId} and game_id = ${game.id}`;
+  if (!p || p.status === 'left') fail('player_not_found');
+  const token = newToken();
+  const hash = await sha256(token);
+  await sql.begin(async (tx: Sql) => {
+    await tx`
+      insert into team_links ${tx({ player_id: playerId, game_id: game.id, token_hash: hash, created_by: actor })}
+      on conflict (player_id) do update set
+        token_hash = excluded.token_hash, created_by = excluded.created_by, created_at = now()`;
+    await logHostAction(tx, game.id, actor, 'team_link', { email: String(p.email) });
+  });
+  return { ok: true, token };
+}
+
+/** Куда ведёт ссылка для входа: игра и команда. Почта — только своя. */
+export async function linkInfo(sql: Sql, b: Row) {
+  if (!tokenOk(b.token)) fail('link_gone');
+  const [r] = await sql`
+    select tl.game_id, g.code, g.title, g.language, g.status as game_status, p.email, p.restaurant_name, p.status
+    from team_links tl join players p on p.id = tl.player_id join games g on g.id = tl.game_id
+    where tl.token_hash = ${await sha256(b.token)}`;
+  if (!r || r.status === 'left') fail('link_gone');
+  return {
+    ok: true, gameId: String(r.game_id), code: String(r.code), title: String(r.title),
+    language: String(r.language ?? 'en'), email: String(r.email), restaurant: r.restaurant_name ?? null,
+    finished: r.game_status === 'finished'
+  };
 }
 
 /** Заявки, которые ждут ведущего, — для пульта. */

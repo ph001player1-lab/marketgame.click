@@ -1,11 +1,12 @@
 // «Кусок Пирога» (Piece of Cake) — главный дашборд игры: две круговые
 // диаграммы за выбранный месяц и лента месяцев.
 //
-//   Доли пирога (Market Share). Сектор — доля гостей, которых ресторан
-//   привлёк за месяц. У сектора — доля рынка, привлечено → обслужено (если
-//   мест не хватило, видны обе цифры), розничная цена (видно, кто сбивал
-//   цену, а кто ставил выше рынка) и денежный поток месяца. Зелёный сектор —
-//   поток в плюсе, красный — в минусе.
+//   Доли пирога (Market Share). Сектор — доля спроса: сколько гостей города
+//   выбрали ресторан за месяц. Если мест хватило всем, это и доля рынка;
+//   если нет — видно «выбрали → обслужено (доля рынка)». Ещё у сектора
+//   розничная цена (видно, кто сбивал цену, а кто ставил выше рынка),
+//   прибыль и денежный поток месяца. Зелёный сектор — поток в плюсе,
+//   красный — в минусе. На проекторе цифры команд — табличкой рядом.
 //
 //   Размер пирога (Total Market). Все деньги гостей за месяц. Диаметр
 //   пропорционален выручке: базовый рынок (базовые гости × опорная цена) —
@@ -24,9 +25,9 @@
 
 import { t } from '../i18n.js';
 import { h, replace } from '../dom.js';
-import { usd, usdc, usdSigned, int, pct, decimal } from '../fmt.js';
+import { usd, usdc, usdSigned, usdShort, int, pct, decimal } from '../fmt.js';
 import { PALETTE, OTHER, FLOW_COLORS, textWidth } from '../charts.js';
-import { swatch } from './common.js';
+import { swatch, profitSplit, splitNote } from './common.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 const TAU = Math.PI * 2;
@@ -100,17 +101,23 @@ function monthOf(data, round, myId) {
     teams.push({ id: p.id, name: p.restaurant, mine: p.id === myId, demand, served: Number(e.served) || 0,
       price: Number(e.price) || 0, profit: Number(e.profit) || 0, cashFlow: Number(e.cashFlow) || 0 });
   }
+  // Спрос всех ресторанов — это все гости города (economy.ts): доля спроса —
+  // от него, доля рынка — обслуженные от него же.
   const attracted = teams.reduce((a, x) => a + x.demand, 0);
-  for (const x of teams) x.share = attracted > 0 ? x.demand / attracted : 0;
+  for (const x of teams) {
+    x.share = attracted > 0 ? x.demand / attracted : 0;
+    x.marketShare = attracted > 0 ? x.served / attracted : 0;
+  }
   const m = (data.moneyMap?.months || []).find((x) => x.round === round);
   const to = m?.restaurantsTo || {};
   const revenue = Number(m?.guestsToRestaurants) || 0;
   const kept = Number(to.keptByRestaurants) || 0;
+  const { profits, losses } = profitSplit(to);
   const flows = FLOWS.map(([id, group]) => {
     const v = Number(to[FLOW_FIELD[id] || id]) || 0;
     return { id, value: id === 'kept' ? Math.max(0, v) : Math.max(0, v), color: FLOW_COLORS[group] };
   }).filter((f) => f.value > 0);
-  return { round, teams, guests: Number(data.marketTotals?.[round]) || attracted, revenue, kept, flows };
+  return { round, teams, guests: Number(data.marketTotals?.[round]) || attracted, revenue, kept, profits, losses, flows };
 }
 
 /** Базовый рынок в деньгах: базовые гости × опорная цена. */
@@ -412,8 +419,10 @@ export function createCake(root, { big = false } = {}) {
       mine: x.mine,
       lines: [
         x.name + (x.mine ? ' ' + t('board.you') : ''),
-        t('cake.share', { pct: shareText(x.share) }),
-        x.served < x.demand ? t('cake.guestsLost', { attracted: int(x.demand), served: int(x.served) })
+        // Мест хватило всем — доля спроса и есть доля рынка.
+        x.served < x.demand ? t('cake.shareDemand', { pct: shareText(x.share) }) : t('cake.share', { pct: shareText(x.share) }),
+        x.served < x.demand
+          ? t('cake.guestsLost', { attracted: int(x.demand), served: int(x.served), pct: shareText(x.marketShare) })
           : t('cake.guests', { served: int(x.served) }),
         x.price > 0 ? money('cake.price', priceText(x.price)) : null,
         money('cake.profit', usdSigned(x.profit)),
@@ -486,10 +495,12 @@ export function createCake(root, { big = false } = {}) {
       h('span', {}, swatch(FLOW_COLORS.institution), t('money.groupInstitutions')),
       h('span', {}, swatch(FLOW_COLORS.city), t('money.groupCity')),
       h('span', {}, swatch(FLOW_COLORS.kept), t('money.groupKept')));
-    const worst = Math.min(m.kept, ...rest.map((x) => x.kept));
-    const lossKey = shown(m.kept < 0, worst < 0);
+    // Прибыль прибыльных и убытки убыточных — строкой под пирогом: в пироге
+    // только то, что осталось у всех ресторанов вместе.
+    const worst = [m, ...rest].find((x) => x.losses > 0);
+    const lossKey = shown(m.losses > 0, !!worst);
     const loss = lossKey ? h('p', { class: 'cake__loss', ...lossKey }, swatch(FLOW_COLORS.losses),
-      t('cake.losses', { amount: usd(-(m.kept < 0 ? m.kept : worst)) })) : null;
+      splitNote(m.losses > 0 ? m.profits : worst.profits, m.losses > 0 ? m.losses : worst.losses)) : null;
     const head = (title, caption) => h('div', { class: 'cake__ph' }, h('h3', { class: 'cake__h' }, title),
       h('span', { class: 'cake__cap muted' }, caption));
     const p1 = h('div', { class: 'cake__panel cake__panel--share' },
@@ -583,7 +594,8 @@ export function createCake(root, { big = false } = {}) {
     labels1 = drawLabeled(svg1, { w: w1, h: h1, cx: narrow ? w1 / 2 : centerX(w1, r1, sw1), cy: h1 / 2, r: r1,
       slices: teamSlices, labels: labels1, font, top: 4, bottom: h1 - 4 }, sw1).labels;
     plot1.append(svg1);
-    if (labels1 === 'inside') fitList(plot1.appendChild(list(teamSlices, false)));
+    if (labels1 === 'inside' && big) fitTable(plot1.appendChild(h('div', { class: 'cake__tables' })), m);
+    else if (labels1 === 'inside') fitList(plot1.appendChild(list(teamSlices, false)));
 
     const svg2 = s('svg', { class: 'cake__svg', width: w2, height: h2, viewBox: `0 0 ${w2} ${h2}`, role: 'img',
       'aria-label': t('cake.moneyTitle') + ': ' + usd(m.revenue) + '. ' + flowSlices.map((x) => x.title).join('; ') });
@@ -605,6 +617,41 @@ export function createCake(root, { big = false } = {}) {
     }
     plot2.append(svg2);
     if (labels2 === 'inside') fitList(plot2.appendChild(list(flowSlices, true)));
+  }
+
+  /**
+   * Проектор: цифры команд табличкой рядом с пирогом — строка на команду,
+   * по убыванию доли. Все команды видны всегда: не помещается — шрифт
+   * мельче, потом две таблички рядом (без цены и прибыли), шрифт ещё мельче.
+   */
+  function fitTable(box, m) {
+    const rows = [...m.teams].sort((a, b) => b.demand - a.demand);
+    const signed = (v) => (v > 0 ? '+' : '') + usdShort(v);
+    const money = (v) => h('td', { class: v < 0 ? 'neg' : null }, signed(v));
+    const table = (part) => h('table', { class: 'cake__table' },
+      h('thead', {}, h('tr', {},
+        h('th', { scope: 'col' }, t('common.team')),
+        h('th', { scope: 'col' }, t('cake.cols.demand')),
+        h('th', { scope: 'col' }, t('cake.cols.guests')),
+        h('th', { scope: 'col', class: 'cake__opt' }, t('cake.cols.price')),
+        h('th', { scope: 'col', class: 'cake__opt' }, t('cake.cols.profit')),
+        h('th', { scope: 'col' }, t('cake.cols.cashFlow')))),
+      h('tbody', {}, part.map((x) => h('tr', { class: x.mine ? 'is-mine' : null },
+        h('td', {}, swatch(x.cashFlow > 0 ? GOOD : x.cashFlow < 0 ? BAD : OTHER),
+          h('span', {}, x.name + (x.mine ? ' ' + t('board.you') : ''))),
+        h('td', {}, shareText(x.share)),
+        h('td', {}, x.served < x.demand ? int(x.demand) + ' → ' + int(x.served) : int(x.served)),
+        h('td', { class: 'cake__opt' }, x.price > 0 ? priceText(x.price) : '—'),
+        h('td', { class: ['cake__opt', x.profit < 0 ? 'neg' : null] }, signed(x.profit)),
+        money(x.cashFlow)))));
+    const over = () => box.scrollHeight > box.clientHeight + 1 || box.scrollWidth > box.clientWidth + 1;
+    replace(box, table(rows));
+    for (let f = 15; f >= 11 && over(); f--) box.style.fontSize = f + 'px';
+    if (!over()) return;
+    const half = Math.ceil(rows.length / 2);
+    box.classList.add('cake__tables--two');
+    replace(box, table(rows.slice(0, half)), table(rows.slice(half)));
+    for (let f = 14; f >= 9 && over(); f--) box.style.fontSize = f + 'px';
   }
 
   /** Те же цифры списком — под диаграммой на узком экране. compact — в одну строку. */

@@ -5,7 +5,7 @@
 
 import { t, errorText } from '../i18n.js';
 import { h, replace, toast, confirmDialog, busy, field, moneyInput, card } from '../dom.js';
-import { usd, int, dec2, pct, pctRaw, parseMoney, currencySign } from '../fmt.js';
+import { usd, int, dec2, pct, pctRaw, parseMoney, currencySign, emailTypo } from '../fmt.js';
 import { act } from '../api.js';
 import { locationBadge, statusBadge, copyText, siteBase, teamName as named, starsBadge } from './common.js';
 import { OWNER_COLORS } from './scoreboard.js';
@@ -238,7 +238,11 @@ export function createConsole(root, ctx) {
     const area = h('textarea', { class: 'input', rows: 7, spellcheck: 'false', autocapitalize: 'off', autocomplete: 'off',
       placeholder: 'team1@example.com\nteam2@example.com', oninput: () => { dirty = true; } });
     const result = h('div', {});
+    const typoBox = h('div', {});
     const tableBox = h('div', {});
+    // Ссылка для входа команды — карточка под таблицей; таблица обновляется
+    // каждые несколько секунд, а ссылка остаётся на месте.
+    const linkBox = h('div', {});
     const save = h('button', { class: 'btn btn--primary', type: 'button', onclick: async (e) => {
       const res = await run(e.currentTarget, 'setRoster', { emails: area.value },
         (r) => t('host.rosterResult', { added: r.added.length, removed: r.removed.length }));
@@ -255,11 +259,44 @@ export function createConsole(root, ctx) {
 
     const el = h('div', {}, joinTeams.el,
       card(t('host.rosterTitle'), h('p', { class: 'muted small' }, t('host.rosterLead')),
-        field(t('host.rosterEmails'), area), result, h('div', { class: 'btn-row' }, save)),
-      tableBox);
+        field(t('host.rosterEmails'), area), typoBox, result, h('div', { class: 'btn-row' }, save)),
+      tableBox, linkBox);
+
+    // Похоже на опечатку в адресе — такой игрок не получит код. Видно всегда,
+    // пока адрес не исправят.
+    let typoSig = '';
+    function showTypos(players) {
+      const list = players.map((p) => [p.email, emailTypo(p.email)]).filter(([, fix]) => fix);
+      const sig = JSON.stringify(list);
+      if (sig === typoSig) return;
+      typoSig = sig;
+      replace(typoBox, list.length ? h('div', { class: 'banner banner--warn' },
+        h('strong', {}, t('host.rosterTypos')),
+        h('ul', {}, list.map(([email, fix]) => h('li', {}, t('host.rosterTypo', { email, fix }))))) : null);
+    }
+
+    async function showLink(btn, p) {
+      const res = await run(btn, 'teamLink', { playerId: p.id }, null);
+      if (!res?.ok) return;
+      const url = siteBase() + '#/t/' + res.token;
+      const team = p.restaurant || p.email;
+      replace(linkBox, card(t('host.linkTitle', { team }),
+        h('div', { class: 'join-host' }, h('div', { class: 'join-host__qr' }, qrSvg(url, 168, t('host.linkTitle', { team }))),
+          h('div', { class: 'join-host__side' },
+            h('p', { class: 'muted small', style: { margin: '0 0 6px' } }, t('host.linkLead', { email: p.email })),
+            h('div', { class: 'join-host__url' }, url),
+            h('div', { class: 'btn-row', style: { marginTop: '6px' } },
+              h('button', { class: 'btn btn--small', type: 'button', onclick: () => copyText(url, t('common.copied')) },
+                t('host.joinCopy')),
+              h('button', { class: 'btn btn--ghost btn--small', type: 'button', onclick: () => replace(linkBox) },
+                t('host.linkHide')))))));
+      linkBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
 
     function update(s) {
       if (!dirty && document.activeElement !== area) area.value = s.players.map((p) => p.email).join('\n');
+      showTypos(s.players);
+      if (s.game.status === 'finished') replace(linkBox);
       const open = s.game.roundStatus === 'open';
       const rows = s.players.map((p) => h('tr', {},
         h('td', {},
@@ -274,7 +311,11 @@ export function createConsole(root, ctx) {
         h('td', { class: 'r' }, p.loanBalance > 0 ? usd(p.loanBalance) : '—'),
         h('td', { class: 'r' }, open && p.submitted !== null ? (p.submitted ? '✓' : '…') : '—'),
         h('td', {}, p.status !== 'left'
-          ? h('a', { class: 'btn btn--small', href: '#/g/' + ctx.gameId + '/as/' + p.id }, t('host.viewAs')) : null)));
+          ? h('div', { class: 'btn-row btn-row--tight' },
+              h('a', { class: 'btn btn--small', href: '#/g/' + ctx.gameId + '/as/' + p.id }, t('host.viewAs')),
+              s.game.status !== 'finished' ? h('button', { class: 'btn btn--ghost btn--small', type: 'button',
+                onclick: (e) => showLink(e.currentTarget, p) }, t('host.linkButton')) : null)
+          : null)));
       replace(tableBox, card(t('host.teamsTitle', { n: s.players.length }),
         s.players.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'table' },
           h('thead', {}, h('tr', {},

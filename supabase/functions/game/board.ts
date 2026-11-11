@@ -177,15 +177,29 @@ function restaurantsTo(r: Row) {
     advertising: cents(num(r.advertising)), quality: cents(num(r.quality)),
     landlord: cents(num(r.landlord)), insurer: cents(num(r.insurer)),
     utility: cents(num(r.utility)), bank: cents(num(r.bank)),
-    cityTax: cents(num(r.tax)), keptByRestaurants: cents(num(r.kept))
+    cityTax: cents(num(r.tax)), keptByRestaurants: cents(num(r.kept)),
+    // Прибыль прибыльных команд и убытки убыточных — по отдельности:
+    // в сумме (keptByRestaurants) убытки одних съедают прибыль других.
+    // keptByRestaurants = teamProfits − teamLosses.
+    teamProfits: cents(num(r.team_profits)), teamLosses: cents(num(r.team_losses))
   };
 }
 
 export async function moneyMap(sql: Sql, gameId: string) {
   const [[r], months, inst, [c], [t]]: Row[][] = await Promise.all([
-    sql`select ${moneyFlows(sql)} from results where game_id = ${gameId}`,
+    // За игру прибыль и убыток команды — её итог за все месяцы.
+    sql`select ${moneyFlows(sql)},
+          (select coalesce(sum(greatest(p, 0)), 0) from (select sum(profit) as p from results
+             where game_id = ${gameId} group by player_id) x) as team_profits,
+          (select coalesce(sum(greatest(-p, 0)), 0) from (select sum(profit) as p from results
+             where game_id = ${gameId} group by player_id) x) as team_losses
+        from results where game_id = ${gameId}`,
     // По месяцам — для «Куска Пирога»: размер рынка и куда ушли деньги месяца.
-    sql`select round_number, ${moneyFlows(sql)} from results where game_id = ${gameId}
+    // Строка results — одна команда за один месяц.
+    sql`select round_number, ${moneyFlows(sql)},
+          coalesce(sum(greatest(profit, 0)), 0) as team_profits,
+          coalesce(sum(greatest(-profit, 0)), 0) as team_losses
+        from results where game_id = ${gameId}
         group by round_number order by round_number`, sql`
     select kind, sum(income) as income, sum(write_offs) as write_offs,
            sum(to_city) as to_city, sum(to_players) as to_players, sum(to_private) as to_private
@@ -252,6 +266,9 @@ async function timeline(sql: Sql, game: Row) {
       marketSharePct: round2(num(r.market_share) * 100), served: Math.round(num(r.served)),
       // Привлечено гостей (сколько пришло бы, хватай мест) и денежный поток месяца.
       demand: Math.round(num(r.demand)), cashFlow: Math.round(num(r.cash_flow)),
+      // Доля спроса — сколько гостей города выбрали ресторан, даже если мест
+      // на всех не хватило. Доля рынка (выше) — скольких он обслужил.
+      demandSharePct: num(r.market_total) > 0 ? round2((num(r.demand) / num(r.market_total)) * 100) : null,
       price: round2(num(r.price)), brand: round2(num(r.brand_after)),
       reputation: round2(num(r.reputation_after)), quality: round2(num(r.quality)),
       capacity: Math.round(num(r.capacity)), marketingTotal: Math.round(num(r.marketing_total)),
@@ -269,7 +286,7 @@ async function timeline(sql: Sql, game: Row) {
       round: num(w.round_number), inBusiness: false, offBusinessStatus: w.status,
       profit: broke ? null : Math.round(num(w.income)), cash: broke ? null : Math.round(num(w.savings)),
       capital: broke ? null : Math.round(num(w.savings)),
-      marketSharePct: null, served: null, price: null, brand: null, reputation: null,
+      marketSharePct: null, demandSharePct: null, served: null, price: null, brand: null, reputation: null,
       quality: null, capacity: null, marketingTotal: null, qualityInvest: null, tax: null, dividends: null
     });
   }

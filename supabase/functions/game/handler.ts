@@ -61,6 +61,7 @@ const HOST_ACTIONS: Record<string, HostAction> = {
   finishGame: (d, g, _b, a) => H.finishGame(d.sql, g, a),
   playAgain: (d, g, _b, a) => H.playAgain(d.sql, g, a, d.ensureAuthUser),
   approveJoins: (d, g, b, a) => J.approveJoins(d.sql, g, a, b, d.ensureAuthUser),
+  teamLink: (d, g, b, a) => J.teamLink(d.sql, g, a, b),
   dropJoin: (d, g, b, a) => J.dropJoin(d.sql, g, a, b)
 };
 
@@ -228,6 +229,7 @@ async function route(deps: Deps, b: Row, token: string): Promise<Row> {
     case 'joinInfo': return await J.joinInfo(sql, b);
     case 'joinRequest': return await J.joinRequest(sql, b);
     case 'joinStatus': return await J.joinStatus(sql, b);
+    case 'linkInfo': return await J.linkInfo(sql, b);
     case 'preflightLogin': return await preflightLogin(deps, b);
   }
 
@@ -308,6 +310,9 @@ async function route(deps: Deps, b: Row, token: string): Promise<Row> {
   if (HOST_ACTIONS[action]) {
     if (!isGameHost) fail('not_host');
     if (action === 'monitor') return await H.monitor(sql, game);
+    // Ключ ссылки для входа не пишем в журнал повторов (mutations): в базе
+    // только его хеш. Повтор просто выдаст новую ссылку вместо прежней.
+    if (action === 'teamLink') return await J.teamLink(sql, game, me.email, b);
     const result = await once(deps, b, game.id, me.email, action,
       (tx) => HOST_ACTIONS[action]({ ...deps, sql: tx }, game, b, me.email));
     if (NO_STATE.has(action) || result.ok !== true) return result;

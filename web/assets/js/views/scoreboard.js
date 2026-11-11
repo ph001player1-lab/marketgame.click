@@ -11,7 +11,8 @@ import { usd, usdc, int, dec2, decimal, pct, pctRaw, usdShort, short } from '../
 import { read } from '../api.js';
 import { lineChart, barChart, sankey, PALETTE, OTHER, INK, FLOW_COLORS } from '../charts.js';
 import {
-  locationBadge, statusBadge, swatch, sponsorBanner, chartCard, simpleTable, teamName, starsBadge
+  locationBadge, statusBadge, swatch, sponsorBanner, chartCard, simpleTable, teamName, starsBadge,
+  profitSplit, splitNote
 } from './common.js';
 import { ratingTable } from './rating.js';
 import { waterChip, oceanCard } from './ocean.js';
@@ -23,6 +24,7 @@ const METRICS = [
   { key: 'cash', fmt: usd, tick: usdShort },
   { key: 'profit', fmt: usd, tick: usdShort },
   { key: 'marketSharePct', fmt: pctRaw, tick: (v) => pctRaw(v) },
+  { key: 'demandSharePct', fmt: pctRaw, tick: (v) => pctRaw(v) },
   { key: 'served', fmt: int, tick: short },
   { key: 'price', fmt: usdc, tick: usdShort, zero: false },
   { key: 'brand', fmt: dec2, tick: decimal },
@@ -46,6 +48,7 @@ const CITY_SERIES = [
 ];
 
 const ALL_VIEWS = ['cake', 'teams', 'economy', 'money', 'rating'];
+
 
 export function createScoreboard(root, opts = {}) {
   const mode = opts.mode || 'app';
@@ -104,6 +107,10 @@ export function createScoreboard(root, opts = {}) {
     buttons.forEach((b, i) => b.setAttribute('aria-pressed', VIEWS[i] === view ? 'true' : 'false'));
     replace(sponsorBox, data ? sponsorBanner(data.game.sponsor, data.game.id) : null);
     if (!data) { replace(body, h('div', { class: 'spinner', role: 'status' })); return; }
+    // Пока табло собирается заново, оно держит прежнюю высоту: иначе на миг
+    // страница становится короче, и прокрутка прыгает наверх.
+    const keep = body.offsetHeight;
+    if (keep > 0) body.style.minHeight = keep + 'px';
     replace(body);
     if (view === 'cake') {
       cake ||= createCake(cakeBox, { big });
@@ -113,6 +120,7 @@ export function createScoreboard(root, opts = {}) {
     else if (view === 'economy') renderEconomy();
     else if (view === 'money') renderMoney();
     else renderRating();
+    body.style.minHeight = '';
   }
 
   function add(card) {
@@ -183,11 +191,27 @@ export function createScoreboard(root, opts = {}) {
       return;
     }
 
+    add(metricCard(list, months));
+  }
+
+  /**
+   * График команд по выбранному показателю. Другой показатель — меняется
+   * только эта карточка: страница остаётся на месте.
+   */
+  function metricCard(list, months) {
     const M = METRICS.find((m) => m.key === metric) || METRICS[0];
     const select = h('select', { class: 'input input--inline', 'aria-label': t('board.metric'),
-      onchange: (e) => { metric = e.target.value; save('metric', metric); render(); } },
+      onchange: (e) => {
+        metric = e.target.value;
+        save('metric', metric);
+        const fresh = metricCard(list, months);
+        cards = cards.map((c) => (c === card ? fresh : c));
+        card.destroy?.();
+        card.el.replaceWith(fresh.el);
+        fresh.el.querySelector('select')?.focus();
+      } },
       METRICS.map((m) => h('option', { value: m.key, selected: m.key === metric }, t('board.metrics.' + m.key))));
-    add(chartCard({
+    const card = chartCard({
       title: t('board.metrics.' + M.key),
       note: t('board.metricNotes.' + M.key) === 'board.metricNotes.' + M.key ? null : t('board.metricNotes.' + M.key),
       controls: select,
@@ -215,7 +239,20 @@ export function createScoreboard(root, opts = {}) {
             const v = valueAt(tm, m, M.key);
             return h('td', { class: 'r' }, v === null ? '—' : M.fmt(v));
           }))))))
-    }));
+    });
+    return card;
+  }
+
+  /**
+   * Доля рынка — скольких гостей обслужил. Если мест не хватило, рядом
+   * доля спроса — сколько выбрали: «16 % (спрос 73 %)».
+   */
+  function shareCell(last) {
+    const share = last?.marketSharePct;
+    if (share === null || share === undefined) return '—';
+    const demand = last.demandSharePct;
+    return demand !== null && demand !== undefined && demand - share >= 0.05
+      ? t('board.shareDemand', { share: pctRaw(share), demand: pctRaw(demand) }) : pctRaw(share);
   }
 
   /** Таблица мест: по капиталу, как в рейтинге. */
@@ -254,7 +291,7 @@ export function createScoreboard(root, opts = {}) {
             r.tm.displayName ? h('div', { class: 'team-cell__who' }, r.tm.displayName) : null),
           h('td', { class: 'r' }, cell(r.capital, usd)),
           h('td', { class: ['r', (r.last?.profit ?? 0) < 0 ? 'neg' : null] }, cell(r.last?.profit, usd)),
-          h('td', { class: 'r opt2' }, cell(r.last?.marketSharePct, pctRaw)),
+          h('td', { class: 'r opt2' }, shareCell(r.last)),
           h('td', { class: 'r opt' }, cell(r.last?.price, usdc)),
           h('td', { class: 'r opt' }, cell(r.last?.brand, dec2)),
           h('td', { class: 'r opt' }, cell(r.last?.quality, dec2))))))));
@@ -422,12 +459,14 @@ export function createScoreboard(root, opts = {}) {
     }
     const r = mm.restaurantsTo;
     const revenue = mm.guestsToRestaurants;
-    const kept = r.keptByRestaurants;
+    // Прибыль прибыльных команд и убытки убыточных — отдельно: в сумме
+    // убытки одних съели бы прибыль других, и прибыли не было бы видно.
+    const { profits, losses } = profitSplit(r);
     const flows = [
       ['suppliers', r.suppliers, 'cost'], ['staff', r.staff, 'cost'], ['advertising', r.advertising, 'cost'],
       ['quality', r.quality, 'cost'], ['landlord', r.landlord, 'institution'], ['insurer', r.insurer, 'institution'],
       ['utility', r.utility, 'institution'], ['bank', r.bank, 'institution'], ['cityTax', r.cityTax, 'city'],
-      ['kept', Math.max(0, kept), 'kept']
+      ['profits', profits, 'kept']
     ];
     const nodes = [
       { id: 'guests', name: t('money.guests'), col: 0, color: INK },
@@ -437,7 +476,7 @@ export function createScoreboard(root, opts = {}) {
     ];
     const links = [
       { source: 'guests', target: 'rest', value: revenue },
-      { source: 'losses', target: 'rest', value: Math.max(0, -kept) },
+      { source: 'losses', target: 'rest', value: losses },
       ...flows.map(([id, v]) => ({ source: 'rest', target: id, value: v }))
     ];
     const share = (v) => pctRaw(Math.round((v / revenue) * 1000) / 10);
@@ -451,12 +490,14 @@ export function createScoreboard(root, opts = {}) {
           h('span', {}, swatch(FLOW_COLORS.institution), t('money.groupInstitutions')),
           h('span', {}, swatch(FLOW_COLORS.city), t('money.groupCity')),
           h('span', {}, swatch(FLOW_COLORS.kept), t('money.groupKept')),
-          kept < 0 ? h('span', {}, swatch(FLOW_COLORS.losses), t('money.groupLosses')) : null));
+          losses > 0 ? h('span', {}, swatch(FLOW_COLORS.losses), t('money.groupLosses')) : null));
+        const note = splitNote(profits, losses);
+        if (note) box.append(h('p', { class: 'muted small' }, note));
         return inst;
       },
       table: () => simpleTable([t('money.flow'), t('money.amount'), t('money.share')],
         [[t('money.guests') + ' → ' + t('money.restaurants'), usd(revenue), '100%'],
-          ...(kept < 0 ? [[t('money.losses') + ' → ' + t('money.restaurants'), usd(-kept), share(-kept)]] : []),
+          ...(losses > 0 ? [[t('money.losses') + ' → ' + t('money.restaurants'), usd(losses), share(losses)]] : []),
           ...flows.filter(([, v]) => v > 0).map(([id, v]) => [t('money.restaurants') + ' → ' + t('money.' + id), usd(v), share(v)])],
         { numeric: [1, 2] })
     }));
