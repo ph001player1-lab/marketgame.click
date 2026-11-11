@@ -3,8 +3,10 @@
 //
 //  Все запросы — POST с JSON: { action, gameId?, ...параметры }. Вход — токен
 //  Supabase Auth в заголовке Authorization. Без токена открыты только рейтинг
-//  лиги, отчёт команды по её ссылке, проверка почты перед входом и время
-//  конца последней игры (для резервной копии после игры).
+//  лиги, отчёт команды по её ссылке, проверка почты перед входом, время
+//  конца последней игры (для резервной копии после игры) и заявка на игру
+//  по QR-коду (join.ts). Игрок, принятый по заявке, играет по ключу своего
+//  браузера (joinToken) — только в своей игре.
 //
 //  Кто что видит: команда — только игры, где она играет; ведущий — свои игры;
 //  администратор — все. Табло игры тоже только для них.
@@ -18,6 +20,7 @@ import * as P from './player.ts';
 import * as H from './host.ts';
 import * as B from './board.ts';
 import { openMonth, calculateMonth } from './round.ts';
+import * as J from './join.ts';
 
 export const VERSION = '5.0';
 
@@ -56,7 +59,9 @@ const HOST_ACTIONS: Record<string, HostAction> = {
   buybackStake: (d, g, b, a) => H.buybackStake(d.sql, g, a, b),
   transferStake: (d, g, b, a) => H.transferStake(d.sql, g, a, b),
   finishGame: (d, g, _b, a) => H.finishGame(d.sql, g, a),
-  playAgain: (d, g, _b, a) => H.playAgain(d.sql, g, a, d.ensureAuthUser)
+  playAgain: (d, g, _b, a) => H.playAgain(d.sql, g, a, d.ensureAuthUser),
+  approveJoins: (d, g, b, a) => J.approveJoins(d.sql, g, a, b, d.ensureAuthUser),
+  dropJoin: (d, g, b, a) => J.dropJoin(d.sql, g, a, b)
 };
 
 // Действия, после которых клиенту не нужно состояние: игра удалена или
@@ -220,12 +225,31 @@ async function route(deps: Deps, b: Row, token: string): Promise<Row> {
     case 'rating': return await B.rating(sql, b);
     case 'report': return await B.publicReport(sql, b);
     case 'lastFinished': return await B.lastFinished(sql);
+    case 'joinInfo': return await J.joinInfo(sql, b);
+    case 'joinRequest': return await J.joinRequest(sql, b);
+    case 'joinStatus': return await J.joinStatus(sql, b);
     case 'preflightLogin': return await preflightLogin(deps, b);
   }
 
-  const email = token ? await deps.verifyToken(token) : null;
+  let email = token ? await deps.verifyToken(token) : null;
+  // Без входа по коду — игрок, принятый по заявке (QR-код): ключ его браузера
+  // открывает только эту игру и только пока она идёт.
+  let joinedGame: string | null = null;
+  if (!email && b.joinToken) {
+    const j = await J.joinIdentity(sql, b.joinToken);
+    if (j) { email = j.email; joinedGame = j.gameId; }
+  }
   if (!email) fail('auth_required');
   const myEmail = normEmail(email);
+  if (joinedGame) {
+    const allowed = action === 'me' || action === 'board' || !!PLAYER_ACTIONS[action];
+    if (!allowed || (action !== 'me' && String(b.gameId ?? '') !== joinedGame) || b.asPlayerId) fail('auth_required');
+    if (action === 'me') {
+      const mine = await B.myGames(sql, myEmail, false);
+      return { ok: true, email: myEmail, isAdmin: false, isHost: false, joined: true,
+               playing: mine.playing.filter((g) => g.id === joinedGame), hosting: [] };
+    }
+  }
   // Кто вошёл, какая игра и есть ли в ней его команда — независимые запросы:
   // идут разом, а не друг за другом.
   const inGame = !GAME_FREE.has(action);

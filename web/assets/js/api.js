@@ -10,7 +10,7 @@
 // Такие ответы отбрасываются.
 
 import { CONFIG } from './config.js';
-import { getToken } from './auth.js';
+import { getToken, joinToken } from './auth.js';
 
 // Сколько раз пробовать: действие игрока — терпеливо, секунд пятнадцать
 // (сбой у сервера обычно проходит за несколько секунд, а повтор действия
@@ -63,6 +63,8 @@ async function send(body, withAuth, attempts = ATTEMPTS.read) {
   if (withAuth) {
     const token = await getToken();
     if (token) headers.authorization = 'Bearer ' + token;
+    // Без входа по коду — ключ принятой заявки по QR-коду (только своя игра).
+    else if (joinToken()) body = { ...body, joinToken: joinToken() };
   }
   let lastError = null;
   for (let attempt = 1; attempt <= attempts; attempt++) {

@@ -73,11 +73,14 @@ export const US_V5: Config = {
  */
 export const CURRENCIES = {
   USD: { scale: 1, profitTax: 0.21 },
-  RUB: { scale: 50, profitTax: 0.25 }
+  RUB: { scale: 50, profitTax: 0.25 },
+  // Баты: по курсу, ×35 (блюдо за $30 — 1 050 ฿). Налог на прибыль
+  // компаний в Таиланде — 20%.
+  THB: { scale: 35, profitTax: 0.20 }
 } as const;
 export type Currency = keyof typeof CURRENCIES;
 export function isCurrency(v: unknown): v is Currency {
-  return v === 'USD' || v === 'RUB';
+  return v === 'USD' || v === 'RUB' || v === 'THB';
 }
 
 /** Денежные настройки: в другой валюте умножаются на её масштаб. */

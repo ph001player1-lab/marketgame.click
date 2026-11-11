@@ -63,6 +63,21 @@ export default {
     business: 'Negócio', console: 'Painel', board: 'Placar', guide: 'Guia'
   },
 
+  join: {
+    title: 'Entrar no jogo',
+    lead: 'Digite seu e-mail e o nome do seu restaurante. O anfitrião verá seu pedido e adicionará você ao jogo, sem código por e-mail.',
+    restaurant: 'Nome do restaurante', restaurantPlaceholder: 'ex.: Taco Town',
+    submit: 'Entrar em “{title}”',
+    sentTitle: 'Pedido enviado',
+    sentLead: 'Assim que o anfitrião aceitar, o jogo abre aqui sozinho. Deixe esta página aberta.',
+    waiting: 'Aguardando o anfitrião…',
+    edit: 'Alterar dados',
+    dropped: 'O anfitrião removeu seu pedido. Confira os dados e envie de novo.',
+    finished: 'Este jogo terminou. Entre com um código por e-mail para ver seus resultados.',
+    alreadyIn: 'Você já está neste jogo.',
+    signIn: 'Entrar com um código',
+    codeTitle: 'Tem um código de jogo?', codeLabel: 'Código do jogo', codeGo: 'Entrar'
+  },
   login: {
     title: 'Entrar',
     lead: 'Para se registrar no jogo, informe seu e-mail — enviaremos um código de verificação para ele.',
@@ -278,6 +293,9 @@ export default {
   },
 
   board: {
+    signupTitle: 'Entre no jogo',
+    signupLead: 'Aponte a câmera do celular para o QR code e digite seu e-mail e o nome do seu restaurante.',
+    signupCount: 'Inscritos: {teams} · aguardando o anfitrião: {waiting}',
     title: 'Placar',
     views: { cake: 'Piece of Cake', teams: 'Equipes', economy: 'Economia', money: 'Para onde foi o dinheiro', rating: 'Ranking' },
     metrics: {
@@ -474,6 +492,13 @@ export default {
   },
 
   host: {
+    joinTitle: 'Inscrição por QR code',
+    joinLead: 'Mostre este QR code na tela ou envie o link. Os jogadores digitam um e-mail e o nome do restaurante; você os aceita aqui.',
+    joinQr: 'QR code do link de inscrição', joinCopy: 'Copiar link',
+    joinNone: 'Ainda não há pedidos.',
+    joinWaiting: 'Aguardando você: {n}',
+    joinApprove: 'Aceitar marcados ({n})', joinApproved: 'Aceitos: {n}',
+    joinDrop: 'Remover', joinDropped: 'Pedido removido.',
     console: 'Painel do facilitador',
     run: 'Jogo', teams: 'Equipes', cityTab: 'Cidade', settings: 'Configurações',
     boardLink: 'Placar para o projetor',
@@ -553,7 +578,7 @@ export default {
     language: 'Idioma do jogo',
     languageHint: 'Todos veem o jogo neste idioma, a menos que escolham outro no menu.',
     currency: 'Moeda do jogo',
-    currencyHint: 'Definida na criação do jogo. Em rublos todos os valores são multiplicados por 50 — uma refeição de US$ 30 custa 1.500 ₽ — e o imposto sobre o lucro é de 25%, como na Rússia. O equilíbrio do jogo é o mesmo.',
+    currencyHint: 'Definida na criação do jogo. Em rublos todos os valores são multiplicados por 50 — uma refeição de US$ 30 custa 1.500 ₽ — e o imposto sobre o lucro é de 25%, como na Rússia. Em bahts tudo é multiplicado por 35 — a refeição custa 1.050 ฿ — e o imposto é de 20%, como na Tailândia. O equilíbrio do jogo é o mesmo.',
     currencyFixed: 'Moeda do jogo: {currency}. Também é definida na criação do jogo.',
     place: 'Onde o jogo acontece',
     worldRegion: 'Região do mundo',
@@ -917,7 +942,7 @@ export default {
     legend: 'Legenda', highlight: 'Destacar {name}', other: 'Outros', nothing: 'Nada neste mês'
   },
 
-  currency: { USD: 'Dólar americano (US$)', RUB: 'Rublo russo (₽)' },
+  currency: { USD: 'Dólar americano (US$)', RUB: 'Rublo russo (₽)', THB: 'Baht tailandês (฿)' },
 
   regions: {
     north_america: 'América do Norte', latin_america: 'América Latina', europe: 'Europa', cis: 'Rússia e CEI',
@@ -945,6 +970,9 @@ export default {
   },
 
   errors: {
+    join_host: 'Este é o e-mail do anfitrião: o anfitrião não joga como equipe.',
+    already_in_game: 'Este e-mail já está no jogo.',
+    join_gone: 'O pedido não existe mais. Envie de novo.',
     auth_required: 'Entre novamente, por favor.',
     not_registered: 'Este e-mail ainda não está em nenhum jogo. Peça ao facilitador para cadastrá-lo.',
     bad_email: 'Isso não parece um endereço de e-mail.',

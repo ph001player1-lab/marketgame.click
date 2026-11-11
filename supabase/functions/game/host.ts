@@ -12,13 +12,14 @@ import {
   configFor, isLeague, isLanguage, isCurrency, editableFor, DEFAULT_CITY_SHARE_PCT, LEAGUES, type Currency
 } from './presets.ts';
 import {
-  type Sql, type Row, fail, num, cents, round2, normEmail, isEmail, currentRound, accountingRound,
+  type Sql, type Row, type RoundRow, fail, num, cents, round2, normEmail, isEmail, currentRound, accountingRound,
   activeConfig, addLedger, addCity, addNotice, logHostAction, moneyTarget, available,
   OFF_BUSINESS, INSTITUTIONS, isInstitution, usd, teamLabel, STARTUP_LOAN_TIER, directImageUrl, starsNow
 } from './lib.ts';
 import { gameMeta, rulesFor, upcomingChanges } from './player.ts';
 import { gameLocation, teamLocation, ONLINE } from './geo.ts';
 import { cityBudget, institutionsState, oceanByMonth } from './board.ts';
+import { pendingJoins } from './join.ts';
 
 const INSTITUTION_NAMES: Record<string, string> = {
   landlord: 'the landlord', bank: 'the bank', insurer: 'the insurer', utility: 'the utility company'
@@ -123,7 +124,8 @@ function validTimezone(v: unknown): string {
  * для онлайн-игры на русском, иначе доллары.
  */
 function defaultCurrency(place: Row, language: unknown): Currency {
-  return place.country === 'RU' || (place.region === ONLINE && language === 'ru') ? 'RUB' : 'USD';
+  if (place.country === 'RU' || (place.region === ONLINE && language === 'ru')) return 'RUB';
+  return place.country === 'TH' ? 'THB' : 'USD';
 }
 
 export async function createGame(sql: Sql, hostEmail: string, b: Row) {
@@ -225,6 +227,39 @@ export async function deleteGame(sql: Sql, game: Row, actor: string) {
  * кого убрали из списка — удаляем. Команду с сыгранными месяцами не
  * удаляем: порвалась бы история на табло. Об этом сообщаем ведущему.
  */
+/**
+ * Новые команды игры: стартовый капитал и запись в журнале денег. Прошлые
+ * данные команды (имя, ресторан, место) подставляются, чтобы не вводить
+ * заново; название ресторана из заявки — важнее прошлого. Возвращает почты.
+ */
+export async function addPlayers(tx: Sql, game: Row, cfg: Config, round: RoundRow, actor: string,
+                                 entries: Array<{ email: string; restaurant?: string | null }>): Promise<string[]> {
+  const added: string[] = [];
+  for (const { email: e, restaurant } of entries) {
+    // Место — где команда вела бизнес в прошлой игре: пригодится, если
+    // новая игра онлайн и команда указывает его сама.
+    const [prev] = await tx`
+      select p.display_name, p.restaurant_name,
+             case when g.region = 'online' then p.location_country else g.country end as location_country,
+             case when g.region = 'online' then p.location_area else g.area end as location_area
+      from players p join games g on g.id = p.game_id
+      where p.email = ${e} order by p.created_at desc limit 1`;
+    const [p] = await tx`insert into players ${tx({
+      game_id: game.id, email: e, cash: cfg.START_CAPITAL, reputation: 1, status: 'active',
+      loan_tier: STARTUP_LOAN_TIER,
+      display_name: prev?.display_name ?? null, restaurant_name: restaurant || prev?.restaurant_name || null,
+      location_country: prev?.location_country ?? null, location_area: prev?.location_area ?? null
+    })} returning id`;
+    await addLedger(tx, [{
+      game_id: game.id, player_id: p.id, round_number: accountingRound(round),
+      kind: 'start_capital', amount: cfg.START_CAPITAL, target: 'cash',
+      reason: 'Starting capital', actor, params: { code: 'start_capital' }
+    }]);
+    added.push(e);
+  }
+  return added;
+}
+
 export async function setRoster(sql: Sql, game: Row, actor: string, b: Row,
                                 ensureAuthUser: (e: string) => Promise<void>) {
   const raw: unknown[] = Array.isArray(b.emails)
@@ -249,31 +284,7 @@ export async function setRoster(sql: Sql, game: Row, actor: string, b: Row,
     const existing: Row[] = await tx`select id, email from players where game_id = ${game.id}`;
     const have = new Map(existing.map((p) => [String(p.email), String(p.id)]));
 
-    // Прошлые данные команды подставляем, чтобы не вводить заново.
-    const added: string[] = [];
-    for (const e of wanted) {
-      if (have.has(e)) continue;
-      // Место — где команда вела бизнес в прошлой игре: пригодится, если
-      // новая игра онлайн и команда указывает его сама.
-      const [prev] = await tx`
-        select p.display_name, p.restaurant_name,
-               case when g.region = 'online' then p.location_country else g.country end as location_country,
-               case when g.region = 'online' then p.location_area else g.area end as location_area
-        from players p join games g on g.id = p.game_id
-        where p.email = ${e} order by p.created_at desc limit 1`;
-      const [p] = await tx`insert into players ${tx({
-        game_id: game.id, email: e, cash: cfg.START_CAPITAL, reputation: 1, status: 'active',
-        loan_tier: STARTUP_LOAN_TIER,
-        display_name: prev?.display_name ?? null, restaurant_name: prev?.restaurant_name ?? null,
-        location_country: prev?.location_country ?? null, location_area: prev?.location_area ?? null
-      })} returning id`;
-      await addLedger(tx, [{
-        game_id: game.id, player_id: p.id, round_number: accountingRound(round),
-        kind: 'start_capital', amount: cfg.START_CAPITAL, target: 'cash',
-        reason: 'Starting capital', actor, params: { code: 'start_capital' }
-      }]);
-      added.push(e);
-    }
+    const added = await addPlayers(tx, game, cfg, round, actor, wanted.filter((e) => !have.has(e)).map((email) => ({ email })));
 
     const removed: string[] = [];
     const kept: Record<string, string> = {};
@@ -302,7 +313,7 @@ export async function setRoster(sql: Sql, game: Row, actor: string, b: Row,
 
 export async function monitor(sql: Sql, game: Row) {
   // Независимые запросы — разом. Решения — открытого (последнего) месяца.
-  const [round, players, submitted, city, institutions, ocean, qualityRows] = await Promise.all([
+  const [round, players, submitted, city, institutions, ocean, qualityRows, joins] = await Promise.all([
     currentRound(sql, game.id),
     sql`select * from players where game_id = ${game.id} order by created_at, id`,
     sql`
@@ -312,7 +323,8 @@ export async function monitor(sql: Sql, game: Row) {
     cityBudget(sql, game.id),
     institutionsState(sql, game.id),
     oceanByMonth(sql, game.id),
-    sql`select player_id, round_number, quality from results where game_id = ${game.id} order by round_number`
+    sql`select player_id, round_number, quality from results where game_id = ${game.id} order by round_number`,
+    pendingJoins(sql, game.id)
   ]);
   const cfg = activeConfig(game, round);
   const sub = new Set((submitted as Row[]).map((s) => String(s.player_id)));
@@ -352,7 +364,9 @@ export async function monitor(sql: Sql, game: Row) {
         submitted: round.status === 'open' && p.status === 'active' ? sub.has(String(p.id)) : null
       };
     }),
-    city, institutions, ocean
+    city, institutions, ocean,
+    // Заявки по QR-коду, которые ждут ведущего.
+    joinRequests: joins
   };
 }
 

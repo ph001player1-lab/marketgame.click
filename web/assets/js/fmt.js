@@ -7,6 +7,8 @@
 const LOCALES = { en: 'en-US', es: 'es-US', pt: 'pt-BR', ru: 'ru-RU' };
 let locale = 'en-US';
 let currency = 'USD';
+/** Валюты игры: доллары, рубли (игры в России), баты (игры в Таиланде). */
+export const CURRENCIES = ['USD', 'RUB', 'THB'];
 let F = formats(locale);
 
 function formats(l) {
@@ -29,7 +31,7 @@ function moneyFormat(cur, kind) {
     F.money[key] = new Intl.NumberFormat(locale, {
       style: 'currency', currency: cur, minimumFractionDigits: digits, maximumFractionDigits: digits,
       // Рубль — знаком ₽ на любом языке; доллар — как привычно языку (US$ в Бразилии).
-      ...(cur === 'RUB' ? { currencyDisplay: 'narrowSymbol' } : {}),
+      ...(cur !== 'USD' ? { currencyDisplay: 'narrowSymbol' } : {}),
       ...(kind === 's' ? { signDisplay: 'exceptZero' } : {})
     });
   }
@@ -43,17 +45,18 @@ export function setLocale(lang) {
 }
 export const currentLocale = () => locale;
 
-/** Валюта игры: USD или RUB. Зовут, открывая игру; вне игры — доллары. */
+/** Валюта игры: USD, RUB или THB. Зовут, открывая игру; вне игры — доллары. */
 export function setCurrency(code) {
-  currency = code === 'RUB' ? 'RUB' : 'USD';
+  currency = CURRENCIES.includes(code) ? code : 'USD';
 }
 export const currentCurrency = () => currency;
-const curOf = (cur) => (cur === 'RUB' || cur === 'USD' ? cur : currency);
+const curOf = (cur) => (CURRENCIES.includes(cur) ? cur : currency);
 
 /** Знак валюты для подписей полей: «Сумма, $», «Сумма, ₽». */
 export function currencySign(cur) {
   const c = curOf(cur);
   if (c === 'RUB') return '₽';
+  if (c === 'THB') return '฿';
   return locale === 'pt-BR' ? 'US$' : '$';
 }
 
@@ -133,7 +136,7 @@ export function clock(sec) {
  * «1,500» — как тысячу пятьсот по-английски и полторы по-русски.
  */
 export function parseMoney(text) {
-  let s = String(text ?? '').replace(/[\s  $₽]|US|R\$|руб\.?/g, '').replace(/[−–]/g, '-');
+  let s = String(text ?? '').replace(/[\s  $₽฿]|US|R\$|руб\.?|бат(ов|а)?|THB|baht/gi, '').replace(/[−–]/g, '-');
   if (s === '' || s === '-') return s === '' ? 0 : NaN;
   const lastDot = s.lastIndexOf('.');
   const lastComma = s.lastIndexOf(',');

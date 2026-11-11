@@ -16,7 +16,7 @@ const HOST2 = 'other-host@test.com';
 const [ANN, BOB, CAT, DAN] = ['ann@test.com', 'bob@test.com', 'cat@test.com', 'dan@test.com'];
 
 const sql = await freshDatabase('mg_api_extras');
-const { call } = makeApi(sql, { admins: [ADMIN] });
+const { call, authUsers } = makeApi(sql, { admins: [ADMIN] });
 
 let steps = 0;
 async function step(name, fn) {
@@ -360,6 +360,100 @@ await step('сбой подключения к базе: сервер повто
   ok(await (await send(requestId)).json(), 'повтор выполненного');
   assert.equal(await grants(), before + 1, 'деньги начислены один раз');
   await moneyInvariants(sql, gameId);
+});
+
+await step('заявка по QR-коду: почта и ресторан, ведущий принимает, игра по ключу браузера', async () => {
+  const EVE = 'eve@test.com', FAY = 'fay@test.com', GUS = 'gus@test.com';
+  const g = await call(HOST, 'createGame', { title: 'Bangkok night', league: 'start', region: 'asia', country: 'TH', area: 'Bangkok' });
+  ok(g);
+  const gid = g.gameId;
+  const code = (await monitor(gid)).game.code;
+  // Баты — для игры в Таиланде.
+  const [cur] = await sql`select currency, config->>'P_REF' as pref, config->>'PROFIT_TAX_RATE' as tax from games where id = ${gid}`;
+  assert.deepEqual({ ...cur }, { currency: 'THB', pref: '1050', tax: '0.2' });
+
+  // Страница заявки: название игры без почт.
+  const info = await call(null, 'joinInfo', { code: code.toLowerCase() });
+  ok(info);
+  assert.equal(info.game.title, 'Bangkok night');
+  assert.equal(JSON.stringify(info).includes('@'), false, 'no emails on the join page');
+  err(await call(null, 'joinInfo', { code: 'NOPE42' }), 'game_not_found');
+
+  // Заявки: почта и название ресторана, без кода.
+  const eve = await call(null, 'joinRequest', { code, email: 'Eve@Test.com', restaurantName: 'Pad Thai Lab' });
+  ok(eve);
+  assert.match(eve.token, /^[0-9a-f]{64}$/);
+  const fay = await call(null, 'joinRequest', { code, email: FAY, restaurantName: 'Mango Sticky' });
+  ok(fay);
+  err(await call(null, 'joinRequest', { code, email: GUS, restaurantName: 'pad thai lab' }), 'restaurant_taken');
+  err(await call(null, 'joinRequest', { code, email: 'not-an-email', restaurantName: 'X' }), 'bad_email');
+  err(await call(null, 'joinRequest', { code, email: HOST, restaurantName: 'Host Cafe' }), 'join_host');
+  // Повторная заявка с той же почты — новое устройство, старый ключ больше не действует.
+  const fay2 = await call(null, 'joinRequest', { code, email: FAY, restaurantName: 'Mango Sticky Rice' });
+  ok(fay2);
+  err(await call(null, 'joinStatus', { token: fay.token }), 'join_gone');
+  const gus = await call(null, 'joinRequest', { code, email: GUS, restaurantName: 'Tom Yum Club' });
+  ok(gus);
+  assert.equal((await call(null, 'joinStatus', { token: eve.token })).status, 'pending');
+
+  // Пока заявку не приняли, ключ ничего не открывает.
+  err(await call(null, 'dashboard', { gameId: gid, joinToken: eve.token }), 'auth_required');
+
+  // Ведущий видит заявки; чужой ведущий и игроки — нет.
+  const m = await monitor(gid);
+  assert.deepEqual(m.joinRequests.map((r) => [r.email, r.restaurant]),
+    [[EVE, 'Pad Thai Lab'], [FAY, 'Mango Sticky Rice'], [GUS, 'Tom Yum Club']]);
+  err(await call(HOST2, 'approveJoins', { gameId: gid, ids: [m.joinRequests[0].id] }), 'not_host');
+  // Табло до старта — сколько записалось.
+  const before = await call(HOST, 'board', { gameId: gid });
+  assert.deepEqual(before.signup, { teams: 0, waiting: 3 });
+
+  // Ведущий удаляет одну заявку и принимает две.
+  const byEmail = Object.fromEntries(m.joinRequests.map((r) => [r.email, r.id]));
+  ok(await call(HOST, 'dropJoin', { gameId: gid, id: byEmail[GUS] }));
+  err(await call(null, 'joinStatus', { token: gus.token }), 'join_gone');
+  const ap = await call(HOST, 'approveJoins', { gameId: gid, ids: [byEmail[EVE], byEmail[FAY]] });
+  ok(ap);
+  assert.equal(ap.approved, 2);
+  assert.equal(ap.state.joinRequests.length, 0);
+  assert.deepEqual(ap.state.players.map((p) => [p.email, p.restaurant]).sort(),
+    [[EVE, 'Pad Thai Lab'], [FAY, 'Mango Sticky Rice']]);
+  assert.ok(authUsers.has(EVE) && authUsers.has(FAY), 'approved emails can sign in by code later');
+  assert.equal((await call(null, 'joinStatus', { token: eve.token })).status, 'approved');
+  assert.deepEqual((await call(HOST, 'board', { gameId: gid })).signup, { teams: 2, waiting: 0 });
+
+  // Принятый игрок играет по ключу браузера: только в своей игре.
+  const me = await call(null, 'me', { joinToken: eve.token });
+  ok(me);
+  assert.equal(me.email, EVE);
+  assert.deepEqual(me.playing.map((x) => x.id), [gid]);
+  assert.deepEqual(me.hosting, []);
+  const d = await call(null, 'dashboard', { gameId: gid, joinToken: eve.token });
+  ok(d);
+  assert.equal(d.needsProfile, true, 'name still asked, the restaurant is prefilled');
+  ok(await call(null, 'setProfile', { gameId: gid, joinToken: eve.token, displayName: 'Eve', restaurantName: 'Pad Thai Lab',
+    requestId: crypto.randomUUID() }));
+  ok(await call(null, 'board', { gameId: gid, joinToken: eve.token }));
+  err(await call(null, 'dashboard', { gameId, joinToken: eve.token }), 'auth_required');
+  err(await call(null, 'monitor', { gameId: gid, joinToken: eve.token }), 'auth_required');
+  err(await call(null, 'approveJoins', { gameId: gid, joinToken: eve.token, ids: [] }), 'auth_required');
+  err(await call(null, 'dashboard', { gameId: gid, joinToken: fay.token }), 'auth_required');
+  ok(await call(null, 'dashboard', { gameId: gid, joinToken: fay2.token }));
+
+  // Игра идёт: решения по ключу, как обычно.
+  ok(await call(HOST, 'openRound', { gameId: gid, requestId: crypto.randomUUID() }));
+  ok(await call(null, 'submitDecision', { gameId: gid, joinToken: eve.token, requestId: crypto.randomUUID(),
+    price: 1050, seoSpend: 0, promoSpend: 0, mapsSpend: 0, socialSpend: 0, outdoorSpend: 0, affiliateSpend: 0,
+    shiftsDelta: 0, qualityInvest: 0 }));
+  assert.equal((await call(HOST, 'board', { gameId: gid })).signup, null, 'no signup panel once the game runs');
+
+  // Игра закончилась — ключ больше не действует, дальше вход по коду.
+  ok(await call(HOST, 'calculateRound', { gameId: gid, requestId: crypto.randomUUID() }));
+  ok(await call(HOST, 'finishGame', { gameId: gid, requestId: crypto.randomUUID() }));
+  err(await call(null, 'dashboard', { gameId: gid, joinToken: eve.token }), 'auth_required');
+  err(await call(null, 'joinRequest', { code, email: 'late@test.com', restaurantName: 'Late' }), 'game_finished');
+  ok(await call(EVE, 'dashboard', { gameId: gid }));
+  await moneyInvariants(sql, gid);
 });
 
 await step('конец последней игры — без входа и без данных игроков', async () => {

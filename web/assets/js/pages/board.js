@@ -20,6 +20,7 @@ import { renderLogin } from '../views/login.js';
 import { createScoreboard } from '../views/scoreboard.js';
 import { createCake } from '../views/cake.js';
 import { siteBase, sponsorBanner } from '../views/common.js';
+import { qrSvg } from '../views/qr.js';
 
 const root = document.getElementById('app');
 const params = new URLSearchParams(location.search);
@@ -96,12 +97,14 @@ async function start(gameCode) {
   const errorEl = h('div', {});
   const cakeBox = h('div', {});
   const boardBox = h('div', {});
+  // До начала игры — QR-код для заявок и сколько команд записалось.
+  const signupBox = h('div', { class: 'signup', hidden: true });
   const pageBtn = h('button', { class: 'btn btn--small no-print', type: 'button', onclick: () => showPage(page === 'cake' ? 'board' : 'cake') });
   const shell = h('div', { class: 'projector' },
     h('header', { class: 'projector__head' },
       h('div', { class: 'projector__title' }, titleEl, subEl),
       timerEl, joinEl),
-    errorEl, h('div', { class: 'projector__body' }, cakeBox, boardBox),
+    errorEl, h('div', { class: 'projector__body' }, signupBox, cakeBox, boardBox),
     h('footer', { class: 'projector__foot no-print' }, rotateBox, sponsorEl,
       h('div', { class: 'btn-row' }, pageBtn, fullBtn)));
   replace(root, shell);
@@ -121,6 +124,7 @@ async function start(gameCode) {
     rotateBox.hidden = p === 'cake';
     sponsorEl.hidden = p !== 'cake';
     pageBtn.textContent = p === 'cake' ? t('board.classicPage') : t('board.views.cake');
+    pageBtn.hidden = false;
     if (lastData) (p === 'cake' ? cake : board).update(lastData, null);
   }
   showPage(page);
@@ -161,8 +165,34 @@ async function start(gameCode) {
       sponsorEl.dataset.sig = sponsorSig;
       replace(sponsorEl, sponsorBanner(g.sponsor, g.id));
     }
+    if (data.signup) {
+      paintSignup(g, data.signup);
+      return;
+    }
+    if (!signupBox.hidden) { signupBox.hidden = true; showPage(page); }
     // Обновляем видимую страницу; другая получит данные, когда её откроют.
     (page === 'cake' ? cake : board).update(data, null);
+  }
+
+  /** Экран до начала игры: крупный QR-код со ссылкой на заявку и счётчик. */
+  function paintSignup(g, signup) {
+    const url = siteBase() + '#/join/' + g.code;
+    signupBox.hidden = false;
+    cakeBox.hidden = true;
+    boardBox.hidden = true;
+    pageBtn.hidden = true;
+    if (signupBox.dataset.url !== url) {
+      signupBox.dataset.url = url;
+      const size = Math.round(Math.max(220, Math.min(window.innerHeight * 0.55, window.innerWidth * 0.4)));
+      replace(signupBox,
+        h('div', { class: 'signup__qr' }, qrSvg(url, size, t('board.signupTitle'))),
+        h('div', { class: 'signup__text' },
+          h('h2', { class: 'signup__title' }, t('board.signupTitle')),
+          h('p', { class: 'signup__lead' }, t('board.signupLead')),
+          h('div', { class: 'signup__url' }, url.replace(/^https?:\/\//, '')),
+          h('div', { class: 'signup__count', role: 'status' })));
+    }
+    signupBox.querySelector('.signup__count').textContent = t('board.signupCount', signup);
   }
 
   // Смена разделов по кругу — для перерыва, когда табло висит само по себе.

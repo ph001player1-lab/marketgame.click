@@ -92,7 +92,8 @@ try {
   const live = await seedGame(server.sql, { months: 4 });
   await live.call(ADMIN, 'openRound', { gameId: live.gameId });
   const base = server.url;
-  browser = await chromium.launch();
+  // PW_CHROMIUM — свой Chromium, если версия Playwright проекта не совпала с установленной.
+  browser = await chromium.launch(process.env.PW_CHROMIUM ? { executablePath: process.env.PW_CHROMIUM } : {});
 
   console.log('Browser checks:');
 
@@ -393,6 +394,15 @@ try {
     assert.equal(await p.getByLabel('Аренда, ₽').inputValue(), '375000');
     await p.getByText('Валюта игры: Российский рубль (₽).').waitFor();
     await shot(p, 'lang-ru-04-rubles', true);
+    // Ни в одном поле пульта нет долларов — ни в подписи, ни в подсказке внутри.
+    for (const tab of ['Игра', 'Команды', 'Город', 'Настройки']) {
+      await p.getByLabel('Пульт ведущего').getByRole('button', { name: tab, exact: true }).click();
+      await p.waitForTimeout(200);
+      const dollars = await p.evaluate(() => [...document.querySelectorAll('input, textarea')]
+        .map((el) => [el.placeholder, el.labels?.[0]?.textContent || el.getAttribute('aria-label') || ''].join(' | '))
+        .filter((x) => x.includes('$')));
+      assert.deepEqual(dollars, [], 'no dollar sign in a ruble game, tab ' + tab);
+    }
     await p.close();
   });
 
@@ -453,6 +463,66 @@ try {
     await p.getByRole('button', { name: 'Download CSV (all teams)' }).waitFor();
     await p.getByText('Every team\'s decisions').waitFor();
     await p.close();
+  });
+
+  await step('join by QR: a phone signs up, the host accepts, the game opens without an email code', async () => {
+    const g = await seedGame(server.sql, { months: 0, teams: [], title: 'Bangkok night', sponsor: false,
+      place: { region: 'asia', country: 'TH', area: 'Bangkok' } });
+    // Проектор до начала игры — крупный QR-код и счётчик.
+    const proj = await page(browser, 'projector', ADMIN);
+    await proj.goto(base + 'board/?code=' + g.code);
+    await proj.locator('.signup svg.qr').waitFor();
+    await proj.getByText('Joined: 0 · waiting for the host: 0').waitFor();
+    await shot(proj, 'join-00-projector');
+
+    // Телефон по ссылке из QR-кода: почта и ресторан, без кода на почту.
+    const phone = await page(browser, 'phone');
+    await phone.goto(base + '#/join/' + g.code.toLowerCase());
+    await phone.getByRole('heading', { name: 'Join the game' }).waitFor();
+    await phone.getByText('Bangkok night', { exact: true }).waitFor();
+    await phone.getByLabel('Email').fill('Somchai@Example.com');
+    await phone.getByLabel('Restaurant name').fill('Som Tam Shop');
+    await shot(phone, 'join-01-phone-form', true);
+    await phone.getByRole('button', { name: 'Join “Bangkok night”' }).click();
+    await phone.getByRole('heading', { name: 'Request sent' }).waitFor();
+    await phone.getByText('Waiting for the host…').waitFor();
+    await shot(phone, 'join-02-phone-waiting', true);
+    await proj.getByText('Joined: 0 · waiting for the host: 1').waitFor({ timeout: 15000 });
+
+    // Ведущий видит заявку в пульте (вкладка «Game»), она отмечена — принимает.
+    const host = await page(browser, 'laptop', ADMIN);
+    await host.goto(base + '#/g/' + g.gameId);
+    await host.getByRole('heading', { name: 'Joining by QR code' }).first().waitFor();
+    const row = host.locator('.join-list__item', { hasText: 'Som Tam Shop' }).first();
+    await row.waitFor();
+    assert.equal(await row.locator('input[type=checkbox]').isChecked(), true, 'requests are checked by default');
+    await host.locator('.join-host__qr svg.qr').first().waitFor();
+    await shot(host, 'join-03-host-requests');
+    await host.getByRole('button', { name: 'Accept checked (1)' }).first().click();
+    await host.getByText('Accepted: 1').waitFor();
+
+    // Телефон сам открывает игру: имя — и можно играть. Ресторан — из заявки.
+    await phone.getByRole('heading', { name: 'Welcome to the game' }).waitFor({ timeout: 15000 });
+    assert.equal(await phone.getByLabel('Restaurant name').inputValue(), 'Som Tam Shop');
+    await phone.getByLabel('Your name').fill('Somchai');
+    await phone.getByRole('button', { name: 'Start playing' }).click();
+    await phone.getByText('Som Tam Shop').first().waitFor();
+    await shot(phone, 'join-04-phone-in-game', true);
+    // Игра в батах: ни в одном поле нет долларов.
+    const dollars = await phone.evaluate(() => [...document.querySelectorAll('input, textarea')]
+      .map((el) => [el.placeholder, el.labels?.[0]?.textContent || el.getAttribute('aria-label') || ''].join(' | '))
+      .filter((x) => x.includes('$')));
+    assert.deepEqual(dollars, [], 'no dollar sign in a baht game');
+    await proj.getByText('Joined: 1 · waiting for the host: 0').waitFor({ timeout: 15000 });
+    const [p] = await server.sql`select email, restaurant_name, display_name from players where game_id = ${g.gameId}`;
+    assert.deepEqual({ ...p }, { email: 'somchai@example.com', restaurant_name: 'Som Tam Shop', display_name: 'Somchai' });
+    // Код игры на странице входа ведёт к той же заявке.
+    const other = await page(browser, 'phone');
+    await other.goto(base);
+    await other.getByLabel('Game code').fill(g.code);
+    await other.getByRole('button', { name: 'Join', exact: true }).click();
+    await other.getByRole('heading', { name: 'Join the game' }).waitFor();
+    for (const x of [proj, phone, host, other]) await x.close();
   });
 
   await step('projector scoreboard: sign in first, then only this game\'s people see it', async () => {

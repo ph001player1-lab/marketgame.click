@@ -2,7 +2,7 @@
 
 import { t, tn, errorText, LANGUAGES, language } from '../i18n.js';
 import { h, replace, toast, busy, field } from '../dom.js';
-import { zonedToIso, isoToZoned, currentLocale } from '../fmt.js';
+import { zonedToIso, isoToZoned, currentLocale, CURRENCIES } from '../fmt.js';
 import { act } from '../api.js';
 import { directImageUrl, logoSrc } from './common.js';
 import { ONLINE, REGION_KEYS, DEFAULT_PLACE, regionName, countryOptions, hasAreaList, areaOptions, areaZone } from '../geo.js';
@@ -302,14 +302,16 @@ export function gameForm(values = {}, { withLeague = true, lockPractice = false 
     mark(); place.languageChanged(gameLanguage.value); syncCurrency();
   } }, LANGUAGES.map((l) => h('option', { value: l.code, selected: l.code === lang, lang: l.code }, l.name)));
   // Валюта — только при создании игры: от неё зависят все суммы. Рубли — для
-  // игры в России и онлайн-игры на русском, пока ведущий не выбрал сам.
+  // игры в России и онлайн-игры на русском, баты — для игры в Таиланде, пока
+  // ведущий не выбрал сам.
   let currencyTouched = false;
   const currency = withLeague ? h('select', { class: 'input', onchange: () => { currencyTouched = true; mark(); } },
-    ['USD', 'RUB'].map((c) => h('option', { value: c }, t('currency.' + c)))) : null;
+    CURRENCIES.map((c) => h('option', { value: c }, t('currency.' + c)))) : null;
   function syncCurrency() {
     if (!currency || currencyTouched) return;
     const p = place.read();
-    currency.value = p.country === 'RU' || (p.region === ONLINE && gameLanguage.value === 'ru') ? 'RUB' : 'USD';
+    currency.value = p.country === 'RU' || (p.region === ONLINE && gameLanguage.value === 'ru') ? 'RUB'
+      : p.country === 'TH' ? 'THB' : 'USD';
   }
   syncCurrency();
   const when = h('input', { class: 'input', type: 'datetime-local', value: isoToZoned(values.scheduledAt, tz), oninput: mark });

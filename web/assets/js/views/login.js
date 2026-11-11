@@ -6,6 +6,7 @@ import { t, errorText } from '../i18n.js';
 import { h, replace, field, busy } from '../dom.js';
 import { read } from '../api.js';
 import { requestCode, verifyCode } from '../auth.js';
+import { codeForm } from './join.js';
 
 /** note — пояснение над формой: например, зачем входить на проекторе. */
 export function renderLogin(root, { onSignedIn, note = null }) {
@@ -37,7 +38,10 @@ export function renderLogin(root, { onSignedIn, note = null }) {
       h('p', { class: 'muted' }, t('login.lead')),
       field(t('login.email'), email),
       msg, btn);
-    replace(box, brand(), h('div', { style: { height: '18px' } }), form);
+    // Пришли без QR-кода — можно ввести код игры и подать заявку (кроме
+    // входа на проекторе: там note).
+    replace(box, brand(), h('div', { style: { height: '18px' } }), form,
+      note ? null : h('div', { class: 'card join__codecard' }, codeForm()));
     email.focus();
   }
 

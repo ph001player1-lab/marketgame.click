@@ -301,15 +301,21 @@ async function timeline(sql: Sql, game: Row) {
 }
 
 export async function boardData(sql: Sql, game: Row) {
-  const [round, tl, institutions, city, money, ocean] = await Promise.all([
+  const [round, tl, institutions, city, money, ocean, signup] = await Promise.all([
     currentRound(sql, game.id), timeline(sql, game), institutionsState(sql, game.id),
-    cityBudget(sql, game.id), moneyMap(sql, game.id), oceanByMonth(sql, game.id)
+    cityBudget(sql, game.id), moneyMap(sql, game.id), oceanByMonth(sql, game.id),
+    // До начала игры проектор показывает QR-код и сколько команд уже записалось.
+    game.status === 'setup'
+      ? sql`select (select count(*) from players where game_id = ${game.id})::int as teams,
+                   (select count(*) from join_requests where game_id = ${game.id} and status = 'pending')::int as waiting`
+      : Promise.resolve(null)
   ]);
   return {
     ok: true,
     game: gameMeta(game, round),
     rules: rulesFor(activeConfig(game, round)),
-    ...tl, institutions, city, moneyMap: money, ocean
+    ...tl, institutions, city, moneyMap: money, ocean,
+    signup: signup ? { teams: num(signup[0].teams), waiting: num(signup[0].waiting) } : null
   };
 }
 

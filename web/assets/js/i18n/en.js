@@ -65,6 +65,21 @@ export default {
     business: 'Business', console: 'Console', board: 'Scoreboard', guide: 'Guide'
   },
 
+  join: {
+    title: 'Join the game',
+    lead: 'Enter your email and your restaurant’s name. The host will see your request and add you to the game — no email code needed.',
+    restaurant: 'Restaurant name', restaurantPlaceholder: 'e.g. Taco Town',
+    submit: 'Join “{title}”',
+    sentTitle: 'Request sent',
+    sentLead: 'As soon as the host accepts you, the game opens here by itself. Keep this page open.',
+    waiting: 'Waiting for the host…',
+    edit: 'Change details',
+    dropped: 'The host removed your request. Check your details and send it again.',
+    finished: 'This game is over. Sign in with a code to your email to see your results.',
+    alreadyIn: 'You are already in this game.',
+    signIn: 'Sign in with a code',
+    codeTitle: 'Have a game code?', codeLabel: 'Game code', codeGo: 'Join'
+  },
   login: {
     title: 'Sign in',
     lead: 'To register for the game, please enter your email — we\'ll send a verification code to it.',
@@ -280,6 +295,9 @@ export default {
   },
 
   board: {
+    signupTitle: 'Join the game',
+    signupLead: 'Point your phone camera at the QR code, enter your email and your restaurant’s name.',
+    signupCount: 'Joined: {teams} · waiting for the host: {waiting}',
     title: 'Scoreboard',
     views: { cake: 'Piece of Cake', teams: 'Teams', economy: 'Economy', money: 'Where the money went', rating: 'Rating' },
     metrics: {
@@ -476,6 +494,13 @@ export default {
   },
 
   host: {
+    joinTitle: 'Joining by QR code',
+    joinLead: 'Show this QR code on the screen or send the link. Players enter an email and a restaurant name, you accept them here.',
+    joinQr: 'QR code of the join link', joinCopy: 'Copy link',
+    joinNone: 'No requests yet.',
+    joinWaiting: 'Waiting for you: {n}',
+    joinApprove: 'Accept checked ({n})', joinApproved: 'Accepted: {n}',
+    joinDrop: 'Remove', joinDropped: 'Request removed.',
     console: 'Host console',
     run: 'Run', teams: 'Teams', cityTab: 'City', settings: 'Settings',
     boardLink: 'Projector scoreboard',
@@ -555,7 +580,7 @@ export default {
     language: 'Game language',
     languageHint: 'Everyone sees the game in this language unless they pick another one in the menu.',
     currency: 'Game currency',
-    currencyHint: 'Set when the game is created. In rubles every amount is ×50 — a $30 meal costs 1,500 ₽ — and the profit tax is 25%, as in Russia. The balance of the game is the same.',
+    currencyHint: 'Set when the game is created. In rubles every amount is ×50 — a $30 meal costs 1,500 ₽ — and the profit tax is 25%, as in Russia. In baht every amount is ×35 — the meal costs 1,050 ฿ — and the profit tax is 20%, as in Thailand. The balance of the game is the same.',
     currencyFixed: 'Game currency: {currency}. It is also set when the game is created.',
     place: 'Where the game takes place',
     worldRegion: 'World region',
@@ -921,7 +946,7 @@ export default {
     legend: 'Legend', highlight: 'Highlight {name}', other: 'Other', nothing: 'Nothing this month'
   },
 
-  currency: { USD: 'US dollar ($)', RUB: 'Russian ruble (₽)' },
+  currency: { USD: 'US dollar ($)', RUB: 'Russian ruble (₽)', THB: 'Thai baht (฿)' },
 
   regions: {
     north_america: 'North America', latin_america: 'Latin America', europe: 'Europe', cis: 'Russia & CIS',
@@ -949,6 +974,9 @@ export default {
   },
 
   errors: {
+    join_host: 'This is the host’s email: the host does not play as a team.',
+    already_in_game: 'This email is already in the game.',
+    join_gone: 'The request is no longer there. Send it again.',
     auth_required: 'Please sign in again.',
     not_registered: 'This email isn\'t on any game roster yet. Ask your host to add it.',
     bad_email: 'That doesn\'t look like an email address.',

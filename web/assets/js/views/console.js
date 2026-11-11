@@ -11,6 +11,7 @@ import { locationBadge, statusBadge, copyText, siteBase, teamName as named, star
 import { OWNER_COLORS } from './scoreboard.js';
 import { gameForm } from './create.js';
 import { debriefCard } from './ocean.js';
+import { qrSvg } from './qr.js';
 
 const SUBTABS = ['run', 'teams', 'city', 'settings'];
 const INSTITUTIONS = ['landlord', 'bank', 'insurer', 'utility'];
@@ -49,6 +50,10 @@ export function createConsole(root, ctx) {
   const tabButtons = SUBTABS.map((id) => h('button', { type: 'button', 'aria-pressed': 'false',
     onclick: () => { tab = id; sessionStorage.setItem('mg-console-' + ctx.gameId, id); showTab(); } },
     t('host.' + (id === 'city' ? 'cityTab' : id))));
+  // Регистрация по QR-коду: на вкладке «Игра» — до начала игры, на вкладке
+  // «Команды» — всегда, пока игра идёт.
+  const joinRun = joinPart(true);
+  const joinTeams = joinPart(false);
   const parts = { run: runPart(), teams: teamsPart(), city: cityPart(), settings: settingsPart() };
   replace(root,
     h('div', { class: 'seg seg--tabs', role: 'group', 'aria-label': t('host.console') }, tabButtons),
@@ -64,7 +69,66 @@ export function createConsole(root, ctx) {
 
   function update(state) {
     m = state;
-    for (const p of Object.values(parts)) p.update(state);
+    for (const p of [...Object.values(parts), joinRun, joinTeams]) p.update(state);
+  }
+
+  // ----------------------------------------------------------------- QR-код и заявки
+
+  /**
+   * QR-код со ссылкой на заявку и заявки, которые ждут ведущего: все
+   * отмечены, лишних ведущий снимает или удаляет и принимает отмеченных.
+   * beforeStart — показывать только до первого месяца.
+   */
+  function joinPart(beforeStart) {
+    const qrBox = h('div', { class: 'join-host__qr' });
+    const linkBox = h('div', { class: 'join-host__link' });
+    const listBox = h('div', { class: 'join-host__list' });
+    const unchecked = new Set();
+    let lastUrl = '';
+    let lastSig = '';
+    const el = card(t('host.joinTitle'), h('div', { class: 'join-host' }, qrBox,
+      h('div', { class: 'join-host__side' }, linkBox, listBox)));
+
+    function update(s) {
+      const g = s.game;
+      el.hidden = g.status === 'finished' || (beforeStart && g.roundNumber > 0);
+      if (el.hidden) return;
+      const url = siteBase() + '#/join/' + g.code;
+      if (url !== lastUrl) {
+        lastUrl = url;
+        replace(qrBox, qrSvg(url, 168, t('host.joinQr')));
+        replace(linkBox,
+          h('p', { class: 'muted small', style: { margin: '0 0 6px' } }, t('host.joinLead')),
+          h('div', { class: 'join-host__url' }, url),
+          h('div', { class: 'btn-row', style: { marginTop: '6px' } },
+            h('button', { class: 'btn btn--small', type: 'button', onclick: () => copyText(url, t('common.copied')) },
+              t('host.joinCopy'))));
+      }
+      const reqs = s.joinRequests || [];
+      for (const id of [...unchecked]) if (!reqs.some((r) => r.id === id)) unchecked.delete(id);
+      const sig = JSON.stringify([reqs.map((r) => [r.id, r.restaurant]), [...unchecked]]);
+      if (sig === lastSig) return;
+      lastSig = sig;
+      if (!reqs.length) { replace(listBox, h('p', { class: 'muted small' }, t('host.joinNone'))); return; }
+      const chosen = reqs.filter((r) => !unchecked.has(r.id));
+      const approve = h('button', { class: 'btn btn--primary', type: 'button', disabled: !chosen.length,
+        onclick: (e) => run(e.currentTarget, 'approveJoins', { ids: chosen.map((r) => r.id) },
+          (r) => t('host.joinApproved', { n: r.approved })) }, t('host.joinApprove', { n: chosen.length }));
+      replace(listBox,
+        h('div', { class: 'join-host__count' }, t('host.joinWaiting', { n: reqs.length })),
+        h('ul', { class: 'join-list' }, reqs.map((r) => {
+          const box = h('input', { type: 'checkbox', checked: !unchecked.has(r.id), 'aria-label': r.email,
+            onchange: () => { if (box.checked) unchecked.delete(r.id); else unchecked.add(r.id); update(m); } });
+          return h('li', { class: 'join-list__item' },
+            h('label', { class: 'join-list__who' }, box,
+              h('span', {}, h('b', {}, r.restaurant), h('div', { class: 'muted small' }, r.email))),
+            h('button', { class: 'btn btn--ghost btn--small', type: 'button',
+              onclick: (e) => run(e.currentTarget, 'dropJoin', { id: r.id }, t('host.joinDropped')) }, t('host.joinDrop')));
+        })),
+        h('div', { class: 'btn-row' }, approve));
+    }
+
+    return { el, update };
   }
 
   // ----------------------------------------------------------------- Run
@@ -73,7 +137,7 @@ export function createConsole(root, ctx) {
     const codeBox = h('div', {});
     const monthBox = h('div', {});
     const debriefBox = h('div', {});
-    const el = h('div', {}, card(null, codeBox), card(null, monthBox), debriefBox);
+    const el = h('div', {}, card(null, codeBox), joinRun.el, card(null, monthBox), debriefBox);
 
     function codeBlock(g) {
       const site = siteBase();
@@ -189,7 +253,7 @@ export function createConsole(root, ctx) {
         h('strong', {}, t('host.rosterNotes')), h('ul', {}, notes.map((x) => h('li', {}, x)))) : null);
     } }, t('host.rosterSave'));
 
-    const el = h('div', {},
+    const el = h('div', {}, joinTeams.el,
       card(t('host.rosterTitle'), h('p', { class: 'muted small' }, t('host.rosterLead')),
         field(t('host.rosterEmails'), area), result, h('div', { class: 'btn-row' }, save)),
       tableBox);
@@ -249,7 +313,7 @@ export function createConsole(root, ctx) {
 
     // Штраф или грант одной команде.
     const adjTeam = teamSelect(t('common.team'));
-    const adjAmount = moneyInput({ placeholder: '$' });
+    const adjAmount = moneyInput({ placeholder: currencySign() });
     const adjReason = h('input', { class: 'input', maxlength: 200, placeholder: t('host.reasonPlaceholder') });
     async function adjust(btn, sign) {
       const amount = parseMoney(adjAmount.value);
@@ -266,7 +330,7 @@ export function createConsole(root, ctx) {
         h('button', { class: 'btn', type: 'button', onclick: (e) => adjust(e.currentTarget, 1) }, t('host.grant'))));
 
     // Всем сразу.
-    const massAmount = moneyInput({ placeholder: '$' });
+    const massAmount = moneyInput({ placeholder: currencySign() });
     const massReason = h('input', { class: 'input', maxlength: 200, placeholder: t('host.reasonPlaceholder') });
     async function mass(btn, kind) {
       const amount = parseMoney(massAmount.value);
@@ -312,7 +376,7 @@ export function createConsole(root, ctx) {
     const buyer = teamSelect(t('host.buyer'));
     const seller = teamSelect(t('host.seller'));
     const stakePct = h('input', { class: 'input', type: 'number', min: 0.5, max: 100, step: 0.5, inputmode: 'decimal', placeholder: '%' });
-    const stakePrice = moneyInput({ placeholder: '$' });
+    const stakePrice = moneyInput({ placeholder: currencySign() });
     const hint = h('p', { class: 'muted small' });
     const holdersBox = h('div', {});
     const opButtons = ['sell', 'buyback', 'deal'].map((id) => h('button', { type: 'button', 'aria-pressed': 'false',

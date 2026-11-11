@@ -20,7 +20,7 @@ export function gameMeta(game: Row, round: RoundRow) {
     id: String(game.id), code: String(game.code), title: String(game.title),
     league, leagueName: LEAGUES[league]?.name ?? league, totalRounds: total,
     language: String(game.language ?? 'en'),
-    // Валюта игры: все суммы игры — в ней (USD или RUB).
+    // Валюта игры: все суммы игры — в ней (USD, RUB или THB).
     currency: String(game.currency ?? 'USD'),
     // Где идёт игра; в онлайн-игре страну указывает каждая команда.
     location: { region: String(game.region ?? ONLINE), country: game.country ?? null, area: game.area ?? null },

@@ -72,7 +72,7 @@ const dynamic = {
   'ocean.questions.': ['red', 'choppy', 'blue'],
   'ocean.summary.': ['earned', 'lost'],
   'ocean.driver.': ['priceWar', 'priceOk', 'adRace', 'adOk', 'crowded', 'roomy', 'feedsHow', 'quality', 'noQuality'],
-  'currency.': ['USD', 'RUB']
+  'currency.': ['USD', 'RUB', 'THB']
 };
 // Регионы мира — из списка geo.js и «онлайн».
 const geoSrc = readFileSync(join(root, 'web/assets/js/geo.js'), 'utf8');

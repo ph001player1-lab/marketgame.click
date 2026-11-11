@@ -8,6 +8,7 @@
 //   /new               новая игра (ведущий)
 //   /hosts             ведущие (администратор)
 //   /rating            рейтинг
+//   /join/<код>        заявка на игру по QR-коду
 
 import { CONFIG } from './config.js';
 import {
@@ -17,8 +18,9 @@ import {
 import { h, $, replace, toast } from './dom.js';
 import { usd, clock, setCurrency, currentCurrency } from './fmt.js';
 import { read, poll, markFresh, setAuthLostHandler, actionsInFlight } from './api.js';
-import { currentEmail, signOut } from './auth.js';
+import { signOut, signedInEmail, getJoin, setJoin } from './auth.js';
 import { renderLogin } from './views/login.js';
+import { renderJoin } from './views/join.js';
 import { renderHome } from './views/home.js';
 import { createBusiness } from './views/business.js';
 import { createConsole } from './views/console.js';
@@ -38,6 +40,9 @@ let prefetched = null;    // первые данные игры, запроше�
 // ----------------------------------------------------------------- запуск
 
 setAuthLostHandler(() => {
+  // Ключ заявки больше не действует (игра закончилась, ведущий убрал
+  // команду) — дальше вход по коду на почту.
+  if (getJoin()?.approved) setJoin(null);
   if (me) { me = null; toast(t('errors.auth_required'), 'bad'); route(); }
 });
 
@@ -47,7 +52,9 @@ boot();
 async function boot() {
   replace(root, h('div', { class: 'spinner', role: 'status', 'aria-label': t('common.loading') }));
   // Сессия и словарь страницы — разом.
-  const [email] = await Promise.all([currentEmail(), setLanguage(pickLanguage(null))]);
+  const [email] = await Promise.all([signedInEmail(), setLanguage(pickLanguage(null))]);
+  // Заявка по QR-коду — без входа.
+  if (parseRoute().name === 'join') { route(); return; }
   if (!email) { showLogin(); return; }
   prefetchGame();
   await loadMe();
@@ -113,6 +120,7 @@ function parseRoute() {
     if (parts[2] === 'report') return { name: 'report', gameId: parts[1] };
     return { name: 'game', gameId: parts[1] };
   }
+  if (parts[0] === 'join' && parts[1]) return { name: 'join', code: parts[1].toUpperCase() };
   if (parts[0] === 'new') return { name: 'new' };
   if (parts[0] === 'hosts') return { name: 'hosts' };
   if (parts[0] === 'rating') return { name: 'rating' };
@@ -122,8 +130,13 @@ function parseRoute() {
 async function route() {
   stopCurrentGame();
   const r = parseRoute();
+  if (r.name === 'join') {
+    // Заявку приняли — открываем игру: дальше браузер играет по ключу заявки.
+    renderJoin(root, r.code, { onApproved: (gameId) => { me = null; location.hash = '#/g/' + gameId; } });
+    return;
+  }
   if (!me) {
-    const email = await currentEmail();
+    const email = await signedInEmail();
     // Рейтинг открыт всем: на него ссылается marketgame.biz.
     if (!email && r.name === 'rating') { showPublicRating(); return; }
     if (!email) { showLogin(); return; }

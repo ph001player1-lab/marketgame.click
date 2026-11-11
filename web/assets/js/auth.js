@@ -81,7 +81,36 @@ export async function verifyCode(email, code) {
   return { ok: false, error: 'bad_code_otp' };
 }
 
+// ----------------------------------------------------------------- заявка по QR-коду
+//
+// Игрок, подавший заявку на игру по QR-коду, входит без кода на почту: его
+// браузер хранит ключ заявки. Принятый ведущим ключ открывает только эту
+// игру и только пока она идёт; потом — обычный вход по коду.
+
+const JOIN_KEY = 'mg-join';
+
+/** Заявка этого браузера: { code, gameId, token, email, title, approved } или null. */
+export function getJoin() {
+  try {
+    const j = JSON.parse(storage()?.getItem(JOIN_KEY) || 'null');
+    return j && typeof j.token === 'string' ? j : null;
+  } catch { return null; }
+}
+
+export function setJoin(j) {
+  try { if (j) storage()?.setItem(JOIN_KEY, JSON.stringify(j)); else storage()?.removeItem(JOIN_KEY); } catch { /* нет хранилища */ }
+}
+
+/** Ключ принятой заявки — для запросов игры, когда нет входа по коду. */
+export const joinToken = () => { const j = getJoin(); return j?.approved ? j.token : null; };
+
+/** Кто вошёл: по коду на почту или по принятой заявке. */
+export async function signedInEmail() {
+  return (await currentEmail()) || (joinToken() ? getJoin().email : null);
+}
+
 export async function signOut() {
+  setJoin(null);
   if (CONFIG.testAuth) { storage()?.removeItem(TEST_KEY); return; }
   const sb = await supabase();
   await sb.auth.signOut();

@@ -63,6 +63,21 @@ export default {
     business: 'Negocio', console: 'Consola', board: 'Marcador', guide: 'Guía'
   },
 
+  join: {
+    title: 'Unirse al juego',
+    lead: 'Escribe tu correo y el nombre de tu restaurante. El anfitrión verá tu solicitud y te añadirá al juego, sin código por correo.',
+    restaurant: 'Nombre del restaurante', restaurantPlaceholder: 'p. ej. Taco Town',
+    submit: 'Unirse a «{title}»',
+    sentTitle: 'Solicitud enviada',
+    sentLead: 'En cuanto el anfitrión te acepte, el juego se abrirá aquí solo. Deja esta página abierta.',
+    waiting: 'Esperando al anfitrión…',
+    edit: 'Cambiar datos',
+    dropped: 'El anfitrión quitó tu solicitud. Revisa tus datos y envíala de nuevo.',
+    finished: 'Este juego terminó. Entra con un código por correo para ver tus resultados.',
+    alreadyIn: 'Ya estás en este juego.',
+    signIn: 'Entrar con un código',
+    codeTitle: '¿Tienes un código de juego?', codeLabel: 'Código del juego', codeGo: 'Unirse'
+  },
   login: {
     title: 'Iniciar sesión',
     lead: 'Para registrarte en el juego, escribe tu correo: te enviaremos un código de verificación.',
@@ -278,6 +293,9 @@ export default {
   },
 
   board: {
+    signupTitle: 'Únete al juego',
+    signupLead: 'Apunta la cámara del teléfono al código QR y escribe tu correo y el nombre de tu restaurante.',
+    signupCount: 'Inscritos: {teams} · esperan al anfitrión: {waiting}',
     title: 'Marcador',
     views: { cake: 'Piece of Cake', teams: 'Equipos', economy: 'Economía', money: 'A dónde fue el dinero', rating: 'Ranking' },
     metrics: {
@@ -474,6 +492,13 @@ export default {
   },
 
   host: {
+    joinTitle: 'Inscripción con código QR',
+    joinLead: 'Muestra este código QR en la pantalla o envía el enlace. Los jugadores escriben un correo y el nombre del restaurante; tú los aceptas aquí.',
+    joinQr: 'Código QR del enlace de inscripción', joinCopy: 'Copiar enlace',
+    joinNone: 'Aún no hay solicitudes.',
+    joinWaiting: 'Esperan tu respuesta: {n}',
+    joinApprove: 'Aceptar marcados ({n})', joinApproved: 'Aceptados: {n}',
+    joinDrop: 'Quitar', joinDropped: 'Solicitud quitada.',
     console: 'Consola del facilitador',
     run: 'Juego', teams: 'Equipos', cityTab: 'Ciudad', settings: 'Configuración',
     boardLink: 'Marcador para proyector',
@@ -553,7 +578,7 @@ export default {
     language: 'Idioma del juego',
     languageHint: 'Todos ven el juego en este idioma, salvo que elijan otro en el menú.',
     currency: 'Moneda del juego',
-    currencyHint: 'Se define al crear el juego. En rublos todos los montos se multiplican por 50 —una comida de $30 cuesta 1 500 ₽— y el impuesto sobre la renta es del 25 %, como en Rusia. El equilibrio del juego es el mismo.',
+    currencyHint: 'Se define al crear el juego. En rublos todos los montos se multiplican por 50 —una comida de $30 cuesta 1 500 ₽— y el impuesto sobre la renta es del 25 %, como en Rusia. En bahts todo se multiplica por 35 —la comida cuesta 1050 ฿— y el impuesto es del 20 %, como en Tailandia. El equilibrio del juego es el mismo.',
     currencyFixed: 'Moneda del juego: {currency}. También se define al crear el juego.',
     place: 'Dónde se juega',
     worldRegion: 'Región del mundo',
@@ -917,7 +942,7 @@ export default {
     legend: 'Leyenda', highlight: 'Resaltar {name}', other: 'Otros', nothing: 'Nada este mes'
   },
 
-  currency: { USD: 'Dólar estadounidense ($)', RUB: 'Rublo ruso (₽)' },
+  currency: { USD: 'Dólar estadounidense ($)', RUB: 'Rublo ruso (₽)', THB: 'Baht tailandés (฿)' },
 
   regions: {
     north_america: 'Norteamérica', latin_america: 'Latinoamérica', europe: 'Europa', cis: 'Rusia y la CEI',
@@ -945,6 +970,9 @@ export default {
   },
 
   errors: {
+    join_host: 'Es el correo del anfitrión: el anfitrión no juega como equipo.',
+    already_in_game: 'Este correo ya está en el juego.',
+    join_gone: 'La solicitud ya no existe. Envíala de nuevo.',
     auth_required: 'Vuelve a iniciar sesión.',
     not_registered: 'Este correo todavía no está en ningún juego. Pide al facilitador que lo agregue.',
     bad_email: 'Eso no parece un correo electrónico.',
