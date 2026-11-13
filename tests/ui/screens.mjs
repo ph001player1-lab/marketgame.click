@@ -344,6 +344,20 @@ try {
     await p.getByLabel('State').selectOption('NY');
     assert.equal(await p.getByLabel('Time zone').inputValue(), 'America/New_York', 'time zone from the state');
     await p.getByText('Growth · 24 months').click();
+    // Спрос на ресторан: 2 000 и «Normal», кнопки сложности, стрелки по 500.
+    const demand = p.getByLabel('Demand per restaurant, guests a month');
+    const pressed = () => p.locator('.demand__modes button[aria-pressed="true"]').textContent();
+    assert.equal(await demand.inputValue(), '2000');
+    assert.equal(await pressed(), 'Normal · 2,000');
+    await p.getByText('The market is worked out for you: teams × demand.').waitFor();
+    await p.getByRole('button', { name: 'Hard · 1,500' }).click();
+    assert.equal(await demand.inputValue(), '1500');
+    assert.equal(await pressed(), 'Hard · 1,500');
+    await demand.focus();
+    await p.keyboard.press('ArrowUp');
+    assert.equal(await demand.inputValue(), '2000', 'arrows step by 500');
+    await demand.fill('2700');
+    assert.equal(await pressed(), 'Easy · 2,500');
     await p.getByText('Sponsor (optional)').click();
     await p.getByLabel('Sponsor name').fill('Lone Star Coffee Roasters');
     await p.getByLabel('Upload logo file').setInputFiles({
@@ -356,6 +370,23 @@ try {
     await p.getByRole('button', { name: 'Create game' }).click();
     await p.getByText('Ready to start').waitFor();
     const code = (await p.locator('.code').first().textContent()).trim();
+    // Рынок на вкладке «Run»: команды × спрос; добавили команды — рынок вырос.
+    await p.locator('.market-line', { hasText: 'Market: 0 teams × 2,700 = 0 guests a month · Easy' }).waitFor();
+    await p.getByRole('button', { name: 'Teams', exact: true }).first().click();
+    await p.getByLabel('Team emails').fill('a1@example.com\na2@example.com\na3@example.com');
+    await p.getByRole('button', { name: 'Save roster' }).click();
+    await p.getByRole('button', { name: 'Run', exact: true }).click();
+    await p.locator('.market-line', { hasText: 'Market: 3 teams × 2,700 = 8,100 guests a month' }).waitFor();
+    await shot(p, 'host-06b-market');
+    // «Change» ведёт в настройки: поле спроса, рынок считается по ходу ввода.
+    await p.getByRole('button', { name: 'Change' }).click();
+    const inSettings = p.getByLabel('Demand per restaurant, guests a month');
+    await inSettings.fill('1500');
+    await p.locator('.demand__total', { hasText: 'Market: 3 teams × 1,500 = 4,500 guests a month' }).waitFor();
+    await p.getByRole('button', { name: 'Save for next month' }).click();
+    await p.getByText('Saved. Applies from the next month.').first().waitFor();
+    await p.locator('.market-line', { hasText: 'Market: 3 teams × 1,500 = 4,500 guests a month · Hard' }).waitFor({ state: 'attached' });
+    await shot(p, 'host-06c-demand-settings', true);
     // Логотип на табло проектора — картинкой от функции игры.
     const b = await page(browser, 'projector', ADMIN);
     await b.goto(base + 'board/?code=' + code);
@@ -365,8 +396,10 @@ try {
     });
     await b.close();
     await p.close();
-    const [g] = await server.sql`select region, country, area, timezone from games where title = 'Albany Chamber · Winter'`;
-    assert.deepEqual({ ...g }, { region: 'north_america', country: 'US', area: 'NY', timezone: 'America/New_York' });
+    const [g] = await server.sql`select region, country, area, timezone, (config->>'DEMAND_PER_TEAM')::int as demand,
+      (config->>'MARKET_SIZE_PER_PLAYER')::int as market from games where title = 'Albany Chamber · Winter'`;
+    assert.deepEqual({ ...g }, { region: 'north_america', country: 'US', area: 'NY', timezone: 'America/New_York',
+      demand: 1500, market: 4500 });
   });
 
   await step('host in Russian: a game in a Russian region, time zone from the region', async () => {

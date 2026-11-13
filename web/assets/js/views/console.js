@@ -3,13 +3,13 @@
 // Как и кабинет игрока, пульт строится один раз: фоновый опрос обновляет
 // цифры и списки, но не трогает поля, в которых ведущий что-то набирает.
 
-import { t, errorText } from '../i18n.js';
+import { t, tn, errorText } from '../i18n.js';
 import { h, replace, toast, confirmDialog, busy, field, moneyInput, card } from '../dom.js';
 import { usd, int, dec2, pct, pctRaw, parseMoney, currencySign, emailTypo } from '../fmt.js';
 import { act } from '../api.js';
 import { locationBadge, statusBadge, copyText, siteBase, teamName as named, starsBadge } from './common.js';
 import { OWNER_COLORS } from './scoreboard.js';
-import { gameForm } from './create.js';
+import { gameForm, demandField, demandMode } from './create.js';
 import { debriefCard } from './ocean.js';
 import { qrSvg } from './qr.js';
 
@@ -24,6 +24,8 @@ const CONFIG_ORDER = ['ROUND_DURATION_MIN', 'RENT', 'INSURANCE', 'UTILITIES', 'P
   'START_CAPITAL', 'CIVIL_SERVICE_SALARY', 'REOPEN_THRESHOLD'];
 
 const teamName = (p) => p.restaurant || p.email;
+// Команды для рынка — все, кроме вышедших из игры (как на сервере).
+const marketTeams = (s) => s.players.filter((p) => p.status !== 'left').length;
 // Границы настройки — в её единицах: проценты, доллары или штуки.
 const fmtSetting = (k, v) => (PERCENT_KEYS.has(k) ? pct(v) : MONEY_KEYS.has(k) ? usd(v) : int(v));
 
@@ -137,7 +139,24 @@ export function createConsole(root, ctx) {
     const codeBox = h('div', {});
     const monthBox = h('div', {});
     const debriefBox = h('div', {});
-    const el = h('div', {}, card(null, codeBox), joinRun.el, card(null, monthBox), debriefBox);
+    // Рынок = команды × спрос — видно сразу, без захода в настройки.
+    const marketBox = h('div', {});
+    const el = h('div', {}, card(null, codeBox, marketBox), joinRun.el, card(null, monthBox), debriefBox);
+
+    function marketLine(s) {
+      const d = Number(s.config?.DEMAND_PER_TEAM);
+      if (!(d > 0)) return null;
+      const n = marketTeams(s);
+      return h('div', { class: 'market-line' },
+        h('span', {}, t('host.marketLine', { teams: tn('board.teamsCount', n), demand: int(d), total: int(d * n) }),
+          ' · ', h('b', {}, t('host.demandModes.' + demandMode(d)))),
+        h('button', { class: 'btn btn--ghost btn--small', type: 'button', onclick: () => {
+          tab = 'settings';
+          sessionStorage.setItem('mg-console-' + ctx.gameId, tab);
+          showTab();
+          parts.settings.el.querySelector('.demand__input')?.focus();
+        } }, t('host.marketEdit')));
+    }
 
     function codeBlock(g) {
       const site = siteBase();
@@ -156,6 +175,7 @@ export function createConsole(root, ctx) {
     function update(s) {
       const g = s.game;
       replace(codeBox, codeBlock(g));
+      replace(marketBox, marketLine(s));
       const active = s.players.filter((p) => p.status === 'active');
       const sent = active.filter((p) => p.submitted);
       const finished = g.status === 'finished';
@@ -544,6 +564,9 @@ export function createConsole(root, ctx) {
     const upcomingBox = h('div', {});
     const inputs = {};
     const configGrid = h('div', { class: 'grid-2' });
+    // Спрос на ресторан (рынок = команды × спрос) — над остальными настройками.
+    const demandBox = h('div', {});
+    let demand = null;
     const configBtn = h('button', { class: 'btn btn--primary', type: 'button', onclick: async () => {
       if (!m) return;
       const updates = {};
@@ -572,18 +595,31 @@ export function createConsole(root, ctx) {
     const dangerBox = h('div', {});
     const el = h('div', {},
       card(t('host.gameInfo'), detailsBox, h('div', { class: 'btn-row' }, detailsBtn)),
-      card(t('host.economy'), h('p', { class: 'muted small' }, t('host.settingsLead')), upcomingBox, configGrid,
+      card(t('host.economy'), h('p', { class: 'muted small' }, t('host.settingsLead')), upcomingBox, demandBox, configGrid,
         h('div', { class: 'btn-row' }, configBtn)),
       dangerBox);
 
     function paintConfig(s, force) {
       const cfg = s.config || {};
       const editable = s.editable || {};
+      // Игра со спросом на ресторан: рынок считается сам, его поля нет.
+      const withDemand = Number(cfg.DEMAND_PER_TEAM) > 0 && !!editable.DEMAND_PER_TEAM;
+      if (withDemand && !demand) {
+        demand = demandField({ value: cfg.DEMAND_PER_TEAM, teams: marketTeams(s),
+          onInput: () => { demand.input.dataset.dirty = '1'; } });
+        inputs.DEMAND_PER_TEAM = demand.input;
+        replace(demandBox, demand.el);
+      }
+      if (demand) {
+        demand.setTeams(marketTeams(s));
+        if (!demand.input.dataset.dirty && document.activeElement !== demand.input) demand.set(cfg.DEMAND_PER_TEAM);
+      }
       if (!configGrid.childElementCount || force) {
         replace(configGrid);
         for (const key of CONFIG_ORDER) {
           const rule = editable[key];
           if (!rule) continue;
+          if (key === 'MARKET_SIZE_PER_PLAYER' && withDemand) continue;
           const isPct = PERCENT_KEYS.has(key);
           const input = h('input', { class: 'input', inputmode: 'decimal', autocomplete: 'off' });
           input.addEventListener('input', () => { input.dataset.dirty = '1'; });
@@ -595,6 +631,7 @@ export function createConsole(root, ctx) {
         }
       }
       for (const [key, input] of Object.entries(inputs)) {
+        if (key === 'DEMAND_PER_TEAM') continue;
         if (input.dataset.dirty || document.activeElement === input) continue;
         const v = cfg[key];
         input.value = v === undefined ? '' : PERCENT_KEYS.has(key) ? String(Math.round(v * 10000) / 100) : String(v);

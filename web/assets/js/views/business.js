@@ -118,7 +118,7 @@ export function createBusiness(root, ctx) {
       update(s) {
         const list = s.upcomingChanges || [];
         if (!list.length) { replace(el); return; }
-        const fmtVal = (k, v) => /RATE|GAIN/.test(k) ? pct(v) : /MIN$|MONTHS|MARKET_SIZE/.test(k) ? int(v) : usd(v);
+        const fmtVal = (k, v) => /RATE|GAIN/.test(k) ? pct(v) : /MIN$|MONTHS|MARKET_SIZE|DEMAND/.test(k) ? int(v) : usd(v);
         replace(el, h('div', { class: 'banner banner--warn' },
           h('strong', {}, t('upcoming.title')),
           h('ul', {}, list.map((c) => h('li', {},

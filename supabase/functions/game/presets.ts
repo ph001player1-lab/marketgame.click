@@ -40,7 +40,10 @@ export function isLeague(v: unknown): v is League {
 export const US_V5: Config = {
   P_REF: 30, P_FLOOR: 10, PRICE_ELASTICITY: 2.2, P_MAX_MULT: 1.8, KAPPA: 4,
   COGS_PCT: 0.40, QUALITY_COGS_ADD: 0.15,
+  // Рынок новой игры — команды × спрос на ресторан (DEMAND_PER_TEAM); 10 000
+  // остаётся до первой команды и в старых играх, где спроса нет.
   MARKET_SIZE_PER_PLAYER: 10000, MARKET_SCALES_WITH_PLAYERS: false,
+  DEMAND_PER_TEAM: 2000,
   CAT_ELASTICITY: 0.4, CAT_MIN: 0.8, CAT_MAX: 1.3,
   CAPACITY_BASE: 3000, CAPACITY_STEP: 1000, CAPACITY_MIN: 100,
   CAPACITY_STEP_COST: 6000, CAPACITY_SHIFTS_MIN: -3, CAPACITY_SHIFTS_MAX: 5,
@@ -128,6 +131,8 @@ export const EDITABLE_CONFIG: Record<string, { min: number; max: number; int?: b
   REOPEN_THRESHOLD: { min: 0, max: 10_000_000 },
   P_REF: { min: 1, max: 10_000 },
   MARKET_SIZE_PER_PLAYER: { min: 100, max: 1_000_000, int: true },
+  // Спрос на ресторан, гостей в месяц: рынок = команды × спрос.
+  DEMAND_PER_TEAM: { min: 100, max: 100_000, int: true },
   MARKET_QUALITY_GAIN: { min: 0, max: 1 },
   // Ставки задаются долей, а не процентами: 0.12 = 12%.
   LOAN_RATE_ANNUAL: { min: 0, max: 1 },

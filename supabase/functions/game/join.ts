@@ -15,7 +15,7 @@
 // ============================================================================
 
 import {
-  type Sql, type Row, fail, normEmail, isEmail, currentRound, activeConfig, logHostAction
+  type Sql, type Row, fail, normEmail, isEmail, currentRound, activeConfig, logHostAction, syncMarket
 } from './lib.ts';
 import { addPlayers } from './host.ts';
 
@@ -212,6 +212,8 @@ export async function approveJoins(sql: Sql, game: Row, actor: string, b: Row,
         decided_at = now() where id = ${r.id}`;
     }
     await logHostAction(tx, game.id, actor, 'join_approve', { added: emails });
+    // Рынок = команды × спрос: новые команды — рынок со следующего месяца больше.
+    if (emails.length) await syncMarket(tx, String(game.id));
     return emails;
   });
   // Вход по коду на почту — только для заведённых в Supabase Auth почт.

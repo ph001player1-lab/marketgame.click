@@ -2,7 +2,7 @@
 
 import { t, tn, errorText, LANGUAGES, language } from '../i18n.js';
 import { h, replace, toast, busy, field } from '../dom.js';
-import { zonedToIso, isoToZoned, currentLocale, CURRENCIES } from '../fmt.js';
+import { zonedToIso, isoToZoned, currentLocale, CURRENCIES, int } from '../fmt.js';
 import { act } from '../api.js';
 import { directImageUrl, logoSrc } from './common.js';
 import { ONLINE, REGION_KEYS, DEFAULT_PLACE, regionName, countryOptions, hasAreaList, areaOptions, areaZone } from '../geo.js';
@@ -278,6 +278,65 @@ function guessZone() {
  * Поля игры. values — как в gameMeta сервера. read() возвращает параметры
  * для createGame или updateGame; dirty — ведущий что-то менял.
  */
+// ----------------------------------------------------------------- спрос на ресторан
+
+/** Быстрый выбор сложности: спрос на ресторан, гостей в месяц. */
+export const DEMAND_MODES = [['hard', 1500], ['normal', 2000], ['easy', 2500]];
+export const DEMAND_DEFAULT = 2000;
+const DEMAND_MIN = 100;
+const DEMAND_MAX = 100000;
+
+/** Сложно — 1 500 гостей на ресторан и меньше, легко — 2 500 и больше. */
+export const demandMode = (v) => (v <= 1500 ? 'hard' : v >= 2500 ? 'easy' : 'normal');
+
+/**
+ * Спрос на ресторан — сколько гостей в месяц приходится на одну команду;
+ * рынок = команды × спрос. Стрелки поля — по 500, число можно ввести
+ * любое. Кнопки — сложно, нормально, легко. teams — сколько команд в игре;
+ * null — ещё неизвестно (новая игра): тогда под полем — как считается рынок.
+ */
+export function demandField({ value = DEMAND_DEFAULT, teams = null, onInput = () => {} } = {}) {
+  const label = t('host.demand');
+  // Стрелки считают шаг от min: min 500 — значения 500, 1 000, 1 500…
+  // Меньше 500 (от 100) можно ввести руками.
+  const input = h('input', { class: 'input demand__input', type: 'number', inputmode: 'numeric', min: 500,
+    max: DEMAND_MAX, step: 500, value: String(value), autocomplete: 'off', 'aria-label': label });
+  const modes = DEMAND_MODES.map(([id, v]) => h('button', { type: 'button', 'aria-pressed': 'false',
+    onclick: () => { input.value = String(v); changed(); } }, t('host.demandModes.' + id) + ' · ' + int(v)));
+  const total = h('div', { class: 'field__hint demand__total' });
+  let teamCount = teams;
+  const read = () => {
+    const v = Number(String(input.value).replace(/[\s\u00a0\u202f]/g, ''));
+    return Number.isInteger(v) && v >= DEMAND_MIN && v <= DEMAND_MAX ? v : NaN;
+  };
+  function paint() {
+    const v = read();
+    const mode = Number.isFinite(v) ? demandMode(v) : null;
+    modes.forEach((b, i) => b.setAttribute('aria-pressed', DEMAND_MODES[i][0] === mode ? 'true' : 'false'));
+    if (!Number.isFinite(v)) {
+      total.textContent = t('errors.bad_demand', { min: int(DEMAND_MIN), max: int(DEMAND_MAX) });
+      total.classList.add('is-error');
+      return;
+    }
+    total.classList.remove('is-error');
+    total.textContent = teamCount === null ? t('host.demandHint')
+      : t('host.marketLine', { teams: tn('board.teamsCount', teamCount), demand: int(v), total: int(v * teamCount) });
+  }
+  function changed() { paint(); onInput(read()); }
+  input.addEventListener('input', changed);
+  paint();
+  const el = h('div', { class: 'field demand' },
+    h('div', { class: 'field__label' }, label),
+    h('div', { class: 'demand__row' }, input,
+      h('div', { class: 'seg demand__modes', role: 'group', 'aria-label': t('host.demandMode') }, modes)),
+    total);
+  return {
+    el, input, read,
+    set(v) { input.value = String(v); paint(); },
+    setTeams(n) { if (n !== teamCount) { teamCount = n; paint(); } }
+  };
+}
+
 export function gameForm(values = {}, { withLeague = true, lockPractice = false } = {}) {
   let dirty = false;
   const mark = () => { dirty = true; };
@@ -322,6 +381,9 @@ export function gameForm(values = {}, { withLeague = true, lockPractice = false 
   const sponsorUrl = h('input', { class: 'input', type: 'url', maxlength: 500, value: values.sponsor?.url || '', oninput: mark,
     placeholder: 'https://' });
 
+  // Спрос на ресторан — при создании игры; потом — в настройках экономики.
+  const demand = withLeague ? demandField({ onInput: mark }) : null;
+
   let league = values.league || 'start';
   const leagueBox = withLeague ? h('fieldset', { class: 'field fieldset' },
     h('legend', { class: 'field__label' }, t('host.league')),
@@ -337,6 +399,7 @@ export function gameForm(values = {}, { withLeague = true, lockPractice = false 
     place.el,
     currency ? field(t('host.currency'), currency, t('host.currencyHint')) : null,
     leagueBox,
+    demand ? demand.el : null,
     h('label', { class: 'check' }, practice, h('span', {}, t('host.practiceLabel'),
       lockPractice ? h('span', { class: 'muted small', style: { display: 'block' } }, t('host.practiceLocked')) : null)),
     field(t('host.organizer'), organizer),
@@ -360,6 +423,7 @@ export function gameForm(values = {}, { withLeague = true, lockPractice = false 
         timezone: zone.value, scheduledAt, openBook: openBook.checked, language: gameLanguage.value,
         ...place.read(),
         ...(currency ? { currency: currency.value } : {}),
+        ...(demand ? { demandPerTeam: demand.read() } : {}),
         sponsorName: sponsorName.value.trim(), sponsorUrl: sponsorUrl.value.trim(),
         ...logo.change()
       };
@@ -377,6 +441,11 @@ export function renderCreate(page, onCreated) {
       e.preventDefault();
       const params = form.read();
       if (!params.title) { msg.textContent = t('errors.empty_title'); msg.classList.add('is-error'); return; }
+      if ('demandPerTeam' in params && !Number.isFinite(params.demandPerTeam)) {
+        msg.textContent = t('errors.bad_demand', { min: int(DEMAND_MIN), max: int(DEMAND_MAX) });
+        msg.classList.add('is-error');
+        return;
+      }
       busy(btn, async () => {
         const res = await act('createGame', params);
         if (res.ok) { toast(t('host.created', { code: res.code }), 'ok'); await onCreated(res.gameId); }

@@ -7,7 +7,7 @@ import { EDITABLE_CONFIG, LEAGUES, type League } from './presets.ts';
 import {
   type Sql, type Row, fail, num, cents, round2, currentRound, accountingRound, activeConfig,
   businessReset, addLedger, addNotice, moneyTarget, available, OFF_BUSINESS, usd, teamLabel,
-  INSTITUTIONS, directImageUrl, starsNow, type RoundRow
+  INSTITUTIONS, directImageUrl, starsNow, syncMarket, type RoundRow
 } from './lib.ts';
 import { ONLINE, playerLocation, teamLocation } from './geo.ts';
 
@@ -60,6 +60,8 @@ export function rulesFor(cfg: Config) {
     qualityInvestPerUnit: cfg.QUALITY_INVEST_DIVISOR, qualityUpkeep: cfg.QUALITY_UPKEEP,
     qualityDecay: cfg.QUALITY_DECAY,
     marketBase: cfg.MARKET_SIZE_PER_PLAYER, marketQualityGain: cfg.MARKET_QUALITY_GAIN ?? 0,
+    // Спрос на ресторан: рынок = команды × спрос (нет — рынок задан числом).
+    demandPerTeam: Number(cfg.DEMAND_PER_TEAM) > 0 ? Number(cfg.DEMAND_PER_TEAM) : null,
     marketPriceMin: cfg.CAT_MIN, marketPriceMax: cfg.CAT_MAX,
     loanRate: cfg.LOAN_RATE_ANNUAL, loanTermMonths: cfg.LOAN_TERM_MONTHS,
     loanLimits: [cfg.LOAN_TIER1_LIMIT, cfg.LOAN_TIER2_LIMIT, cfg.LOAN_TIER3_LIMIT],
@@ -541,6 +543,8 @@ export async function chooseCareerPath(sql: Sql, game: Row, playerId: string, b:
         await tx`update institutions set city_pct = least(100, city_pct + ${s.pct})
                  where game_id = ${game.id} and kind = ${s.kind}`;
       }
+      // Рынок = команды × спрос: ушедшая из игры команда не считается.
+      await syncMarket(tx, String(game.id));
     } else {
       const newStatus = path === 'custom' ? 'custom_employed' : path;
       const isCivil = newStatus === 'civil_service';

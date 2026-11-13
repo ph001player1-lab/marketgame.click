@@ -53,7 +53,9 @@ let gameId;
 await step('подготовка: ведущие, игра, состав, профили', async () => {
   ok(await call(ADMIN, 'addHost', { email: HOST }));
   ok(await call(ADMIN, 'addHost', { email: HOST2 }));
-  const g = await call(HOST, 'createGame', { title: 'Extras', league: 'start', region: 'north_america', country: 'US' });
+  // Спрос 2 500 на ресторан × 4 команды = рынок 10 000 гостей, как в v4.9.
+  const g = await call(HOST, 'createGame', { title: 'Extras', league: 'start', region: 'north_america', country: 'US',
+    demandPerTeam: 2500 });
   ok(g);
   gameId = g.gameId;
   ok(await call(HOST, 'setRoster', { gameId, emails: [ANN, BOB, CAT, DAN] }));
@@ -457,7 +459,9 @@ await step('заявка по QR-коду: почта и ресторан, ве�
 });
 
 await step('ссылка для входа команды; деньги: прибыль прибыльных и убытки убыточных; доля спроса', async () => {
-  const g = await call(HOST, 'createGame', { title: 'Link night', league: 'start', region: 'north_america', country: 'US' });
+  // Три команды и рынок около прежних 10 000 гостей: одни в плюсе, другие в минусе.
+  const g = await call(HOST, 'createGame', { title: 'Link night', league: 'start', region: 'north_america', country: 'US',
+    demandPerTeam: 3500 });
   ok(g);
   const gid = g.gameId;
   ok(await call(HOST, 'setRoster', { gameId: gid, emails: [ANN, BOB, CAT].join('\n') }));
@@ -547,6 +551,77 @@ await step('ссылка для входа команды; деньги: при�
   err(await call(HOST, 'teamLink', { gameId: gid, playerId: bob.id, requestId: crypto.randomUUID() }), 'game_finished');
   ok(await call(BOB, 'dashboard', { gameId: gid }));
   await moneyInvariants(sql, gid);
+});
+
+await step('спрос на ресторан: рынок = команды × спрос, по составу и со следующего месяца', async () => {
+  const cfgOf = async (gid) => (await sql`select config from games where id = ${gid}`)[0].config;
+  // Без спроса в запросе — 2 000 на ресторан; неверный спрос — ошибка.
+  const g0 = await call(HOST, 'createGame', { title: 'Demand default', league: 'start', region: 'north_america', country: 'US' });
+  ok(g0);
+  assert.equal((await cfgOf(g0.gameId)).DEMAND_PER_TEAM, 2000);
+  for (const bad of [50, 2500.5, 'many', 1e6]) {
+    err(await call(HOST, 'createGame', { title: 'x', league: 'start', demandPerTeam: bad }), 'bad_demand');
+  }
+  const g = await call(HOST, 'createGame', { title: 'Demand', league: 'start', region: 'north_america', country: 'US',
+    demandPerTeam: 1500 });
+  ok(g);
+  const gid = g.gameId;
+  // Состав — рынок пересчитывается сам.
+  ok(await call(HOST, 'setRoster', { gameId: gid, emails: [ANN, BOB, CAT].join('\n') }));
+  let m = await monitor(gid);
+  assert.equal(m.config.DEMAND_PER_TEAM, 1500);
+  assert.equal(m.config.MARKET_SIZE_PER_PLAYER, 4500);
+  assert.equal(m.rules.demandPerTeam, 1500);
+  assert.equal(m.rules.marketBase, 4500);
+  // Рынок со спросом числом не задаётся — только через спрос.
+  const direct = await call(HOST, 'updateConfig', { gameId: gid, updates: { MARKET_SIZE_PER_PLAYER: 99999 } });
+  assert.deepEqual(direct.rejected, { MARKET_SIZE_PER_PLAYER: { code: 'not_editable' } });
+  const up = await call(HOST, 'updateConfig', { gameId: gid, updates: { DEMAND_PER_TEAM: 2000 } });
+  ok(up);
+  assert.deepEqual(up.applied, { DEMAND_PER_TEAM: 2000 });
+  assert.equal(up.state.config.MARKET_SIZE_PER_PLAYER, 6000);
+  err(await call(HOST, 'updateConfig', { gameId: gid, updates: { DEMAND_PER_TEAM: 10 } }).then((r) =>
+    ({ error: r.rejected?.DEMAND_PER_TEAM?.code })), 'range');
+  // Заявка по QR-коду — ещё команда, рынок больше.
+  const code = (await monitor(gid)).game.code;
+  ok(await call(null, 'joinRequest', { code, email: DAN, restaurantName: 'Dan Deli' }));
+  m = await monitor(gid);
+  ok(await call(HOST, 'approveJoins', { gameId: gid, ids: m.joinRequests.map((r) => r.id) }));
+  assert.equal((await cfgOf(gid)).MARKET_SIZE_PER_PLAYER, 8000);
+  for (const [e, name] of [[ANN, 'Ann'], [BOB, 'Bob'], [CAT, 'Cat'], [DAN, 'Dan']]) {
+    ok(await call(e, 'setProfile', { gameId: gid, displayName: name, restaurantName: name + ' Diner' }));
+  }
+  // Месяц открыт — рынок месяца по составу на эту минуту: 4 × 2 000.
+  ok(await call(HOST, 'openRound', { gameId: gid }));
+  const [r1] = await sql`select config from rounds where game_id = ${gid} and round_number = 1`;
+  assert.equal(r1.config.MARKET_SIZE_PER_PLAYER, 8000);
+  // Спрос поменяли посреди месяца — новый рынок со следующего месяца.
+  ok(await call(HOST, 'updateConfig', { gameId: gid, updates: { DEMAND_PER_TEAM: 2500 } }));
+  const d = await call(ANN, 'dashboard', { gameId: gid });
+  ok(d);
+  assert.equal(d.rules.marketBase, 8000, 'this month keeps its market');
+  assert.deepEqual(d.upcomingChanges.map((c) => [c.key, c.from, c.to]).sort(),
+    [['DEMAND_PER_TEAM', 2000, 2500], ['MARKET_SIZE_PER_PLAYER', 8000, 10000]]);
+  for (const e of [ANN, BOB, CAT, DAN]) {
+    ok(await call(e, 'submitDecision', { gameId: gid, price: 30, seoSpend: 0, promoSpend: 0, mapsSpend: 0,
+      socialSpend: 0, outdoorSpend: 0, affiliateSpend: 0, shiftsDelta: 0, qualityInvest: 0 }));
+  }
+  ok(await call(HOST, 'calculateRound', { gameId: gid }));
+  const [res] = await sql`select market_total::float as m from results where game_id = ${gid} and round_number = 1 limit 1`;
+  assert.ok(Math.abs(res.m - 8000) < 1, 'month 1 market 4 × 2,000 at the reference price: ' + res.m);
+  ok(await call(HOST, 'openRound', { gameId: gid }));
+  const [r2] = await sql`select config from rounds where game_id = ${gid} and round_number = 2`;
+  assert.equal(r2.config.MARKET_SIZE_PER_PLAYER, 10000);
+  // Ушла из игры — рынок со следующего месяца меньше.
+  ok(await call(DAN, 'chooseCareerPath', { gameId: gid, path: 'end' }));
+  assert.equal((await cfgOf(gid)).MARKET_SIZE_PER_PLAYER, 7500);
+  // Старая игра без спроса — рынок задан числом, как раньше.
+  await sql`update games set config = config - 'DEMAND_PER_TEAM' where id = ${g0.gameId}`;
+  const old = await call(HOST, 'updateConfig', { gameId: g0.gameId, updates: { MARKET_SIZE_PER_PLAYER: 12000 } });
+  assert.deepEqual(old.applied, { MARKET_SIZE_PER_PLAYER: 12000 });
+  ok(await call(HOST, 'setRoster', { gameId: g0.gameId, emails: [ANN, BOB].join('\n') }));
+  assert.equal((await cfgOf(g0.gameId)).MARKET_SIZE_PER_PLAYER, 12000);
+  assert.equal((await monitor(g0.gameId)).rules.demandPerTeam, null);
 });
 
 await step('конец последней игры — без входа и без данных игроков', async () => {

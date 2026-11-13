@@ -9,11 +9,11 @@
 
 import { computeCapacity, type Config } from './economy.ts';
 import {
-  configFor, isLeague, isLanguage, isCurrency, editableFor, DEFAULT_CITY_SHARE_PCT, LEAGUES, type Currency
+  configFor, isLeague, isLanguage, isCurrency, editableFor, EDITABLE_CONFIG, DEFAULT_CITY_SHARE_PCT, LEAGUES, type Currency
 } from './presets.ts';
 import {
   type Sql, type Row, type RoundRow, fail, num, cents, round2, normEmail, isEmail, currentRound, accountingRound,
-  activeConfig, addLedger, addCity, addNotice, logHostAction, moneyTarget, available,
+  activeConfig, marketFor, syncMarket, teamsInGame, addLedger, addCity, addNotice, logHostAction, moneyTarget, available,
   OFF_BUSINESS, INSTITUTIONS, isInstitution, usd, teamLabel, STARTUP_LOAN_TIER, directImageUrl, starsNow
 } from './lib.ts';
 import { gameMeta, rulesFor, upcomingChanges } from './player.ts';
@@ -140,7 +140,15 @@ export async function createGame(sql: Sql, hostEmail: string, b: Row) {
   const place = gameLocation(b);
   // Валюта задаётся при создании игры: от неё зависят все суммы настроек.
   const currency: Currency = isCurrency(b.currency) ? b.currency : defaultCurrency(place, b.language);
-  const cfg = configFor(league, currency);
+  // Спрос на ресторан задаёт ведущий при создании: рынок = команды × спрос.
+  let base = configFor(league, currency);
+  if (b.demandPerTeam !== undefined && b.demandPerTeam !== null) {
+    const d = Number(b.demandPerTeam);
+    const rule = EDITABLE_CONFIG.DEMAND_PER_TEAM;
+    if (!Number.isInteger(d) || d < rule.min || d > rule.max) fail('bad_demand', { min: rule.min, max: rule.max });
+    base = { ...base, DEMAND_PER_TEAM: d };
+  }
+  const cfg = marketFor(base, 0);
 
   return await sql.begin(async (tx: Sql) => {
     let code = newCode();
@@ -298,6 +306,8 @@ export async function setRoster(sql: Sql, game: Row, actor: string, b: Row,
       removed.push(e);
     }
     await logHostAction(tx, game.id, actor, 'roster', { added, removed, kept, skipped });
+    // Рынок = команды × спрос: состав поменялся — рынок со следующего месяца тоже.
+    if (added.length || removed.length) await syncMarket(tx, String(game.id));
     return { ok: true, total: wanted.length, added, removed, kept, skipped };
   });
 
@@ -384,8 +394,14 @@ export async function updateConfig(sql: Sql, game: Row, actor: string, b: Row) {
     if (!Number.isFinite(v)) { rejected[key] = { code: 'not_number' }; continue; }
     if (rule.int && !Number.isInteger(v)) { rejected[key] = { code: 'not_whole' }; continue; }
     if (v < rule.min || v > rule.max) { rejected[key] = { code: 'range', min: rule.min, max: rule.max }; continue; }
+    // Рынок игры со спросом на ресторан считается сам: команды × спрос.
+    if (key === 'MARKET_SIZE_PER_PLAYER' && Number(cfg.DEMAND_PER_TEAM) > 0) { rejected[key] = { code: 'not_editable' }; continue; }
     cfg[key] = v;
     applied[key] = v;
+  }
+  if ('DEMAND_PER_TEAM' in applied) {
+    const fresh = marketFor(cfg as unknown as Config, await teamsInGame(sql, String(game.id))) as unknown as Row;
+    cfg.MARKET_SIZE_PER_PLAYER = fresh.MARKET_SIZE_PER_PLAYER;
   }
   if (Object.keys(applied).length) {
     await sql`update games set config = ${sql.json(cfg)} where id = ${game.id}`;

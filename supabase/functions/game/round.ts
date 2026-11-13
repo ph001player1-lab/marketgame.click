@@ -14,7 +14,7 @@ import {
 } from './economy.ts';
 import {
   type Sql, type Row, fail, num, cents, currentRound, decisionFromRow, defaultDecision,
-  toPlayerState, addLedger, addCity, usd, INSTITUTIONS,
+  toPlayerState, addLedger, addCity, usd, INSTITUTIONS, marketFor,
   type LedgerEntry, type CityEntry
 } from './lib.ts';
 
@@ -38,8 +38,9 @@ export async function openMonth(sql: Sql, gameId: string) {
 
     // Правила месяца фиксируются здесь. Правки ведущего после этой минуты
     // действуют со следующего месяца: игроки решают по тем цифрам, по
-    // которым их и посчитают.
-    const cfg = game.config as Config;
+    // которым их и посчитают. Рынок — по составу на эту минуту.
+    const cfg = marketFor(game.config as Config, n);
+    if (cfg !== game.config) await tx`update games set config = ${tx.json(cfg)} where id = ${gameId}`;
     const next = num(round.round_number) + 1;
     const deadline = new Date(Date.now() + num(cfg.ROUND_DURATION_MIN, 5) * 60_000);
 

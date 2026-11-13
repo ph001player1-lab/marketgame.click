@@ -175,6 +175,33 @@ export function accountingRound(round: RoundRow): number {
   return round.status === 'open' ? num(round.round_number) : num(round.round_number) + 1;
 }
 
+/**
+ * Рынок игры = команды × спрос на ресторан, если ведущий задал спрос
+ * (DEMAND_PER_TEAM); иначе (старые игры) — как есть. Команды — все, кроме
+ * вышедших из игры: разорившиеся тоже считаются, и рынок от банкротств не
+ * сжимается — их гости достаются оставшимся.
+ */
+export function marketFor(cfg: Config, teams: number): Config {
+  const demand = Number(cfg.DEMAND_PER_TEAM);
+  if (!(demand > 0)) return cfg;
+  const total = Math.round(demand * Math.max(1, teams));
+  return total === cfg.MARKET_SIZE_PER_PLAYER ? cfg : { ...cfg, MARKET_SIZE_PER_PLAYER: total };
+}
+
+/** Сколько команд в игре для рынка: все, кроме вышедших. */
+export async function teamsInGame(sql: Sql, gameId: string): Promise<number> {
+  const [{ n }] = await sql`select count(*)::int as n from players where game_id = ${gameId} and status <> 'left'`;
+  return Number(n);
+}
+
+/** Состав поменялся — пересчитать рынок в настройках игры (со следующего месяца). */
+export async function syncMarket(sql: Sql, gameId: string): Promise<void> {
+  const [g] = await sql`select config from games where id = ${gameId}`;
+  if (!g) return;
+  const cfg = marketFor(g.config as Config, await teamsInGame(sql, gameId));
+  if (cfg !== g.config) await sql`update games set config = ${sql.json(cfg)} where id = ${gameId}`;
+}
+
 /** Правила, по которым идёт месяц: открытый — свои, иначе — текущие игры. */
 export function activeConfig(game: Row, round: RoundRow): Config {
   return (round.status === 'open' && round.config ? round.config : game.config) as Config;

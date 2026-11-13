@@ -66,7 +66,7 @@ function varsFor(rules, game) {
     cogs: money(r.cogsPerMeal), qadd: pct(r.qualityCogsAdd),
     // Закупочная цена блюда при качестве 1, 2 и 3 — как в расчёте месяца.
     cogs1: money(cogsAt(r, 1)), cogs2: money(cogsAt(r, 2)), cogs3: money(cogsAt(r, 3)),
-    marketBase: int(r.marketBase), gain: pct(r.marketQualityGain), catMin: decimal(r.marketPriceMin), catMax: decimal(r.marketPriceMax),
+    marketBase: int(r.marketBase), demand: int(r.demandPerTeam), gain: pct(r.marketQualityGain), catMin: decimal(r.marketPriceMin), catMax: decimal(r.marketPriceMax),
     capacityBase: int(r.capacityBase), step: int(r.shiftStepCapacity), cost: usd(r.shiftStepCost),
     min: r.shiftsMin, max: r.shiftsMax,
     unit: usd(r.qualityInvestPerUnit), decay: pct(r.qualityDecay), upkeep: usd(r.qualityUpkeep),
@@ -113,6 +113,8 @@ export function createGuide(root) {
     const sections = SECTIONS.map((id) => {
       const body = [];
       if (id === 'tax' && !(rules.taxRate > 0)) body.push(...paragraphs(t('guide.s.tax.body0'), vars));
+      // Рынок = команды × спрос на ресторан, который задал ведущий.
+      else if (id === 'market' && rules.demandPerTeam > 0) body.push(...paragraphs(t('guide.s.market.bodyDemand'), vars));
       else body.push(...paragraphs(t('guide.s.' + id + '.body'), vars));
       if (id === 'goal' && game?.practice) body.push(h('p', { class: 'tip' }, t('guide.s.goal.practice')));
       if (id === 'costs') body.splice(0, 0, costsTable(vars));

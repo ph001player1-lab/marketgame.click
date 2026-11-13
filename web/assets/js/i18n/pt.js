@@ -158,7 +158,7 @@ export default {
       ROUND_DURATION_MIN: 'Duração do mês, min', RENT: 'Aluguel', INSURANCE: 'Seguro',
       UTILITIES: 'Contas e outros', PAYROLL_BASE: 'Folha de pagamento', START_CAPITAL: 'Capital inicial',
       CIVIL_SERVICE_SALARY: 'Salário no emprego público', REOPEN_THRESHOLD: 'Economias para reabrir',
-      P_REF: 'Preço de referência', MARKET_SIZE_PER_PLAYER: 'Mercado base, clientes',
+      P_REF: 'Preço de referência', MARKET_SIZE_PER_PLAYER: 'Mercado base, clientes', DEMAND_PER_TEAM: 'Demanda por restaurante, clientes',
       MARKET_QUALITY_GAIN: 'Crescimento do mercado por ponto de qualidade', LOAN_RATE_ANNUAL: 'Taxa de juros',
       LOAN_TERM_MONTHS: 'Prazo do empréstimo, meses', PROFIT_TAX_RATE: 'Imposto sobre o lucro'
     }
@@ -509,6 +509,10 @@ export default {
     joinWaiting: 'Aguardando você: {n}',
     joinApprove: 'Aceitar marcados ({n})', joinApproved: 'Aceitos: {n}',
     joinDrop: 'Remover', joinDropped: 'Pedido removido.',
+    demand: 'Demanda por restaurante, clientes por mês', demandMode: 'Dificuldade',
+    demandModes: { hard: 'Difícil', normal: 'Normal', easy: 'Fácil' },
+    demandHint: 'O mercado é calculado sozinho: equipes × demanda. Menos demanda, mais difícil sobreviver.',
+    marketLine: 'Mercado: {teams} × {demand} = {total} clientes por mês', marketEdit: 'Alterar',
     linkButton: 'Link de acesso', linkTitle: 'Link de acesso: {team}', linkHide: 'Ocultar',
     linkLead: 'Se o código não chegar a {email}, envie este link ao jogador em particular ou mostre o QR code. Com ele se joga com esta equipe sem código — só neste jogo e enquanto ele durar. Um link novo cancela o anterior.',
     rosterTypos: 'Parece um erro de digitação — este jogador não receberá o código:', rosterTypo: '{email} — você quis dizer {fix}?',
@@ -785,6 +789,12 @@ export default {
           '- Comida boa faz o mercado crescer: **+{gain}** clientes para cada ponto da qualidade **média** da cidade. Uma equipe investe — todos ganham.',
           '- Preços baixos tiram as pessoas de casa: com preço médio baixo o mercado cresce até ×{catMax}; com preço alto, encolhe até ×{catMin}.',
           '- Clientes além da sua capacidade são recusados — e isso prejudica sua reputação.'
+        ],
+        bodyDemand: [
+          'A cidade tem **{marketBase} clientes por mês**, divididos entre todos os restaurantes: o facilitador definiu a demanda em **{demand} por restaurante**, e o mercado é equipes × demanda. Restaurantes que quebram continuam contando: seus clientes vão para os outros.',
+          '- Comida boa faz o mercado crescer: **+{gain}** clientes para cada ponto da qualidade **média** da cidade. Uma equipe investe — todos ganham.',
+          '- Preços baixos tiram as pessoas de casa: com preço médio baixo o mercado cresce até ×{catMax}; com preço alto, encolhe até ×{catMin}.',
+          '- Clientes além da sua capacidade são recusados — e isso prejudica sua reputação.'
         ]
       },
       choice: {
@@ -987,6 +997,7 @@ export default {
     already_in_game: 'Este e-mail já está no jogo.',
     join_gone: 'O pedido não existe mais. Envie de novo.',
     link_gone: 'Este link não funciona mais. Peça um novo ao facilitador ou entre com o código do e-mail.',
+    bad_demand: 'A demanda por restaurante deve ser um número inteiro de {min} a {max}.',
     auth_required: 'Entre novamente, por favor.',
     not_registered: 'Este e-mail ainda não está em nenhum jogo. Peça ao facilitador para cadastrá-lo.',
     bad_email: 'Isso não parece um endereço de e-mail.',

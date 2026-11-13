@@ -160,7 +160,7 @@ export default {
       ROUND_DURATION_MIN: 'Month length, min', RENT: 'Rent', INSURANCE: 'Insurance',
       UTILITIES: 'Utilities & other', PAYROLL_BASE: 'Payroll', START_CAPITAL: 'Starting capital',
       CIVIL_SERVICE_SALARY: 'Government job salary', REOPEN_THRESHOLD: 'Savings to reopen',
-      P_REF: 'Reference price', MARKET_SIZE_PER_PLAYER: 'Base market, guests',
+      P_REF: 'Reference price', MARKET_SIZE_PER_PLAYER: 'Base market, guests', DEMAND_PER_TEAM: 'Demand per restaurant, guests',
       MARKET_QUALITY_GAIN: 'Market growth per quality point', LOAN_RATE_ANNUAL: 'Loan rate',
       LOAN_TERM_MONTHS: 'Loan term, months', PROFIT_TAX_RATE: 'Profit tax'
     }
@@ -511,6 +511,10 @@ export default {
     joinWaiting: 'Waiting for you: {n}',
     joinApprove: 'Accept checked ({n})', joinApproved: 'Accepted: {n}',
     joinDrop: 'Remove', joinDropped: 'Request removed.',
+    demand: 'Demand per restaurant, guests a month', demandMode: 'Difficulty',
+    demandModes: { hard: 'Hard', normal: 'Normal', easy: 'Easy' },
+    demandHint: 'The market is worked out for you: teams × demand. Less demand, harder to survive.',
+    marketLine: 'Market: {teams} × {demand} = {total} guests a month', marketEdit: 'Change',
     linkButton: 'Sign-in link', linkTitle: 'Sign-in link: {team}', linkHide: 'Hide',
     linkLead: 'If the email code to {email} doesn’t arrive, send this link to the player privately or show the QR code. It lets them play as this team without a code — only in this game and while it runs. A new link cancels the old one.',
     rosterTypos: 'Looks like a typo — this player won’t get a sign-in code:', rosterTypo: '{email} — did you mean {fix}?',
@@ -787,6 +791,12 @@ export default {
           '- Good food grows the market: **+{gain}** guests for every point of the **average** quality in town. One team invests — everyone gains.',
           '- Low prices bring people out: when the average price is low, the market grows up to ×{catMax}; when it\'s high, it shrinks to as little as ×{catMin}.',
           '- Guests beyond your capacity are turned away — and that hurts your reputation.'
+        ],
+        bodyDemand: [
+          'The town has **{marketBase} guests a month**, shared by all restaurants: the host set demand at **{demand} per restaurant**, and the market is teams × demand. Restaurants that go bankrupt still count: their guests go to the others.',
+          '- Good food grows the market: **+{gain}** guests for every point of the **average** quality in town. One team invests — everyone gains.',
+          '- Low prices bring people out: when the average price is low, the market grows up to ×{catMax}; when it\'s high, it shrinks to as little as ×{catMin}.',
+          '- Guests beyond your capacity are turned away — and that hurts your reputation.'
         ]
       },
       choice: {
@@ -991,6 +1001,7 @@ export default {
     already_in_game: 'This email is already in the game.',
     join_gone: 'The request is no longer there. Send it again.',
     link_gone: 'This link no longer works. Ask the host for a new one or sign in with an email code.',
+    bad_demand: 'Demand per restaurant must be a whole number from {min} to {max}.',
     auth_required: 'Please sign in again.',
     not_registered: 'This email isn\'t on any game roster yet. Ask your host to add it.',
     bad_email: 'That doesn\'t look like an email address.',

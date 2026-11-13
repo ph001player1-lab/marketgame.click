@@ -644,7 +644,14 @@ export function createCake(root, { big = false } = {}) {
         h('td', { class: 'cake__opt' }, x.price > 0 ? priceText(x.price) : '—'),
         h('td', { class: ['cake__opt', x.profit < 0 ? 'neg' : null] }, signed(x.profit)),
         money(x.cashFlow)))));
-    const over = () => box.scrollHeight > box.clientHeight + 1 || box.scrollWidth > box.clientWidth + 1;
+    // Точно, без округления до пикселя: таблица целиком внутри рамки.
+    const over = () => {
+      const b = box.getBoundingClientRect();
+      return [...box.children].some((x) => {
+        const r = x.getBoundingClientRect();
+        return r.right > b.right + 0.5 || r.bottom > b.bottom + 0.5;
+      });
+    };
     replace(box, table(rows));
     for (let f = 15; f >= 11 && over(); f--) box.style.fontSize = f + 'px';
     if (!over()) return;

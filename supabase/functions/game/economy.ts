@@ -18,6 +18,10 @@ export interface Config {
   P_REF: number; P_FLOOR: number; PRICE_ELASTICITY: number; P_MAX_MULT: number; KAPPA: number;
   COGS_PCT: number; QUALITY_COGS_ADD: number;
   MARKET_SIZE_PER_PLAYER: number; MARKET_SCALES_WITH_PLAYERS: boolean;
+  // Спрос на ресторан, гостей в месяц. Если задан, рынок игры
+  // (MARKET_SIZE_PER_PLAYER) = команды × спрос — его пересчитывает сервер
+  // (lib.ts: marketFor), сама экономика спрос не читает.
+  DEMAND_PER_TEAM?: number;
   CAT_ELASTICITY: number; CAT_MIN: number; CAT_MAX: number;
   CAPACITY_BASE: number; CAPACITY_STEP: number; CAPACITY_MIN: number;
   CAPACITY_STEP_COST: number; CAPACITY_SHIFTS_MIN: number; CAPACITY_SHIFTS_MAX: number;

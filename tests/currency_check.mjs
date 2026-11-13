@@ -17,7 +17,7 @@ const usd = configFor('start', 'USD');
 assert.equal(usd.PROFIT_TAX_RATE, 0.21, 'в долларовой игре — как раньше');
 assert.equal(editableFor('USD'), EDITABLE_CONFIG);
 // Деньги — все числовые настройки, которые измеряются в долларах: ни одна не забыта.
-const notMoney = /ELASTICITY|MULT|KAPPA|PCT|ADD|SIZE_PER_PLAYER|SCALES|CAT_|CAPACITY_(BASE|STEP|MIN|SHIFTS)$|CAPACITY_SHIFTS|ROUNDS|^K_|ALPHA|DECAY|GAIN|MONTHS|RATE|_MIN$|BONUS/;
+const notMoney = /ELASTICITY|MULT|KAPPA|PCT|ADD|SIZE_PER_PLAYER|DEMAND_PER_TEAM|SCALES|CAT_|CAPACITY_(BASE|STEP|MIN|SHIFTS)$|CAPACITY_SHIFTS|ROUNDS|^K_|ALPHA|DECAY|GAIN|MONTHS|RATE|_MIN$|BONUS/;
 for (const key of Object.keys(usd)) {
   if (typeof usd[key] !== 'number' || notMoney.test(key)) continue;
   assert.ok(MONEY_KEYS.includes(key), key + ' похоже на деньги, но не в MONEY_KEYS');

@@ -217,6 +217,12 @@ table.table{width:100%;border-collapse:collapse;font-size:15px}
 .seg button{min-height:36px;padding:4px 12px;border:2px solid var(--line);border-radius:999px;background:#fff;font:inherit;
   font-size:14px;font-weight:700;color:var(--mute);cursor:pointer}
 .seg button[aria-pressed="true"]{border-color:var(--ink);color:var(--ink);background:var(--paper-2)}
+.demand__row{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.demand__input{width:130px;flex:0 0 auto}
+.demand__modes{margin:0}
+.demand__total.is-error{color:var(--red-ink)}
+.market-line{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;
+  margin-top:10px;padding-top:10px;border-top:1px solid var(--line-2)}
 .owners{display:flex;gap:2px;height:16px;border-radius:8px;overflow:hidden;margin:6px 0;background:var(--surface)}
 .owners>span{display:block;height:100%}
 .owners--tall{height:24px;border-radius:6px}
