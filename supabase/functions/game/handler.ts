@@ -15,12 +15,13 @@
 //  нужен второй запрос, а значит нет гонки с фоновым опросом — как в v4.9.
 // ============================================================================
 
-import { type Deps, type Row, ApiError, fail, normEmail, isEmail } from './lib.ts';
+import { type Deps, type Row, ApiError, fail, normEmail, isEmail, nested } from './lib.ts';
 import * as P from './player.ts';
 import * as H from './host.ts';
 import * as B from './board.ts';
 import { openMonth, calculateMonth } from './round.ts';
 import * as J from './join.ts';
+import * as V from './votes.ts';
 
 export const VERSION = '5.0';
 
@@ -41,7 +42,8 @@ const PLAYER_ACTIONS: Record<string, PlayerAction> = {
   reopenBusiness: (d, g, pid, _b, a) => P.reopenBusiness(d.sql, g, pid, a),
   proposeEmployment: (d, g, pid, b) => P.proposeEmployment(d.sql, g, pid, b),
   respondToEmployment: (d, g, pid, b) => P.respondToEmployment(d.sql, g, pid, b),
-  paySalary: (d, g, pid, b, a) => P.paySalary(d.sql, g, pid, b, a)
+  paySalary: (d, g, pid, b, a) => P.paySalary(d.sql, g, pid, b, a),
+  castVote: (d, g, pid, b) => V.castVote(d.sql, g, pid, b)
 };
 
 const HOST_ACTIONS: Record<string, HostAction> = {
@@ -62,6 +64,10 @@ const HOST_ACTIONS: Record<string, HostAction> = {
   playAgain: (d, g, _b, a) => H.playAgain(d.sql, g, a, d.ensureAuthUser),
   approveJoins: (d, g, b, a) => J.approveJoins(d.sql, g, a, b, d.ensureAuthUser),
   teamLink: (d, g, b, a) => J.teamLink(d.sql, g, a, b),
+  startVote: (d, g, b, a) => V.startVote(d.sql, g, a, b),
+  closeVote: (d, g, b, a) => V.closeVote(d.sql, g, a, b),
+  cancelVote: (d, g, b, a) => V.cancelVote(d.sql, g, a, b),
+  decideVote: (d, g, b, a) => V.decideVote(d.sql, g, a, b),
   dropJoin: (d, g, b, a) => J.dropJoin(d.sql, g, a, b)
 };
 
@@ -291,6 +297,12 @@ async function route(deps: Deps, b: Row, token: string): Promise<Row> {
   }
   const gameId = String(game.id);
   const isGameHost = me.isAdmin || game.host_email === me.email;
+  // Голосование, у которого вышло время, закрывается при первом же запросе
+  // к игре. Сбой подсчёта не должен закрыть игру: ответ идёт как обычно, а
+  // подсчёт повторится при следующем запросе.
+  try { await V.closeDue(sql, gameId); } catch (e) { console.error('closeDue', e); }
+  const withVote = async (state: Row, playerId: string | null) =>
+    ({ ...state, vote: await V.voteState(sql, gameId, playerId) });
   // Команда в этой игре. Табло по коду приходит без id игры — ищем по ней.
   let player = mine;
   if (!player && action === 'board' && !b.gameId) {
@@ -299,17 +311,19 @@ async function route(deps: Deps, b: Row, token: string): Promise<Row> {
 
   if (action === 'board') {
     if (!player && !isGameHost) fail('not_in_game');
-    return await B.boardData(sql, game);
+    return await withVote(await B.boardData(sql, game), null);
   }
 
   if (action === 'gameReport') {
     if (!player && !isGameHost) fail('not_in_game');
-    return await B.gameReport(sql, game, player ? String(player.id) : null, isGameHost);
+    const report = await B.gameReport(sql, game, player ? String(player.id) : null, isGameHost);
+    // В отчёте — все голосования игры с итогами.
+    return report?.ok ? { ...report, votes: await V.voteHistory(sql, gameId) } : report;
   }
 
   if (HOST_ACTIONS[action]) {
     if (!isGameHost) fail('not_host');
-    if (action === 'monitor') return await H.monitor(sql, game);
+    if (action === 'monitor') return await withVote(await H.monitor(sql, game), null);
     // Ключ ссылки для входа не пишем в журнал повторов (mutations): в базе
     // только его хеш. Повтор просто выдаст новую ссылку вместо прежней.
     if (action === 'teamLink') return await J.teamLink(sql, game, me.email, b);
@@ -317,7 +331,7 @@ async function route(deps: Deps, b: Row, token: string): Promise<Row> {
       (tx) => HOST_ACTIONS[action]({ ...deps, sql: tx }, game, b, me.email));
     if (NO_STATE.has(action) || result.ok !== true) return result;
     const [fresh] = await sql`select * from games where id = ${gameId}`;
-    return { ...result, state: await H.monitor(sql, fresh) };
+    return { ...result, state: await withVote(await H.monitor(sql, fresh), null) };
   }
 
   if (PLAYER_ACTIONS[action]) {
@@ -334,7 +348,7 @@ async function route(deps: Deps, b: Row, token: string): Promise<Row> {
       if (!player) fail('not_in_game');
       playerId = String(player.id);
     }
-    if (action === 'dashboard') return await P.dashboard(sql, game, playerId, impersonating);
+    if (action === 'dashboard') return await withVote(await P.dashboard(sql, game, playerId, impersonating), playerId);
     if (game.status === 'finished' && !['setProfile', 'markNoticesRead'].includes(action)) fail('game_finished');
 
     const actor = impersonating ? me.email + ' (host)' : me.email;
@@ -342,7 +356,7 @@ async function route(deps: Deps, b: Row, token: string): Promise<Row> {
       (tx) => PLAYER_ACTIONS[action]({ ...deps, sql: tx }, game, playerId, b, actor));
     if (result.ok !== true) return result;
     const [fresh] = await sql`select * from games where id = ${gameId}`;
-    return { ...result, state: await P.dashboard(sql, fresh, playerId, impersonating) };
+    return { ...result, state: await withVote(await P.dashboard(sql, fresh, playerId, impersonating), playerId) };
   }
 
   fail('unknown_action');
@@ -391,16 +405,3 @@ async function once(deps: Deps, b: Row, gameId: string, email: string, action: s
   return result ?? (await stored()) ?? { ok: false, error: 'duplicate_request' };
 }
 
-/**
- * Транзакция для кода действий, который сам открывает транзакции
- * (sql.begin): внутри уже открытой они становятся точками сохранения.
- */
-function nested(tx: Deps['sql']): Deps['sql'] {
-  return new Proxy(tx, {
-    get(target, prop, receiver) {
-      // deno-lint-ignore no-explicit-any
-      if (prop === 'begin') return (...args: any[]) => target.savepoint(args[args.length - 1]);
-      return Reflect.get(target, prop, receiver);
-    }
-  });
-}

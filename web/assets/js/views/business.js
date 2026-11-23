@@ -10,6 +10,7 @@ import { h, $, replace, toast, confirmDialog, busy, field, moneyInput, card } fr
 import { usd, usdSigned, int, dec2, pct, pctRaw, parseMoney, dateTime } from '../fmt.js';
 import { act } from '../api.js';
 import { teamName, starsBadge } from './common.js';
+import { teamVotePart } from './vote.js';
 import { ONLINE, countryOptions, hasAreaList, areaOptions } from '../geo.js';
 
 const CHANNELS = ['seo', 'promo', 'maps', 'social', 'outdoor', 'affiliate'];
@@ -58,6 +59,9 @@ export function createBusiness(root, ctx) {
     for (const k of Object.keys(parts)) delete parts[k];
     const s = state;
     const blocks = [];
+    // Голосование — первым: на него отведены минуты.
+    parts.vote = teamVotePart((btn, voteId, choice) => run(btn, 'castVote', { voteId, choice }));
+    blocks.push(parts.vote.el);
     parts.notices = noticesPart(); blocks.push(parts.notices.el);
     parts.upcoming = upcomingPart(); blocks.push(parts.upcoming.el);
 

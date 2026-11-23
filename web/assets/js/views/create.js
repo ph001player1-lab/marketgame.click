@@ -291,7 +291,8 @@ export const demandMode = (v) => (v <= 1500 ? 'hard' : v >= 2500 ? 'easy' : 'nor
 
 /**
  * Спрос на ресторан — сколько гостей в месяц приходится на одну команду;
- * рынок = команды × спрос. Стрелки поля — по 500, число можно ввести
+ * рынок = команды × спрос. Выбирают его, когда команды собираются: на
+ * вкладке «Игра» до первого месяца, потом — в настройках экономики. Стрелки поля — по 500, число можно ввести
  * любое. Кнопки — сложно, нормально, легко. teams — сколько команд в игре;
  * null — ещё неизвестно (новая игра): тогда под полем — как считается рынок.
  */
@@ -381,9 +382,6 @@ export function gameForm(values = {}, { withLeague = true, lockPractice = false 
   const sponsorUrl = h('input', { class: 'input', type: 'url', maxlength: 500, value: values.sponsor?.url || '', oninput: mark,
     placeholder: 'https://' });
 
-  // Спрос на ресторан — при создании игры; потом — в настройках экономики.
-  const demand = withLeague ? demandField({ onInput: mark }) : null;
-
   let league = values.league || 'start';
   const leagueBox = withLeague ? h('fieldset', { class: 'field fieldset' },
     h('legend', { class: 'field__label' }, t('host.league')),
@@ -399,7 +397,6 @@ export function gameForm(values = {}, { withLeague = true, lockPractice = false 
     place.el,
     currency ? field(t('host.currency'), currency, t('host.currencyHint')) : null,
     leagueBox,
-    demand ? demand.el : null,
     h('label', { class: 'check' }, practice, h('span', {}, t('host.practiceLabel'),
       lockPractice ? h('span', { class: 'muted small', style: { display: 'block' } }, t('host.practiceLocked')) : null)),
     field(t('host.organizer'), organizer),
@@ -423,7 +420,6 @@ export function gameForm(values = {}, { withLeague = true, lockPractice = false 
         timezone: zone.value, scheduledAt, openBook: openBook.checked, language: gameLanguage.value,
         ...place.read(),
         ...(currency ? { currency: currency.value } : {}),
-        ...(demand ? { demandPerTeam: demand.read() } : {}),
         sponsorName: sponsorName.value.trim(), sponsorUrl: sponsorUrl.value.trim(),
         ...logo.change()
       };
@@ -441,11 +437,6 @@ export function renderCreate(page, onCreated) {
       e.preventDefault();
       const params = form.read();
       if (!params.title) { msg.textContent = t('errors.empty_title'); msg.classList.add('is-error'); return; }
-      if ('demandPerTeam' in params && !Number.isFinite(params.demandPerTeam)) {
-        msg.textContent = t('errors.bad_demand', { min: int(DEMAND_MIN), max: int(DEMAND_MAX) });
-        msg.classList.add('is-error');
-        return;
-      }
       busy(btn, async () => {
         const res = await act('createGame', params);
         if (res.ok) { toast(t('host.created', { code: res.code }), 'ok'); await onCreated(res.gameId); }

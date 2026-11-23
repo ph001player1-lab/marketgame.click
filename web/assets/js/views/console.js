@@ -12,6 +12,7 @@ import { OWNER_COLORS } from './scoreboard.js';
 import { gameForm, demandField, demandMode } from './create.js';
 import { debriefCard } from './ocean.js';
 import { qrSvg } from './qr.js';
+import { hostVotePart } from './vote.js';
 
 const SUBTABS = ['run', 'teams', 'city', 'settings'];
 const INSTITUTIONS = ['landlord', 'bank', 'insurer', 'utility'];
@@ -141,7 +142,53 @@ export function createConsole(root, ctx) {
     const debriefBox = h('div', {});
     // Рынок = команды × спрос — видно сразу, без захода в настройки.
     const marketBox = h('div', {});
-    const el = h('div', {}, card(null, codeBox, marketBox), joinRun.el, card(null, monthBox), debriefBox);
+    // До первого месяца спрос выбирают здесь же, пока собираются команды:
+    // рынок пересчитывается по мере того, как ведущий принимает команды.
+    const demandHost = h('div', {});
+    const demandStatus = h('div', { class: 'field__hint', role: 'status' });
+    const demandCard = card(t('host.demandTitle'), h('p', { class: 'muted small' }, t('host.demandLead')), demandHost, demandStatus);
+    let demandRun = null;
+    let saveTimer = 0;
+    let saving = false;
+    // Голосование: шаблон закона или свой вопрос, итог, подпись или вето.
+    const voting = hostVotePart(run);
+    const el = h('div', {}, card(null, codeBox, marketBox), joinRun.el, demandCard, card(null, monthBox),
+      card(t('vote.title'), voting.el), debriefBox);
+
+    // Сохраняем сразу, без кнопки: до старта игры спрос действует с первого месяца.
+    function scheduleSave() {
+      clearTimeout(saveTimer);
+      demandStatus.textContent = '';
+      saveTimer = setTimeout(async () => {
+        saveTimer = 0;
+        const v = demandRun.read();
+        if (!Number.isFinite(v)) return;
+        saving = true;
+        const res = await act('updateConfig', { ...base(), updates: { DEMAND_PER_TEAM: v } });
+        saving = false;
+        if (res.ok && res.applied?.DEMAND_PER_TEAM === v) {
+          demandStatus.textContent = t('host.demandSaved');
+          if (res.state) ctx.applyState(res.state);
+        } else {
+          demandStatus.textContent = errorText(res.ok ? 'bad_demand' : res);
+        }
+      }, 700);
+    }
+
+    function paintDemand(s) {
+      const g = s.game;
+      const d = Number(s.config?.DEMAND_PER_TEAM);
+      const before = g.roundNumber === 0 && g.status !== 'finished' && d > 0;
+      demandCard.hidden = !before;
+      if (!before) return false;
+      if (!demandRun) {
+        demandRun = demandField({ value: d, teams: marketTeams(s), onInput: scheduleSave });
+        replace(demandHost, demandRun.el);
+      }
+      demandRun.setTeams(marketTeams(s));
+      if (!saving && !saveTimer && document.activeElement !== demandRun.input) demandRun.set(d);
+      return true;
+    }
 
     function marketLine(s) {
       const d = Number(s.config?.DEMAND_PER_TEAM);
@@ -175,7 +222,9 @@ export function createConsole(root, ctx) {
     function update(s) {
       const g = s.game;
       replace(codeBox, codeBlock(g));
-      replace(marketBox, marketLine(s));
+      // До старта рынок — в карточке спроса, после — строкой под кодом.
+      replace(marketBox, paintDemand(s) ? null : marketLine(s));
+      voting.update(s);
       const active = s.players.filter((p) => p.status === 'active');
       const sent = active.filter((p) => p.submitted);
       const finished = g.status === 'finished';

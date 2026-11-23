@@ -310,3 +310,17 @@ export function starsNow(history: Array<{ round: number; quality: number }>, act
 export function teamLabel(p: Row): string {
   return String(p.restaurant_name || p.display_name || '');
 }
+
+/**
+ * Транзакция для кода действий, который сам открывает транзакции
+ * (sql.begin): внутри уже открытой они становятся точками сохранения.
+ */
+export function nested(tx: Sql): Sql {
+  return new Proxy(tx, {
+    get(target, prop, receiver) {
+      // deno-lint-ignore no-explicit-any
+      if (prop === 'begin') return (...args: any[]) => target.savepoint(args[args.length - 1]);
+      return Reflect.get(target, prop, receiver);
+    }
+  });
+}

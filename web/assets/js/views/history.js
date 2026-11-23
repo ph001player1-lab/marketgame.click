@@ -8,6 +8,7 @@ import { usd, usdc, int, dec2, pctRaw } from '../fmt.js';
 import { createScoreboard } from './scoreboard.js';
 import { plTable } from './business.js';
 import { downloadCsv, copyText, fileSlug, siteBase, simpleTable, teamName as named } from './common.js';
+import { voteHistoryCard } from './vote.js';
 
 const CHANNELS = ['seo', 'promo', 'maps', 'social', 'outdoor', 'affiliate'];
 
@@ -67,6 +68,10 @@ export function renderReport(page, data, opts = {}) {
     blocks.push(h('div', { class: 'btn-row' },
       h('button', { class: 'btn', type: 'button', onclick: () => gameCsv(data) }, t('history.csvAll'))));
   }
+
+  // ---- голосования
+  const votes = voteHistoryCard(data.votes);
+  if (votes) blocks.push(votes);
 
   // ---- табло
   const boardBox = h('div', {});

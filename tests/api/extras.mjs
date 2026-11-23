@@ -624,6 +624,110 @@ await step('спрос на ресторан: рынок = команды × с�
   assert.equal((await monitor(g0.gameId)).rules.demandPerTeam, null);
 });
 
+await step('голосование: шаблон закона, голоса, итог, подпись ведущего или вето, месяц продлевается', async () => {
+  const g = await call(HOST, 'createGame', { title: 'Vote town', league: 'start', region: 'north_america', country: 'US' });
+  ok(g);
+  const gid = g.gameId;
+  ok(await call(HOST, 'setRoster', { gameId: gid, emails: [ANN, BOB, CAT, DAN].join('\n') }));
+  for (const [e, name] of [[ANN, 'Ann'], [BOB, 'Bob'], [CAT, 'Cat'], [DAN, 'Dan']]) {
+    ok(await call(e, 'setProfile', { gameId: gid, displayName: name, restaurantName: name + ' Grill' }));
+  }
+  ok(await call(HOST, 'openRound', { gameId: gid }));
+  const deadline = async () => new Date((await sql`select deadline from rounds where game_id = ${gid} and status = 'open'`)[0].deadline).getTime();
+  const before = await deadline();
+
+  // Неверные вопросы и чужие руки.
+  err(await call(HOST, 'startVote', { gameId: gid, template: 'nope', seconds: 60 }), 'bad_vote');
+  err(await call(HOST, 'startVote', { gameId: gid, template: 'custom', question: '  ', seconds: 60 }), 'empty');
+  err(await call(HOST, 'startVote', { gameId: gid, template: 'profit_tax', value: 25, seconds: 7 }), 'bad_vote');
+  err(await call(HOST, 'startVote', { gameId: gid, template: 'profit_tax', value: 250, seconds: 60 }), 'vote_range');
+  err(await call(ANN, 'startVote', { gameId: gid, template: 'profit_tax', value: 25, seconds: 60 }), 'not_host');
+
+  // Налог на прибыль 25%: голосование идёт, месяц продлён на минуту.
+  const v1 = await call(HOST, 'startVote', { gameId: gid, template: 'profit_tax', value: 25, seconds: 60, rule: 'all' });
+  ok(v1);
+  assert.ok(Math.abs(await deadline() - before - 60_000) < 1500, 'the month is extended by the voting time');
+  err(await call(HOST, 'startVote', { gameId: gid, template: 'rent', value: 8000, seconds: 60 }), 'vote_open');
+  const vote = (e, choice, voteId = v1.voteId) => call(e, 'castVote', { gameId: gid, voteId, choice, requestId: crypto.randomUUID() });
+  ok(await vote(ANN, 'yes'));
+  ok(await vote(BOB, 'no'));
+  ok(await vote(BOB, 'yes'));                       // голос можно изменить
+  ok(await vote(CAT, 'yes'));
+  err(await vote(DAN, 'maybe'), 'bad_params');
+  // Пока голосование идёт — только сколько проголосовало и свой голос.
+  let d = await call(ANN, 'dashboard', { gameId: gid });
+  assert.deepEqual([d.vote.active.voted, d.vote.active.total, d.vote.active.mine, d.vote.active.template],
+    [3, 4, 'yes', 'profit_tax']);
+  assert.equal(JSON.stringify(d.vote.active).includes('"yes":'), false, 'no tally while the vote runs');
+  assert.equal((await call(DAN, 'dashboard', { gameId: gid })).vote.active.mine, null);
+  const board = await call(HOST, 'board', { gameId: gid });
+  assert.equal(board.vote.active.voted, 3);
+
+  // Ведущий завершает раньше: 3 «за» из 4 — больше половины всех команд.
+  ok(await call(HOST, 'closeVote', { gameId: gid, voteId: v1.voteId }));
+  err(await vote(DAN, 'no'), 'vote_closed');
+  let m = await monitor(gid);
+  assert.equal(m.vote.active, null);
+  assert.deepEqual(m.vote.last.result, { yes: 3, no: 0, abstain: 0, notVoted: 1, total: 4, passed: true });
+  assert.equal(m.vote.last.decision, 'pending');
+  assert.equal(m.config.PROFIT_TAX_RATE, 0.21, 'nothing applies before the host signs');
+  // Пока решение ждёт подписи — новое голосование не начать.
+  err(await call(HOST, 'startVote', { gameId: gid, template: 'rent', value: 8000, seconds: 60 }), 'vote_pending');
+  // Ведущий подписывает — закон со следующего месяца.
+  ok(await call(HOST, 'decideVote', { gameId: gid, voteId: v1.voteId, decision: 'sign' }));
+  err(await call(HOST, 'decideVote', { gameId: gid, voteId: v1.voteId, decision: 'veto' }), 'vote_decided');
+  m = await monitor(gid);
+  assert.equal(m.config.PROFIT_TAX_RATE, 0.25);
+  assert.equal(m.vote.last.decision, 'signed');
+  d = await call(BOB, 'dashboard', { gameId: gid });
+  assert.deepEqual(d.upcomingChanges.find((c) => c.key === 'PROFIT_TAX_RATE'), { key: 'PROFIT_TAX_RATE', from: 0.21, to: 0.25 });
+
+  // Разовый сбор, «больше половины проголосовавших»: принято — и вето.
+  const v2 = await call(HOST, 'startVote', { gameId: gid, template: 'city_fee', value: 500, seconds: 120, rule: 'voted' });
+  ok(v2);
+  ok(await vote(ANN, 'yes', v2.voteId));
+  ok(await vote(BOB, 'yes', v2.voteId));
+  ok(await vote(CAT, 'no', v2.voteId));
+  const cashBefore = (await sql`select sum(cash)::float as c from players where game_id = ${gid}`)[0].c;
+  // Время вышло — итог считается при первом же запросе к игре.
+  await sql`update votes set closes_at = now() - interval '1 second' where id = ${v2.voteId}`;
+  d = await call(DAN, 'dashboard', { gameId: gid });
+  assert.equal(d.vote.active, null);
+  assert.deepEqual(d.vote.last.result, { yes: 2, no: 1, abstain: 0, notVoted: 1, total: 4, passed: true });
+  ok(await call(HOST, 'decideVote', { gameId: gid, voteId: v2.voteId, decision: 'veto' }));
+  assert.equal((await sql`select sum(cash)::float as c from players where game_id = ${gid}`)[0].c, cashBefore, 'veto: no fee');
+
+  // Подписанный сбор исполняется сразу.
+  const v3 = await call(HOST, 'startVote', { gameId: gid, template: 'city_fee', value: 500, seconds: 60 });
+  ok(v3);
+  for (const e of [ANN, BOB, CAT]) ok(await vote(e, 'yes', v3.voteId));
+  ok(await call(HOST, 'closeVote', { gameId: gid, voteId: v3.voteId }));
+  ok(await call(HOST, 'decideVote', { gameId: gid, voteId: v3.voteId, decision: 'sign' }));
+  assert.equal((await sql`select sum(cash)::float as c from players where game_id = ${gid}`)[0].c, cashBefore - 2000);
+
+  // Не принято: «за» не больше половины всех команд; отмена — без итога.
+  const v4 = await call(HOST, 'startVote', { gameId: gid, template: 'custom', question: 'Build a park?', seconds: 60 });
+  ok(v4);
+  ok(await vote(ANN, 'yes', v4.voteId));
+  ok(await vote(BOB, 'yes', v4.voteId));
+  ok(await vote(CAT, 'abstain', v4.voteId));
+  ok(await call(HOST, 'closeVote', { gameId: gid, voteId: v4.voteId }));
+  m = await monitor(gid);
+  assert.deepEqual(m.vote.last.result, { yes: 2, no: 0, abstain: 1, notVoted: 1, total: 4, passed: false });
+  assert.equal(m.vote.last.decision, null);
+  const v5 = await call(HOST, 'startVote', { gameId: gid, template: 'rent', value: 8000, seconds: 60 });
+  ok(v5);
+  ok(await call(HOST, 'cancelVote', { gameId: gid, voteId: v5.voteId }));
+  err(await vote(ANN, 'yes', v5.voteId), 'vote_closed');
+
+  // В отчёте — все закончившиеся голосования.
+  const rep = await call(HOST, 'gameReport', { gameId: gid });
+  ok(rep);
+  assert.deepEqual(rep.votes.map((v) => [v.template, v.result.passed, v.decision]),
+    [['profit_tax', true, 'signed'], ['city_fee', true, 'vetoed'], ['city_fee', true, 'signed'], ['custom', false, null]]);
+  await moneyInvariants(sql, gid);
+});
+
 await step('конец последней игры — без входа и без данных игроков', async () => {
   const r = await call(null, 'lastFinished');
   ok(r);

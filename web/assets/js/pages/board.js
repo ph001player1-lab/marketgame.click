@@ -21,6 +21,7 @@ import { createScoreboard } from '../views/scoreboard.js';
 import { createCake } from '../views/cake.js';
 import { siteBase, sponsorBanner } from '../views/common.js';
 import { qrSvg } from '../views/qr.js';
+import { projectorVote } from '../views/vote.js';
 
 const root = document.getElementById('app');
 const params = new URLSearchParams(location.search);
@@ -99,12 +100,15 @@ async function start(gameCode) {
   const boardBox = h('div', {});
   // До начала игры — QR-код для заявок и сколько команд записалось.
   const signupBox = h('div', { class: 'signup', hidden: true });
+  // Голосование — крупно поверх экрана: вопрос и часы, потом итог.
+  const voteBox = h('div', { class: 'projector__vote', hidden: true, role: 'status' });
+  const paintVote = projectorVote(voteBox);
   const pageBtn = h('button', { class: 'btn btn--small no-print', type: 'button', onclick: () => showPage(page === 'cake' ? 'board' : 'cake') });
   const shell = h('div', { class: 'projector' },
     h('header', { class: 'projector__head' },
       h('div', { class: 'projector__title' }, titleEl, subEl),
       timerEl, joinEl),
-    errorEl, h('div', { class: 'projector__body' }, signupBox, cakeBox, boardBox),
+    errorEl, voteBox, h('div', { class: 'projector__body' }, signupBox, cakeBox, boardBox),
     h('footer', { class: 'projector__foot no-print' }, rotateBox, sponsorEl,
       h('div', { class: 'btn-row' }, pageBtn, fullBtn)));
   replace(root, shell);
@@ -159,6 +163,7 @@ async function start(gameCode) {
     if (g.serverNow) clockOffset = new Date(g.serverNow).getTime() - Date.now();
     deadline = g.deadline ? new Date(g.deadline).getTime() : null;
     lastData = data;
+    paintVote(data.vote);
     // Плашку перерисовываем, только если спонсор сменился: логотип не мигает.
     const sponsorSig = JSON.stringify(g.sponsor || null);
     if (sponsorSig !== sponsorEl.dataset.sig) {
