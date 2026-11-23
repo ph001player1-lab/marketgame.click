@@ -201,7 +201,8 @@ export async function propose(sql: Sql, game: Row, proposer: string, actor: stri
   const value = toConfig(kind, shown);
   const range = priceRange(game, kind);
   if (value < range.min - EPS || value > range.max + EPS) {
-    fail('price_range', { min: toShown(kind, range.min), max: toShown(kind, range.max) });
+    if (unitOf(kind) === 'pct') fail('rate_range', { fromPct: toShown(kind, range.min), toPct: toShown(kind, range.max) });
+    fail('price_range', { min: range.min, max: range.max });
   }
   const gameId = String(game.id);
   return await sql.begin(async (tx: Sql) => {
@@ -214,14 +215,17 @@ export async function propose(sql: Sql, game: Row, proposer: string, actor: stri
     const current = num(cfg[key]);
     if (Math.abs(value - current) < EPS) fail('same_price');
     const cap = capOf(cfg, kind);
-    if (cap !== null && value > cap + EPS) fail('over_cap', { cap: toShown(kind, cap) });
+    if (cap !== null && value > cap + EPS) {
+      if (unitOf(kind) === 'pct') fail('over_rate_cap', { capPct: toShown(kind, cap) });
+      fail('over_cap', { max: cap });
+    }
 
     const st = (await ownership(tx, gameId))[kind];
     const me = st?.owners.find((o) => o.id === proposer);
     if (!st || !me) fail('not_owner');
     const r = rights(st);
     if (r.mode === 'control' && r.controller!.id !== proposer) {
-      fail('not_controller', { controller: r.controller!.label, controllerPct: r.controller!.pct });
+      fail('not_controller', { controllerPct: r.controller!.pct });
     }
     if (r.mode === 'meeting' && !r.canDecide) fail('no_quorum');
 
