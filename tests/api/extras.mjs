@@ -728,6 +728,71 @@ await step('голосование: шаблон закона, голоса, и�
   await moneyInvariants(sql, gid);
 });
 
+await step('доли в капитале: оценка компании = прибыль × 12 ÷ ставка, Forbes, место; кредит на 3 года', async () => {
+  const g = await call(HOST, 'createGame', { title: 'Forbes town', league: 'start', region: 'north_america', country: 'US',
+    demandPerTeam: 2500 });
+  ok(g);
+  const gid = g.gameId;
+  const cfg = (await sql`select config from games where id = ${gid}`)[0].config;
+  assert.equal(cfg.LOAN_TERM_MONTHS, 36, 'loans are for 3 years by default');
+  ok(await call(HOST, 'setRoster', { gameId: gid, emails: [ANN, BOB, CAT, DAN].join('\n') }));
+  for (const [e, name] of [[ANN, 'Ann'], [BOB, 'Bob'], [CAT, 'Cat'], [DAN, 'Dan']]) {
+    ok(await call(e, 'setProfile', { gameId: gid, displayName: name, restaurantName: name + ' Bistro' }));
+  }
+  // До первого месяца — прогноз: аренда × рестораны × 12 ÷ ставка.
+  let m = await monitor(gid);
+  const land0 = m.institutions.find((i) => i.kind === 'landlord').valuation;
+  assert.equal(land0.months, 0);
+  assert.equal(land0.monthlyProfit, 7500 * 4);
+  assert.equal(land0.value, (7500 * 4 * 12) / 0.12);
+  // Город продаёт Ann 10% арендодателя по оценке.
+  ok(await call(HOST, 'sellStake', { gameId: gid, kind: 'landlord', playerId: m.players.find((p) => p.email === ANN).id,
+    pct: 10, price: 5000 }));
+  for (let i = 0; i < 2; i++) {
+    ok(await call(HOST, 'openRound', { gameId: gid }));
+    for (const e of [ANN, BOB, CAT, DAN]) {
+      ok(await call(e, 'submitDecision', { gameId: gid, price: 30, seoSpend: 0, promoSpend: 0, mapsSpend: 0,
+        socialSpend: 0, outdoorSpend: 0, affiliateSpend: 0, shiftsDelta: 0, qualityInvest: 0 }));
+    }
+    ok(await call(HOST, 'calculateRound', { gameId: gid }));
+  }
+  // Оценка записана: средняя прибыль за 2 месяца × 12 ÷ 12%.
+  const months = await sql`select round_number, profit::float as p, value::float as v from institution_months
+    where game_id = ${gid} and kind = 'landlord' order by round_number`;
+  const avg = (months[0].p + months[1].p) / 2;
+  assert.ok(Math.abs(months[1].v - (avg * 12) / 0.12) < 0.02, 'value = average profit × 12 ÷ rate');
+  const annId = m.players.find((p) => p.email === ANN).id;
+  const [r2] = await sql`select stake_value::float as s from results where player_id = ${annId} and round_number = 2`;
+  assert.ok(Math.abs(r2.s - months[1].v * 0.1) < 0.02, 'stake value at month end');
+  // Табло: капитал = деньги + доли; значки долей.
+  const board = await call(BOB, 'board', { gameId: gid });
+  const ann = board.players.find((p) => p.id === annId);
+  assert.equal(ann.stakesValue, Math.round(months[1].v * 0.1));
+  assert.equal(ann.capital, ann.money + ann.stakesValue);
+  assert.deepEqual(ann.holdings.map((x) => [x.kind, x.pct]), [['landlord', 10]]);
+  assert.ok(Math.abs(ann.series[1].capital - (ann.series[1].cash - 0 + r2.s)) < 2 || ann.series[1].capital > ann.series[1].cash,
+    'monthly capital includes stakes');
+  // Место — по капиталу с долями (v_standings), то же в отчёте.
+  const [st] = await sql`select capital::float as c, stakes_value::float as s from v_standings where player_id = ${annId}`;
+  assert.ok(Math.abs(st.s - months[1].v * 0.1) < 0.02);
+  assert.ok(Math.abs(st.c - (ann.money + st.s)) < 1);
+  const rep = await call(ANN, 'gameReport', { gameId: gid });
+  assert.ok(Math.abs(rep.team.standing.stakesValue - st.s) < 0.02);
+  // Кабинет: стоимость своей доли.
+  const d = await call(ANN, 'dashboard', { gameId: gid });
+  assert.ok(Math.abs(d.stakes[0].value - months[1].v * 0.1) < 0.02);
+  // Ставка по кредитам — часть оценки: выше ставка — дешевле компания (со следующего месяца).
+  ok(await call(HOST, 'updateConfig', { gameId: gid, updates: { LOAN_RATE_ANNUAL: 0.24 } }));
+  // Старые игры (оценок нет) — доли в капитал не входят.
+  await sql`update institution_months set value = null where game_id = ${gid}`;
+  const old = (await call(BOB, 'board', { gameId: gid })).players.find((p) => p.id === annId);
+  assert.equal(old.stakesValue, 0);
+  assert.equal((await monitor(gid)).institutions.find((i) => i.kind === 'landlord').valuation.legacy, true);
+  const [st0] = await sql`select stakes_value::float as s from v_standings where player_id = ${annId}`;
+  assert.equal(st0.s, 0);
+  await moneyInvariants(sql, gid);
+});
+
 await step('конец последней игры — без входа и без данных игроков', async () => {
   const r = await call(null, 'lastFinished');
   ok(r);

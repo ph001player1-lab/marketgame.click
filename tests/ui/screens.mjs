@@ -204,7 +204,9 @@ try {
   });
 
   await step('phone: send a decision', async () => {
-    const open = live.monitor.players.filter((x) => x.status === 'active' && x.email !== TEAMS[0].email);
+    // Работающий ресторан, которому хватает кассы на прошлое решение.
+    const open = live.monitor.players.filter((x) => x.status === 'active' && x.email !== TEAMS[0].email)
+      .sort((a, b) => b.money - a.money);
     assert.ok(open.length, 'an open restaurant to play');
     const p = await page(browser, 'phone', open[0].email);
     await p.goto(base + '#/g/' + live.gameId);
@@ -478,12 +480,43 @@ try {
     await p.getByRole('button', { name: 'City', exact: true }).click();
     await p.getByLabel('Company', { exact: true }).selectOption({ label: 'Landlord' });
     await p.getByLabel('Buyer', { exact: true }).selectOption({ label: 'Green Bowl' });
-    await p.getByLabel('Share, %', { exact: true }).fill('5');
-    await p.getByLabel('Price, $', { exact: true }).fill('1500');
+    // Оценка компании: прибыль × 12 ÷ ставка. Задали долю — цена по оценке.
+    const card = p.locator('.card', { hasText: 'Set the deal by' });
+    await card.getByText(/Valuation of the landlord: profit \$[\d,]+ a month \(average of 3 mo\) × 12 ÷ rate 12% = \$[\d,]+ for 100%/).waitFor();
+    const share = p.getByLabel('Share, %', { exact: true });
+    const price = p.getByLabel('Price, $', { exact: true });
+    await share.fill('5');
+    const byValue = Number(await price.inputValue());
+    assert.ok(byValue > 0, 'the price comes from the valuation');
+    await card.getByText('The price matches the valuation.').waitFor();
+    // Задали сумму — доля по оценке.
+    await card.getByRole('button', { name: 'amount', exact: true }).click();
+    await price.fill(String(Math.round(byValue / 5)));
+    assert.equal(Number(await share.inputValue()), 1, 'a fifth of the money buys a fifth of the share');
+    await shot(p, 'host-07a-stake-valuation');
+    // Своя цена: по доле, цену правим вручную — видно, во сколько раз от оценки.
+    await card.getByRole('button', { name: 'share, %', exact: true }).click();
+    await share.fill('5');
+    await price.fill('1500');
+    assert.equal(await share.inputValue(), '5');
+    await card.getByText(/The price is ×[\d.]+ the valuation\./).waitFor();
     await p.getByRole('button', { name: 'Record' }).click();
     await p.locator('dialog').getByRole('button', { name: 'Yes' }).click();
     await p.getByText('Stake recorded.').waitFor();
     await p.getByText('Green Bowl 5%').first().waitFor();
+    // Доли в капитале — как в Forbes: значок, «💼 stakes …», список Forbes, пояснение.
+    const pane = p.locator('.pane--board');
+    await pane.getByRole('button', { name: 'Teams', exact: true }).click();
+    const forbes = pane.locator('.forbes');
+    await forbes.getByRole('heading', { name: 'Forbes list' }).waitFor();
+    await forbes.locator('.forbes__row', { hasText: 'Green Bowl' }).getByText('🏠').waitFor();
+    await forbes.getByText(/Source: restaurant, 5% of the landlord/).first().waitFor();
+    const row = pane.locator('.table--standings tr', { hasText: 'Green Bowl' });
+    await row.locator('.holding', { hasText: '5%' }).waitFor();
+    await row.locator('.stakes-line summary').click();
+    await row.getByText(/🏠 Landlord 5% — \$[\d,]+/).waitFor();
+    await pane.getByText('Capital = money − debt + company stakes at their valuation.', { exact: false }).first().waitFor();
+    await shot(p, 'host-07b-forbes', true);
     await p.getByRole('button', { name: 'Settings', exact: true }).click();
     await p.getByLabel('Rent, $').fill('8000');
     await p.getByRole('button', { name: 'Save for next month' }).click();

@@ -73,6 +73,12 @@ function varsFor(rules, game) {
     brandDecay: pct(r.brandDecay), taxRate: pct(r.taxRate),
     l1: usd(r.loanLimits?.[0]), l2: usd(r.loanLimits?.[1]), l3: usd(r.loanLimits?.[2]),
     rate: pct(r.loanRate), monthly: pct(r.loanRate / 12, 2), term: r.loanTermMonths,
+    // Пример оценки доли: арендодатель с десятью ресторанами.
+    ...(() => {
+      const profit = r.rent * 10;
+      const value = (profit * 12) / Math.max(0.01, r.loanRate || 0);
+      return { exProfit: usd(profit), exYear: usd(profit * 12), exValue: usd(value), exTen: usd(value / 10) };
+    })(),
     civil: usd(r.civilSalary), reopen: usd(r.reopenThreshold),
     rent: usd(r.rent), insurance: usd(r.insurance), utilities: usd(r.utilities), payroll: usd(r.payroll),
     minMonths: Math.ceil(total * 0.75),

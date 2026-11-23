@@ -9,6 +9,7 @@ import { createScoreboard } from './scoreboard.js';
 import { plTable } from './business.js';
 import { downloadCsv, copyText, fileSlug, siteBase, simpleTable, teamName as named } from './common.js';
 import { voteHistoryCard } from './vote.js';
+import { capitalNote } from './wealth.js';
 
 const CHANNELS = ['seo', 'promo', 'maps', 'social', 'outdoor', 'affiliate'];
 
@@ -54,12 +55,15 @@ export function renderReport(page, data, opts = {}) {
       h('h2', { class: 'card__title' }, t('history.summary')),
       s ? h('div', { class: 'stats' },
         stat(t('history.place'), t('home.place', { place: s.place, rivals: s.rivals })),
-        stat(t('home.capital'), usd(s.capital)),
+        stat(t('home.capital'), usd(s.capital),
+          s.stakesValue > 0 ? t('history.stakesIncluded', { amount: usd(s.stakesValue) }) : null),
         stat(t('home.multiplier'), '×' + dec2(s.multiplier)),
         stat(t('home.share'), pctRaw(s.sharePct)))
         : h('p', { class: 'muted' }, t('history.noMonths')),
       team.stakes.length ? h('p', { class: 'small' }, t('history.stakesHeld') + ': ' +
         team.stakes.map((x) => t('institutions.' + x.kind) + ' ' + pctRaw(x.pct)).join(', ')) : null,
+      // Как считается капитал — по нему место.
+      s ? capitalNote(data.rules?.loanRate) : null,
       h('div', { class: 'btn-row' },
         h('button', { class: 'btn', type: 'button', onclick: () => teamCsv(data, teamName) }, t('history.csv')),
         opts.reportToken ? h('button', { class: 'btn btn--ghost', type: 'button',
@@ -160,8 +164,9 @@ export function noteText(l) {
   });
 }
 
-function stat(label, value) {
-  return h('div', { class: 'stat' }, h('div', { class: 'stat__label' }, label), h('div', { class: 'stat__value' }, value));
+function stat(label, value, note = null) {
+  return h('div', { class: 'stat' }, h('div', { class: 'stat__label' }, label), h('div', { class: 'stat__value' }, value),
+    note ? h('div', { class: 'stat__note muted small' }, note) : null);
 }
 
 // ----------------------------------------------------------------- CSV

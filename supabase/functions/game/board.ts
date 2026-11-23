@@ -16,6 +16,7 @@ import {
   type Sql, type Row, fail, num, cents, round2, currentRound, activeConfig, teamLabel, INSTITUTIONS,
   qualityStars, starsNow
 } from './lib.ts';
+import { valuations, holdingsByPlayer, type Valuation } from './valuation.ts';
 import { gameMeta, rulesFor, formatResult } from './player.ts';
 import { teamLocation } from './geo.ts';
 
@@ -58,14 +59,16 @@ export async function cityBudget(sql: Sql, gameId: string) {
 
 // ----------------------------------------------------------------- участники экономики
 
-export async function institutionsState(sql: Sql, gameId: string) {
-  const [insts, stakes, months]: Row[][] = await Promise.all([
+export async function institutionsState(sql: Sql, game: Row) {
+  const gameId = String(game.id);
+  const [insts, stakes, months, values]: [Row[], Row[], Row[], Record<string, Valuation>] = await Promise.all([
     sql`select * from institutions where game_id = ${gameId} order by kind`,
     sql`
       select s.kind, s.pct, p.id, p.restaurant_name, p.display_name
       from stakes s join players p on p.id = s.player_id
       where s.game_id = ${gameId} order by s.pct desc`,
-    sql`select * from institution_months where game_id = ${gameId} order by round_number`
+    sql`select * from institution_months where game_id = ${gameId} order by round_number`,
+    valuations(sql, game)
   ]);
 
   const order = (k: string) => (INSTITUTIONS as readonly string[]).indexOf(k);
@@ -88,6 +91,8 @@ export async function institutionsState(sql: Sql, gameId: string) {
         holders
       },
       lossCarryforward: num(inst.loss_cf),
+      // Оценка компании: прибыль в месяц × 12 ÷ ставка по кредитам.
+      valuation: values[kind],
       yearlyPayoutPerPct: cents(avgPayout * 12 / 100),
       months: mine.map((m) => ({
         round: num(m.round_number), income: num(m.income), writeOffs: num(m.write_offs),
@@ -237,11 +242,14 @@ export async function moneyMap(sql: Sql, gameId: string) {
 
 async function timeline(sql: Sql, game: Row) {
   const gameId = String(game.id);
-  const [players, results, wallets]: Row[][] = await Promise.all([
+  const [players, results, wallets, values]: [Row[], Row[], Row[], Record<string, Valuation>] = await Promise.all([
     sql`select * from players where game_id = ${gameId} order by created_at, id`,
     sql`select * from results where game_id = ${gameId} order by round_number`,
-    sql`select * from wallet_entries where game_id = ${gameId} order by round_number`
+    sql`select * from wallet_entries where game_id = ${gameId} order by round_number`,
+    valuations(sql, game)
   ]);
+  // Доли компаний — в капитале: доля × оценка компании (valuation.ts).
+  const owned = await holdingsByPlayer(sql, gameId, values);
 
   const byPlayer = new Map<string, Row>();
   for (const p of players) {
@@ -250,19 +258,24 @@ async function timeline(sql: Sql, game: Row) {
       status: String(p.status),
       location: teamLocation(game, p),
       // Капитал сейчас — по тому же правилу, что и v_standings: касса минус
-      // долг банку или накопления. Штраф или перевод между месяцами виден
-      // на табло сразу.
-      capital: Math.round(p.status === 'left' ? 0
+      // долг банку или накопления плюс доли компаний по оценке. Штраф или
+      // перевод между месяцами виден на табло сразу.
+      money: Math.round(p.status === 'left' ? 0
         : ['active', 'bankrupt'].includes(String(p.status)) ? num(p.cash) - num(p.loan_balance)
           : num(p.employment_savings)),
+      stakesValue: p.status === 'left' ? 0 : Math.round(owned.get(String(p.id))?.value ?? 0),
+      holdings: p.status === 'left' ? [] : (owned.get(String(p.id))?.holdings ?? [])
+        .map((x) => ({ kind: x.kind, pct: x.pct, value: Math.round(x.value) })),
+      capital: 0,
       series: [] as Row[]
     });
   }
+  for (const t of byPlayer.values()) t.capital = t.money + t.stakesValue;
   for (const r of results) {
     byPlayer.get(String(r.player_id))?.series.push({
       round: num(r.round_number), inBusiness: true,
       profit: Math.round(num(r.profit)), cash: Math.round(num(r.cash_after)),
-      capital: Math.round(num(r.cash_after) - num(r.loan_balance_after)),
+      capital: Math.round(num(r.cash_after) - num(r.loan_balance_after) + num(r.stake_value)),
       marketSharePct: round2(num(r.market_share) * 100), served: Math.round(num(r.served)),
       // Привлечено гостей (сколько пришло бы, хватай мест) и денежный поток месяца.
       demand: Math.round(num(r.demand)), cashFlow: Math.round(num(r.cash_flow)),
@@ -285,7 +298,7 @@ async function timeline(sql: Sql, game: Row) {
     byPlayer.get(String(w.player_id))?.series.push({
       round: num(w.round_number), inBusiness: false, offBusinessStatus: w.status,
       profit: broke ? null : Math.round(num(w.income)), cash: broke ? null : Math.round(num(w.savings)),
-      capital: broke ? null : Math.round(num(w.savings)),
+      capital: broke ? null : Math.round(num(w.savings) + num(w.stake_value)),
       marketSharePct: null, demandSharePct: null, served: null, price: null, brand: null, reputation: null,
       quality: null, capacity: null, marketingTotal: null, qualityInvest: null, tax: null, dividends: null
     });
@@ -319,7 +332,7 @@ async function timeline(sql: Sql, game: Row) {
 
 export async function boardData(sql: Sql, game: Row) {
   const [round, tl, institutions, city, money, ocean, signup] = await Promise.all([
-    currentRound(sql, game.id), timeline(sql, game), institutionsState(sql, game.id),
+    currentRound(sql, game.id), timeline(sql, game), institutionsState(sql, game),
     cityBudget(sql, game.id), moneyMap(sql, game.id), oceanByMonth(sql, game.id),
     // До начала игры проектор показывает QR-код и сколько команд уже записалось.
     game.status === 'setup'
@@ -352,6 +365,8 @@ async function standing(sql: Sql, gameId: string, playerId: string) {
   if (!s) return null;
   return {
     place: num(s.place), rivals: num(s.rivals), capital: cents(num(s.capital)),
+    // Из них — доли компаний по оценке (в старых играх — 0).
+    stakesValue: cents(num(s.stakes_value)),
     multiplier: round2(num(s.multiplier)), sharePct: round2(num(s.share) * 100),
     monthsPlayed: num(s.months_played), lastRound: num(s.last_round)
   };

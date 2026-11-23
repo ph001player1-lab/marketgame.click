@@ -246,7 +246,9 @@ export default {
     title: 'Your stakes',
     lead: 'You own part of these companies and get your share of their profit every month.',
     none: 'You own no stakes. The city can sell you part of the landlord, the bank, the insurance company or utilities — ask the host.',
-    lastMonth: 'last month: {amount}'
+    lastMonth: 'last month: {amount}',
+    value: 'worth {amount}',
+    inCapital: 'Your stakes count in your capital at their valuation: the company’s profit per month × 12 ÷ the loan rate ({rate}).'
   },
 
   institutions: {
@@ -587,7 +589,13 @@ export default {
     sell: 'City sells', buyback: 'City buys back', deal: 'Deal between teams',
     company: 'Company', buyer: 'Buyer', seller: 'Seller', holder: 'From team',
     pct: 'Share, %', price: 'Price, {cur}',
-    stakeHint: 'Over the last months each 1% paid about {perPct} a year. {left} month(s) left: {pct} would pay about {est} by the end.',
+    stakeByLabel: 'Set the deal by', stakeBy: { pct: 'share, %', money: 'amount' },
+    valuation: 'Valuation of {inst}: profit {profit} a month (average of {months} mo) × 12 ÷ rate {rate} = {value} for 100%, 1% = {one}.',
+    valuationForecast: 'Valuation of {inst}, forecast from the rules: profit {profit} a month × 12 ÷ rate {rate} = {value} for 100%, 1% = {one}.',
+    valuationLegacy: 'In this game stakes are valued from the next calculated month.',
+    valuationZero: 'The valuation of {inst} is 0: the company makes no profit yet.',
+    priceAtValue: 'The price matches the valuation.',
+    priceVsValue: 'The price is ×{x} the valuation.',
     cityOwns: 'The city owns {pct}.',
     stakeSubmit: 'Record',
     stakeDone: 'Stake recorded.',
@@ -666,6 +674,7 @@ export default {
     place: 'Place',
     noMonths: 'No months played yet.',
     stakesHeld: 'Stakes you hold',
+    stakesIncluded: 'incl. stakes {amount}',
     csv: 'Download CSV',
     csvAll: 'Download CSV (all teams)',
     shareLink: 'Copy report link for teammates',
@@ -903,7 +912,9 @@ export default {
         body: [
           'The rent, interest, insurance and utility bills that restaurants pay are income for four companies. Every month each company pays its profit to its owners in proportion to their shares — after covering its own past losses. The bank loses the loans that bankrupt teams never repaid.',
           'These companies belong to the city — all of each at the start of the game; the host can hand part of them to private owners. The city can sell part of its share to a team: from then on that team gets its cut of the profit every month as dividends. Buybacks and deals between teams also go through the host.',
-          '> Stakes don\'t count in your final capital — only money does. A stake is worth buying if its dividends pay it back before the game ends.',
+          '= Company value = profit per month × 12 ÷ {rate}',
+          '> Your stakes count in your capital: stake × company value. Profit is the average of the last 3 months; when the company earns more, your stake is worth more, and when the host changes the loan rate, the valuation changes too. That is how real businesses are valued: how much you would need to put in at the same rate to earn the same income.',
+          '- Example: a company earns {exProfit} a month → {exYear} a year ÷ {rate} = {exValue}; a 10% stake is worth {exTen}.',
           'When a team leaves the game, its stakes go back to the city.',
           'A classic play: take a loan, buy a stake in the insurance company, then lobby the city to raise insurance premiums.'
         ]
@@ -926,7 +937,7 @@ export default {
       scoring: {
         title: 'Winning and the rating',
         body: [
-          '- **Capital** is your money at the end minus what you still owe the bank: cash minus the loan balance, or savings if you are out of business.',
+          '- **Capital** is your money at the end minus what you still owe the bank (cash minus the loan balance, or savings if you are out of business) plus your company stakes at their valuation.',
           '- **Multiplier** = capital ÷ {startCapital}. **Place** is by capital.',
           '- The league rating adds up all rated games: score = 0.7 × average multiplier + 0.9 × average place score (1 for first place, 0 for last).',
           '- A game is rated when it\'s played to its last month and isn\'t a practice game. A team counts if it played at least three quarters of the months ({minMonths} of {total}).'
@@ -999,6 +1010,18 @@ export default {
     custom_employed: 'Hired', left: 'Left', setup: 'Not started', running: 'Running', finished: 'Finished'
   },
 
+  wealth: {
+    stakes: '💼 stakes {amount}',
+    forbes: 'Forbes list',
+    forbesLead: 'Team fortunes: money minus debt plus company stakes at their valuation.',
+    source: 'Source: {list}',
+    restaurant: 'restaurant',
+    savings: 'savings',
+    stakeOf: '{pct} of {inst}',
+    money: 'money',
+    stakesPart: 'company stakes',
+    note: 'Capital = money − debt + company stakes at their valuation. A company is valued at its profit per month × 12 ÷ the loan rate ({rate}). Place and the winner go by capital.'
+  },
   vote: {
     title: 'Vote',
     templates: {

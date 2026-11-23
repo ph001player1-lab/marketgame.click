@@ -244,7 +244,9 @@ export default {
     title: 'Tus participaciones',
     lead: 'Eres dueño de una parte de estas empresas y recibes tu parte de sus utilidades cada mes.',
     none: 'No tienes participaciones. La ciudad puede venderte parte del arrendador, del banco, de la aseguradora o de la empresa de servicios: pregúntale al facilitador.',
-    lastMonth: 'el mes pasado: {amount}'
+    lastMonth: 'el mes pasado: {amount}',
+    value: 'vale {amount}',
+    inCapital: 'Tus participaciones cuentan en tu capital según su valoración: utilidad mensual de la empresa × 12 ÷ la tasa de los préstamos ({rate}).'
   },
 
   institutions: {
@@ -585,7 +587,13 @@ export default {
     sell: 'La ciudad vende', buyback: 'La ciudad recompra', deal: 'Trato entre equipos',
     company: 'Empresa', buyer: 'Comprador', seller: 'Vendedor', holder: 'Del equipo',
     pct: 'Participación, %', price: 'Precio, {cur}',
-    stakeHint: 'En los últimos meses cada 1 % pagó unos {perPct} al año. Meses restantes: {left}; el {pct} pagaría unos {est} hasta el final.',
+    stakeByLabel: 'Fijar el trato por', stakeBy: { pct: 'participación, %', money: 'monto' },
+    valuation: 'Valoración {inst}: utilidad {profit} al mes (promedio de {months} meses) × 12 ÷ tasa {rate} = {value} por el 100 %, 1 % = {one}.',
+    valuationForecast: 'Valoración {inst}, pronóstico según las reglas: utilidad {profit} al mes × 12 ÷ tasa {rate} = {value} por el 100 %, 1 % = {one}.',
+    valuationLegacy: 'En este juego las participaciones se valoran desde el próximo mes calculado.',
+    valuationZero: 'La valoración {inst} es 0: la empresa aún no tiene utilidades.',
+    priceAtValue: 'El precio coincide con la valoración.',
+    priceVsValue: 'El precio es ×{x} la valoración.',
     cityOwns: 'La ciudad posee el {pct}.',
     stakeSubmit: 'Registrar',
     stakeDone: 'Participación registrada.',
@@ -664,6 +672,7 @@ export default {
     place: 'Lugar',
     noMonths: 'Aún no se ha jugado ningún mes.',
     stakesHeld: 'Tus participaciones',
+    stakesIncluded: 'incl. participaciones {amount}',
     csv: 'Descargar CSV',
     csvAll: 'Descargar CSV (todos los equipos)',
     shareLink: 'Copiar el enlace del informe para tu equipo',
@@ -901,7 +910,9 @@ export default {
         body: [
           'La renta, los intereses, el seguro y los servicios que pagan los restaurantes son ingresos de cuatro empresas. Cada mes cada empresa reparte sus utilidades entre sus dueños según su participación, después de cubrir sus propias pérdidas anteriores. El banco pierde los préstamos que los equipos en quiebra nunca pagaron.',
           'Estas empresas son de la ciudad: al empezar el juego, completas; el facilitador puede pasar una parte a dueños privados. La ciudad puede vender parte de lo suyo a un equipo: desde entonces ese equipo recibe cada mes su parte de las utilidades como dividendos. Las recompras y los tratos entre equipos también pasan por el facilitador.',
-          '> Las participaciones no cuentan en tu capital final: solo cuenta el dinero. Vale la pena comprar una participación si sus dividendos la pagan antes de que termine el juego.',
+          '= Valor de la empresa = utilidad mensual × 12 ÷ {rate}',
+          '> Tus participaciones cuentan en tu capital: participación × valor de la empresa. La utilidad es el promedio de los últimos 3 meses; si la empresa gana más, tu participación vale más, y si el facilitador cambia la tasa de los préstamos, cambia la valoración. Así se valora un negocio real: cuánto habría que depositar a la misma tasa para ganar lo mismo.',
+          '- Ejemplo: una empresa gana {exProfit} al mes → {exYear} al año ÷ {rate} = {exValue}; una participación del 10% vale {exTen}.',
           'Cuando un equipo sale del juego, sus participaciones regresan a la ciudad.',
           'Una jugada clásica: pedir un préstamo, comprar una participación de la aseguradora y luego convencer a la ciudad de subir las primas de seguro.'
         ]
@@ -924,7 +935,7 @@ export default {
       scoring: {
         title: 'Ganar y el ranking',
         body: [
-          '- El **capital** es tu dinero al final menos lo que todavía le debes al banco: la caja menos el saldo del préstamo, o los ahorros si estás fuera del negocio.',
+          '- El **capital** es tu dinero al final menos lo que todavía le debes al banco (la caja menos el saldo del préstamo, o los ahorros si estás fuera del negocio) más tus participaciones en empresas según su valoración.',
           '- **Multiplicador** = capital ÷ {startCapital}. El **lugar** se define por capital.',
           '- El ranking de la liga suma todos los juegos que cuentan: puntaje = 0.7 × multiplicador promedio + 0.9 × puntaje promedio por lugar (1 para el primer lugar, 0 para el último).',
           '- Un juego cuenta si se juega hasta su último mes y no es de práctica. Un equipo cuenta si jugó al menos tres cuartas partes de los meses ({minMonths} de {total}).'
@@ -995,6 +1006,18 @@ export default {
     custom_employed: 'Empleado', left: 'Salió', setup: 'Sin empezar', running: 'En curso', finished: 'Terminado'
   },
 
+  wealth: {
+    stakes: '💼 participaciones {amount}',
+    forbes: 'Lista Forbes',
+    forbesLead: 'Fortuna de los equipos: dinero menos deuda más participaciones en empresas según su valoración.',
+    source: 'Fuente: {list}',
+    restaurant: 'restaurante',
+    savings: 'ahorros',
+    stakeOf: '{pct} {inst}',
+    money: 'dinero',
+    stakesPart: 'participaciones',
+    note: 'Capital = dinero − deuda + participaciones en empresas según su valoración. Una empresa vale su utilidad mensual × 12 ÷ la tasa de los préstamos ({rate}). El puesto y el ganador se deciden por el capital.'
+  },
   vote: {
     title: 'Votación',
     templates: {

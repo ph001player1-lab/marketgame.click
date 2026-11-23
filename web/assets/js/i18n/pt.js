@@ -244,7 +244,9 @@ export default {
     title: 'Suas cotas',
     lead: 'Você é dono de uma parte destas empresas e recebe todo mês sua parte do lucro delas.',
     none: 'Você não tem cotas. A cidade pode vender a você parte do locador, do banco, da seguradora ou da concessionária — fale com o facilitador.',
-    lastMonth: 'no mês passado: {amount}'
+    lastMonth: 'no mês passado: {amount}',
+    value: 'vale {amount}',
+    inCapital: 'Suas cotas contam no seu capital pela avaliação: lucro mensal da empresa × 12 ÷ a taxa dos empréstimos ({rate}).'
   },
 
   institutions: {
@@ -585,7 +587,13 @@ export default {
     sell: 'A cidade vende', buyback: 'A cidade recompra', deal: 'Acordo entre equipes',
     company: 'Empresa', buyer: 'Comprador', seller: 'Vendedor', holder: 'Da equipe',
     pct: 'Participação, %', price: 'Preço, {cur}',
-    stakeHint: 'Nos últimos meses cada 1% pagou cerca de {perPct} por ano. Meses restantes: {left} — {pct} pagaria cerca de {est} até o fim.',
+    stakeByLabel: 'Definir o acordo por', stakeBy: { pct: 'cota, %', money: 'valor' },
+    valuation: 'Avaliação {inst}: lucro {profit} por mês (média de {months} meses) × 12 ÷ taxa {rate} = {value} por 100%, 1% = {one}.',
+    valuationForecast: 'Avaliação {inst}, previsão pelas regras: lucro {profit} por mês × 12 ÷ taxa {rate} = {value} por 100%, 1% = {one}.',
+    valuationLegacy: 'Neste jogo as cotas são avaliadas a partir do próximo mês calculado.',
+    valuationZero: 'A avaliação {inst} é 0: a empresa ainda não tem lucro.',
+    priceAtValue: 'O preço coincide com a avaliação.',
+    priceVsValue: 'O preço é ×{x} a avaliação.',
     cityOwns: 'A cidade tem {pct}.',
     stakeSubmit: 'Registrar',
     stakeDone: 'Cota registrada.',
@@ -664,6 +672,7 @@ export default {
     place: 'Colocação',
     noMonths: 'Nenhum mês jogado ainda.',
     stakesHeld: 'Suas cotas',
+    stakesIncluded: 'incl. cotas {amount}',
     csv: 'Baixar CSV',
     csvAll: 'Baixar CSV (todas as equipes)',
     shareLink: 'Copiar o link do relatório para a equipe',
@@ -901,7 +910,9 @@ export default {
         body: [
           'O aluguel, os juros, o seguro e as contas que os restaurantes pagam são receita de quatro empresas. Todo mês cada empresa distribui o lucro aos donos na proporção das cotas — depois de cobrir os próprios prejuízos anteriores. O banco perde os empréstimos que as equipes falidas nunca pagaram.',
           'Essas empresas pertencem à cidade — inteiras no início do jogo; o facilitador pode passar parte delas a donos privados. A cidade pode vender parte das suas cotas a uma equipe: a partir daí, essa equipe recebe todo mês sua parte do lucro como dividendos. Recompras e acordos entre equipes também passam pelo facilitador.',
-          '> Cotas não contam no capital final — só o dinheiro conta. Vale comprar uma cota se os dividendos a pagarem antes do fim do jogo.',
+          '= Valor da empresa = lucro mensal × 12 ÷ {rate}',
+          '> Suas cotas contam no seu capital: cota × valor da empresa. O lucro é a média dos últimos 3 meses; se a empresa lucra mais, sua cota vale mais, e se o facilitador muda a taxa dos empréstimos, a avaliação muda. É assim que se avalia um negócio real: quanto seria preciso aplicar à mesma taxa para ganhar o mesmo.',
+          '- Exemplo: uma empresa lucra {exProfit} por mês → {exYear} por ano ÷ {rate} = {exValue}; uma cota de 10% vale {exTen}.',
           'Quando uma equipe sai do jogo, as cotas dela voltam para a cidade.',
           'Uma jogada clássica: pegar um empréstimo, comprar cotas da seguradora e depois convencer a cidade a aumentar os prêmios de seguro.'
         ]
@@ -924,7 +935,7 @@ export default {
       scoring: {
         title: 'Vitória e ranking',
         body: [
-          '- **Capital** é o seu dinheiro no fim menos o que você ainda deve ao banco: o caixa menos o saldo do empréstimo, ou as economias se você estiver fora do negócio.',
+          '- **Capital** é o seu dinheiro no fim menos o que você ainda deve ao banco (o caixa menos o saldo do empréstimo, ou as economias se você estiver fora do negócio) mais suas cotas de empresas pela avaliação.',
           '- **Multiplicador** = capital ÷ {startCapital}. A **colocação** é por capital.',
           '- O ranking da liga soma todos os jogos válidos: pontuação = 0,7 × multiplicador médio + 0,9 × nota média de colocação (1 para o primeiro lugar, 0 para o último).',
           '- Um jogo vale quando é jogado até o último mês e não é de treino. Uma equipe conta se jogou pelo menos três quartos dos meses ({minMonths} de {total}).'
@@ -995,6 +1006,18 @@ export default {
     custom_employed: 'Contratado', left: 'Saiu', setup: 'Não iniciado', running: 'Em andamento', finished: 'Encerrado'
   },
 
+  wealth: {
+    stakes: '💼 cotas {amount}',
+    forbes: 'Lista Forbes',
+    forbesLead: 'Fortuna das equipes: dinheiro menos dívida mais cotas de empresas pela avaliação.',
+    source: 'Fonte: {list}',
+    restaurant: 'restaurante',
+    savings: 'economias',
+    stakeOf: '{pct} {inst}',
+    money: 'dinheiro',
+    stakesPart: 'cotas de empresas',
+    note: 'Capital = dinheiro − dívida + cotas de empresas pela avaliação. Uma empresa vale seu lucro mensal × 12 ÷ a taxa dos empréstimos ({rate}). A posição e o vencedor são definidos pelo capital.'
+  },
   vote: {
     title: 'Votação',
     templates: {

@@ -488,9 +488,14 @@ export function createBusiness(root, ctx) {
         if (!s.stakes.length) { replace(body, h('p', { class: 'muted small' }, t('stakes.none'))); return; }
         replace(body, h('p', { class: 'muted small' }, t('stakes.lead')),
           h('table', { class: 'table' }, h('tbody', {}, s.stakes.map((st) => h('tr', {},
-            h('td', {}, t('institutions.' + st.kind)),
+            // Под названием — что доля принесла в прошлом месяце: таблица
+            // не шире телефона.
+            h('td', {}, t('institutions.' + st.kind),
+              h('div', { class: 'muted small' }, t('stakes.lastMonth', { amount: usd(st.lastMonthIncome) }))),
             h('td', { class: 'r' }, dec2(st.pct) + '%'),
-            h('td', { class: 'r muted' }, t('stakes.lastMonth', { amount: usd(st.lastMonthIncome) })))))));
+            // Стоимость доли по оценке компании — она входит в ваш капитал.
+            h('td', { class: 'r' }, t('stakes.value', { amount: usd(st.value || 0) })))))),
+          h('p', { class: 'muted small' }, t('stakes.inCapital', { rate: pct(s.rules?.loanRate || 0) })));
       }
     };
   }

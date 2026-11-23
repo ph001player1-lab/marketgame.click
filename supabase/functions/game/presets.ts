@@ -61,7 +61,9 @@ export const US_V5: Config = {
   BRAND_DECAY: 0.25, BRAND_GAIN: 0.25,
   QUALITY_DECAY: 0.05, QUALITY_UPKEEP: 1500, QUALITY_INVEST_DIVISOR: 40000,
   LOAN_TIER1_LIMIT: 30000, LOAN_TIER2_LIMIT: 80000, LOAN_TIER3_LIMIT: 200000,
-  LOAN_RATE_ANNUAL: 0.12, LOAN_TERM_MONTHS: 6,
+  // Кредит — на 3 года, как обычный кредит малому бизнесу: ежемесячный
+  // возврат тела меньше, и кредит не душит ресторан в первые месяцы.
+  LOAN_RATE_ANNUAL: 0.12, LOAN_TERM_MONTHS: 36,
   ROUND_DURATION_MIN: 5,
   PROFIT_TAX_RATE: 0.21,
   MARKET_QUALITY_GAIN: 0.15

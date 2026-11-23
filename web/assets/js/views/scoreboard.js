@@ -17,6 +17,7 @@ import {
 import { ratingTable } from './rating.js';
 import { waterChip, oceanCard } from './ocean.js';
 import { createCake } from './cake.js';
+import { forbesCard, holdingBadges, stakesLine, capitalNote } from './wealth.js';
 
 // Что можно показать на графике команд. zero: false — ось не от нуля (цена).
 const METRICS = [
@@ -184,6 +185,11 @@ export function createScoreboard(root, opts = {}) {
         fresh.map(([name, n]) => h('span', { class: 'stars-news__item' }, name, starsBadge(n)))));
     }
 
+    // Список Forbes: состояние команд — деньги и доли компаний.
+    if (months.length || list.some((x) => x.stakesValue > 0)) {
+      const forbes = forbesCard(list, { big, rate: data.rules?.loanRate, colorOf: (x) => swatch(x.color) });
+      if (forbes) body.append(forbes);
+    }
     body.append(standings(list, lastMonth));
 
     if (!months.length) {
@@ -285,16 +291,18 @@ export function createScoreboard(root, opts = {}) {
           h('td', {},
             h('div', { class: 'team-cell' }, swatch(r.tm.color),
               h('span', { class: 'team-cell__name' }, r.tm.restaurant),
-              starsBadge(r.tm.stars),
+              starsBadge(r.tm.stars), holdingBadges(r.tm.holdings),
               r.tm.mine ? h('span', { class: 'badge badge--ink' }, t('common.you')) : null,
               locationBadge(r.tm.location), statusBadge(r.tm.status)),
             r.tm.displayName ? h('div', { class: 'team-cell__who' }, r.tm.displayName) : null),
-          h('td', { class: 'r' }, cell(r.capital, usd)),
+          h('td', { class: 'r' }, cell(r.capital, usd), stakesLine(r.tm)),
           h('td', { class: ['r', (r.last?.profit ?? 0) < 0 ? 'neg' : null] }, cell(r.last?.profit, usd)),
           h('td', { class: 'r opt2' }, shareCell(r.last)),
           h('td', { class: 'r opt' }, cell(r.last?.price, usdc)),
           h('td', { class: 'r opt' }, cell(r.last?.brand, dec2)),
-          h('td', { class: 'r opt' }, cell(r.last?.quality, dec2))))))));
+          h('td', { class: 'r opt' }, cell(r.last?.quality, dec2))))))),
+      // Как считается капитал — по нему место и победитель.
+      h('div', { class: 'card__foot' }, capitalNote(data.rules?.loanRate)));
   }
 
   // ----------------------------------------------------------------- экономика

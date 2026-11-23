@@ -331,7 +331,7 @@ export async function monitor(sql: Sql, game: Row) {
       where game_id = ${game.id} and not autoplay
         and round_number = (select coalesce(max(round_number), 0) from rounds where game_id = ${game.id})`,
     cityBudget(sql, game.id),
-    institutionsState(sql, game.id),
+    institutionsState(sql, game),
     oceanByMonth(sql, game.id),
     sql`select player_id, round_number, quality from results where game_id = ${game.id} order by round_number`,
     pendingJoins(sql, game.id)

@@ -10,6 +10,7 @@ import {
   INSTITUTIONS, directImageUrl, starsNow, syncMarket, type RoundRow
 } from './lib.ts';
 import { ONLINE, playerLocation, teamLocation } from './geo.ts';
+import { valuations } from './valuation.ts';
 
 // ----------------------------------------------------------------- общее
 
@@ -127,7 +128,10 @@ function publicPlayer(game: Row, p: Row) {
 }
 
 /** Доли команды и сколько они принесли в последний рассчитанный месяц. */
-async function myStakes(sql: Sql, gameId: string, playerId: string) {
+async function myStakes(sql: Sql, game: Row, playerId: string) {
+  const gameId = String(game.id);
+  // Стоимость доли по оценке компании — она входит в капитал (valuation.ts).
+  const values = await valuations(sql, game);
   const rows: Row[] = await sql`
     select s.kind, s.pct,
            (select payout from institution_months m
@@ -137,7 +141,8 @@ async function myStakes(sql: Sql, gameId: string, playerId: string) {
     order by s.kind`;
   return rows.map((s) => ({
     kind: String(s.kind), pct: num(s.pct),
-    lastMonthIncome: cents(num(s.last_payout) * num(s.pct) / 100)
+    lastMonthIncome: cents(num(s.last_payout) * num(s.pct) / 100),
+    value: cents((num(s.pct) / 100) * (values[String(s.kind)]?.value ?? 0))
   }));
 }
 
@@ -158,7 +163,7 @@ export async function dashboard(sql: Sql, game: Row, playerId: string, impersona
     sql`
       select * from players where game_id = ${gameId} and id <> ${playerId} and status <> 'left'
       order by created_at, id`,
-    myStakes(sql, gameId, playerId),
+    myStakes(sql, game, playerId),
     // Решение открытого месяца: номер месяца — из той же таблицы rounds.
     sql`
       select d.* from decisions d

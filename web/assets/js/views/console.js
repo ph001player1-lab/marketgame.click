@@ -485,9 +485,28 @@ export function createConsole(root, ctx) {
     const kindSel = h('select', { class: 'input' }, INSTITUTIONS.map((k) => h('option', { value: k }, t('institutions.' + k))));
     const buyer = teamSelect(t('host.buyer'));
     const seller = teamSelect(t('host.seller'));
-    const stakePct = h('input', { class: 'input', type: 'number', min: 0.5, max: 100, step: 0.5, inputmode: 'decimal', placeholder: '%' });
+    const stakePct = h('input', { class: 'input', type: 'number', min: 0.01, max: 100, step: 0.5, inputmode: 'decimal', placeholder: '%' });
     const stakePrice = moneyInput({ placeholder: currencySign() });
     const hint = h('p', { class: 'muted small' });
+    // Сделку задают долей (цена — по оценке) или суммой (доля — по оценке);
+    // второе поле можно поправить вручную.
+    let by = 'pct';
+    const byButtons = ['pct', 'money'].map((id) => h('button', { type: 'button', 'aria-pressed': id === by ? 'true' : 'false',
+      onclick: () => { by = id; byButtons.forEach((b, i) => b.setAttribute('aria-pressed', ['pct', 'money'][i] === by ? 'true' : 'false')); paintHint(); } },
+      t('host.stakeBy.' + id)));
+    /** Оценка выбранной компании: стоимость 100%. */
+    const valuation = () => m?.institutions.find((i) => i.kind === kindSel.value)?.valuation || null;
+    stakePct.addEventListener('input', () => {
+      const v = valuation();
+      const p = Number(String(stakePct.value).replace(',', '.'));
+      if (by === 'pct' && v && v.value > 0 && p > 0) stakePrice.value = String(Math.round((v.value * p) / 100));
+    });
+    stakePrice.addEventListener('input', () => {
+      const v = valuation();
+      const price = parseMoney(stakePrice.value);
+      if (by === 'money' && v && v.value > 0 && price > 0) stakePct.value = String(Math.round((price / v.value) * 10000) / 100);
+      paintHint();
+    });
     const holdersBox = h('div', {});
     const opButtons = ['sell', 'buyback', 'deal'].map((id) => h('button', { type: 'button', 'aria-pressed': 'false',
       onclick: () => { op = id; paintOp(); } }, t('host.' + id)));
@@ -502,19 +521,33 @@ export function createConsole(root, ctx) {
       if (!m) return;
       const inst = m.institutions.find((i) => i.kind === kindSel.value);
       if (!inst) return;
-      const left = Math.max(0, m.game.totalRounds - m.game.roundNumber);
-      const p = Number(stakePct.value) || 0;
-      const perMonth = (inst.yearlyPayoutPerPct / 12) * p;
-      replace(hint, t('host.stakeHint', {
-        perPct: usd(inst.yearlyPayoutPerPct), left,
-        pct: p ? pctRaw(p) : '1%', est: usd((p ? perMonth : inst.yearlyPayoutPerPct / 12) * left)
-      }), ' ', t('host.cityOwns', { pct: pctRaw(inst.ownership.cityPct) }));
+      // Оценка компании (капитализация дохода) — и во сколько раз цена от неё отличается.
+      const v = inst.valuation;
+      const name = t('institutionsOf.' + inst.kind);
+      const p = Number(String(stakePct.value).replace(',', '.')) || 0;
+      const price = parseMoney(stakePrice.value);
+      const parts = [];
+      if (!v || v.legacy) parts.push(t('host.valuationLegacy'));
+      else if (!(v.value > 0)) parts.push(t('host.valuationZero', { inst: name }));
+      else {
+        parts.push(t(v.months ? 'host.valuation' : 'host.valuationForecast', {
+          inst: name, profit: usd(v.monthlyProfit), months: v.months, rate: pct(v.rate),
+          value: usd(v.value), one: usd(v.value / 100)
+        }));
+        if (p > 0 && price > 0) {
+          const x = price / ((v.value * p) / 100);
+          parts.push(Math.abs(x - 1) < 0.01 ? t('host.priceAtValue') : t('host.priceVsValue', { x: dec2(x) }));
+        }
+      }
+      parts.push(t('host.cityOwns', { pct: pctRaw(inst.ownership.cityPct) }));
+      replace(hint, parts.join(' '));
       replace(holdersBox, inst.ownership.holders.length
         ? h('p', { class: 'small' }, h('b', {}, t('board.holders') + ': '),
             inst.ownership.holders.map((x) => named(x.restaurant) + ' ' + pctRaw(x.pct)).join(', '))
         : h('p', { class: 'small muted' }, t('board.noHolders')));
     }
-    kindSel.addEventListener('change', paintHint);
+    // Другая компания — другая оценка: пересчитываем то, что считается само.
+    kindSel.addEventListener('change', () => (by === 'pct' ? stakePct : stakePrice).dispatchEvent(new Event('input')));
     stakePct.addEventListener('input', paintHint);
     const stakeBtn = h('button', { class: 'btn btn--primary', type: 'button', onclick: async () => {
       const pctV = Number(String(stakePct.value).replace(',', '.'));
@@ -547,6 +580,8 @@ export function createConsole(root, ctx) {
       h('div', { class: 'seg', role: 'group' }, opButtons),
       field(t('host.company'), kindSel), holdersBox,
       h('div', { class: 'grid-2' }, seller.el, buyer.el),
+      h('div', { class: 'field' }, h('div', { class: 'field__label' }, t('host.stakeByLabel')),
+        h('div', { class: 'seg', role: 'group', 'aria-label': t('host.stakeByLabel') }, byButtons)),
       h('div', { class: 'grid-2' }, field(t('host.pct'), stakePct), field(t('host.price'), stakePrice)),
       hint, h('div', { class: 'btn-row' }, stakeBtn));
 

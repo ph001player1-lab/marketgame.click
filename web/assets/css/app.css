@@ -596,3 +596,32 @@ select.input.input--inline,.input.input--inline{width:auto;max-width:100%;min-he
 .vote-result--big .vote-bar{height:30px;border-radius:12px}
 .vote-result--big .vote-result__line{font-size:28px;margin:14px 0 8px}
 .vote-result--big .vote-result__verdict{font-size:34px}
+
+/* ---- состояние команд: доли, значки, Forbes */
+.holdings{display:inline-flex;flex-wrap:wrap;gap:4px;margin-left:4px}
+.holding{display:inline-flex;align-items:center;gap:2px;padding:0 6px;border:1px solid var(--line);border-radius:999px;
+  font-size:12px;font-weight:700;color:var(--ink-2);background:var(--surface);white-space:nowrap}
+.stakes-line{font-size:12px;color:var(--ink-2);text-align:right}
+.stakes-line summary{cursor:pointer;list-style:none;white-space:nowrap}
+.stakes-line summary::-webkit-details-marker{display:none}
+.stakes-line ul{list-style:none;margin:4px 0 0;padding:0;text-align:left;white-space:nowrap}
+.card__foot{padding:0 16px 12px}
+.capital-note{margin:8px 0 0}
+.stat__note{margin-top:2px}
+.forbes__list{list-style:none;margin:6px 0 8px;padding:0}
+.forbes__row{display:grid;grid-template-columns:28px 1fr auto;grid-template-areas:"place who sum" "place bar bar";
+  gap:2px 10px;align-items:baseline;padding:8px 0;border-top:1px solid var(--line-2)}
+.forbes__row.is-mine .forbes__name{text-decoration:underline;text-underline-offset:3px}
+.forbes__place{grid-area:place;font-family:var(--disp);font-weight:800;color:var(--mute)}
+.forbes__who{grid-area:who;min-width:0}
+.forbes__name{display:flex;flex-wrap:wrap;align-items:center;gap:4px;font-weight:700}
+.forbes__src{display:block;font-size:12px}
+.forbes__sum{grid-area:sum;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
+.forbes__bar{grid-area:bar;display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--line-2)}
+.forbes__bar>span{display:block;height:100%}
+.forbes__money{background:var(--green)}
+.forbes__stakes{background:var(--navy)}
+.card--big .forbes__row{padding:10px 0}
+.card--big .forbes__name{font-size:20px}
+.card--big .forbes__sum{font-size:20px}
+.card--big .forbes__src{font-size:15px}
