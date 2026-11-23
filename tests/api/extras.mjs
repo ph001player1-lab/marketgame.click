@@ -640,14 +640,14 @@ await step('голосование: шаблон закона, голоса, и�
   err(await call(HOST, 'startVote', { gameId: gid, template: 'nope', seconds: 60 }), 'bad_vote');
   err(await call(HOST, 'startVote', { gameId: gid, template: 'custom', question: '  ', seconds: 60 }), 'empty');
   err(await call(HOST, 'startVote', { gameId: gid, template: 'profit_tax', value: 25, seconds: 7 }), 'bad_vote');
-  err(await call(HOST, 'startVote', { gameId: gid, template: 'profit_tax', value: 250, seconds: 60 }), 'vote_range');
+  err(await call(HOST, 'startVote', { gameId: gid, template: 'profit_tax', value: 250, seconds: 60 }), 'vote_range_pct');
   err(await call(ANN, 'startVote', { gameId: gid, template: 'profit_tax', value: 25, seconds: 60 }), 'not_host');
 
   // Налог на прибыль 25%: голосование идёт, месяц продлён на минуту.
   const v1 = await call(HOST, 'startVote', { gameId: gid, template: 'profit_tax', value: 25, seconds: 60, rule: 'all' });
   ok(v1);
   assert.ok(Math.abs(await deadline() - before - 60_000) < 1500, 'the month is extended by the voting time');
-  err(await call(HOST, 'startVote', { gameId: gid, template: 'rent', value: 8000, seconds: 60 }), 'vote_open');
+  err(await call(HOST, 'startVote', { gameId: gid, template: 'civil_salary', value: 4000, seconds: 60 }), 'vote_open');
   const vote = (e, choice, voteId = v1.voteId) => call(e, 'castVote', { gameId: gid, voteId, choice, requestId: crypto.randomUUID() });
   ok(await vote(ANN, 'yes'));
   ok(await vote(BOB, 'no'));
@@ -672,7 +672,7 @@ await step('голосование: шаблон закона, голоса, и�
   assert.equal(m.vote.last.decision, 'pending');
   assert.equal(m.config.PROFIT_TAX_RATE, 0.21, 'nothing applies before the host signs');
   // Пока решение ждёт подписи — новое голосование не начать.
-  err(await call(HOST, 'startVote', { gameId: gid, template: 'rent', value: 8000, seconds: 60 }), 'vote_pending');
+  err(await call(HOST, 'startVote', { gameId: gid, template: 'civil_salary', value: 4000, seconds: 60 }), 'vote_pending');
   // Ведущий подписывает — закон со следующего месяца.
   ok(await call(HOST, 'decideVote', { gameId: gid, voteId: v1.voteId, decision: 'sign' }));
   err(await call(HOST, 'decideVote', { gameId: gid, voteId: v1.voteId, decision: 'veto' }), 'vote_decided');
@@ -715,7 +715,7 @@ await step('голосование: шаблон закона, голоса, и�
   m = await monitor(gid);
   assert.deepEqual(m.vote.last.result, { yes: 2, no: 0, abstain: 1, notVoted: 1, total: 4, passed: false });
   assert.equal(m.vote.last.decision, null);
-  const v5 = await call(HOST, 'startVote', { gameId: gid, template: 'rent', value: 8000, seconds: 60 });
+  const v5 = await call(HOST, 'startVote', { gameId: gid, template: 'civil_salary', value: 4000, seconds: 60 });
   ok(v5);
   ok(await call(HOST, 'cancelVote', { gameId: gid, voteId: v5.voteId }));
   err(await vote(ANN, 'yes', v5.voteId), 'vote_closed');
@@ -790,6 +790,183 @@ await step('доли в капитале: оценка компании = при
   assert.equal((await monitor(gid)).institutions.find((i) => i.kind === 'landlord').valuation.legacy, true);
   const [st0] = await sql`select stakes_value::float as s from v_standings where player_id = ${annId}`;
   assert.equal(st0.s, 0);
+  await moneyInvariants(sql, gid);
+});
+
+await step('решения акционеров: контроль, вето, собрание по долям; «Потолок цены»; инициативы; новости', async () => {
+  const g = await call(HOST, 'createGame', { title: 'Shareholders', league: 'start', region: 'north_america', country: 'US',
+    demandPerTeam: 2500 });
+  ok(g);
+  const gid = g.gameId;
+  ok(await call(HOST, 'setRoster', { gameId: gid, emails: [ANN, BOB, CAT, DAN].join('\n') }));
+  for (const [e, name] of [[ANN, 'Ann'], [BOB, 'Bob'], [CAT, 'Cat'], [DAN, 'Dan']]) {
+    ok(await call(e, 'setProfile', { gameId: gid, displayName: name, restaurantName: name + ' Diner' }));
+  }
+  let m = await monitor(gid);
+  const id = (e) => m.players.find((p) => p.email === e).id;
+  const cfg = async () => (await sql`select config from games where id = ${gid}`)[0].config;
+  const req = () => ({ requestId: crypto.randomUUID() });
+  const land = (st) => st.companies.find((c) => c.kind === 'landlord');
+
+  // Город владеет всем: ведущий меняет аренду прямо в настройках.
+  let up = await call(HOST, 'updateConfig', { gameId: gid, updates: { RENT: 8000 } });
+  ok(up);
+  assert.deepEqual(up.applied, { RENT: 8000 });
+  assert.equal(land(m).hostMayEdit, true);
+
+  // Ann — 60% арендодателя: контрольный пакет; у города 40% — блокирующий.
+  ok(await call(HOST, 'sellStake', { gameId: gid, kind: 'landlord', playerId: id(ANN), pct: 60, price: 0 }));
+  up = await call(HOST, 'updateConfig', { gameId: gid, updates: { RENT: 9000 } });
+  assert.deepEqual(up.rejected.RENT, { code: 'shareholders', kind: 'landlord' });
+  assert.equal((await cfg()).RENT, 8000);
+  let d = await dash(ANN, gid);
+  assert.deepEqual([land(d).myRole, land(d).mode, land(d).canPropose], ['control', 'control', true]);
+  err(await call(BOB, 'proposePrice', { gameId: gid, kind: 'landlord', value: 9000 }), 'not_owner');
+  err(await call(ANN, 'proposePrice', { gameId: gid, kind: 'landlord', value: 8000 }), 'same_price');
+  err(await call(ANN, 'proposePrice', { gameId: gid, kind: 'landlord', value: -5 }), 'price_range');
+  let r = await call(ANN, 'proposePrice', { gameId: gid, kind: 'landlord', value: 9000, ...req() });
+  ok(r);
+  assert.equal(r.status, 'open', 'the city has 40%: 3 minutes to veto');
+  err(await call(ANN, 'proposePrice', { gameId: gid, kind: 'landlord', value: 9100 }), 'company_busy');
+  err(await call(DAN, 'companyVote', { gameId: gid, decisionId: r.decisionId, choice: 'no' }), 'not_owner');
+  m = await monitor(gid);
+  assert.equal(land(m).canVote, true, 'the host votes the city share');
+  assert.equal(land(m).open.mode, 'control');
+  // Город — вето: цена не меняется.
+  ok(await call(HOST, 'cityCompanyVote', { gameId: gid, decisionId: r.decisionId, choice: 'no', ...req() }));
+  assert.equal((await cfg()).RENT, 8000);
+  m = await monitor(gid);
+  assert.equal(land(m).open, null);
+  assert.equal(land(m).last.status, 'vetoed');
+  // Город не возражает — принято сразу, со следующего месяца.
+  r = await call(ANN, 'proposePrice', { gameId: gid, kind: 'landlord', value: 9500, ...req() });
+  ok(r);
+  ok(await call(HOST, 'cityCompanyVote', { gameId: gid, decisionId: r.decisionId, choice: 'yes', ...req() }));
+  assert.equal((await cfg()).RENT, 9500);
+  // Никто не наложил вето за 3 минуты — принято.
+  r = await call(ANN, 'proposePrice', { gameId: gid, kind: 'landlord', value: 9600, ...req() });
+  ok(r);
+  await sql`update company_decisions set closes_at = now() - interval '1 second' where id = ${r.decisionId}`;
+  d = await dash(BOB, gid);
+  assert.equal(land(d).open, null);
+  assert.equal(land(d).last.status, 'passed');
+  assert.equal((await cfg()).RENT, 9600);
+
+  // Блокирующего пакета ни у кого нет — цена контролёра принята сразу.
+  ok(await call(HOST, 'sellStake', { gameId: gid, kind: 'landlord', playerId: id(BOB), pct: 15, price: 0 }));
+  r = await call(ANN, 'proposePrice', { gameId: gid, kind: 'landlord', value: 7000, ...req() });
+  ok(r);
+  assert.equal(r.status, 'passed');
+  assert.equal((await cfg()).RENT, 7000);
+
+  // Банк: Bob 40%, Cat 35%, город 25% — контроля нет, собрание по долям.
+  ok(await call(HOST, 'sellStake', { gameId: gid, kind: 'bank', playerId: id(BOB), pct: 40, price: 0 }));
+  ok(await call(HOST, 'sellStake', { gameId: gid, kind: 'bank', playerId: id(CAT), pct: 35, price: 100 }));
+  err(await call(DAN, 'proposePrice', { gameId: gid, kind: 'bank', value: 15 }), 'not_owner');
+  err(await call(BOB, 'proposePrice', { gameId: gid, kind: 'bank', value: 500 }), 'rate_range');
+  r = await call(BOB, 'proposePrice', { gameId: gid, kind: 'bank', value: 15, ...req() });
+  ok(r);
+  d = await dash(CAT, gid);
+  const bank = (st) => st.companies.find((c) => c.kind === 'bank');
+  assert.deepEqual([bank(d).mode, bank(d).myRole, bank(d).canVote], ['meeting', 'block', true]);
+  assert.equal(bank(d).open.result.yesPct, 40);
+  // Cat (35%) против — вето.
+  ok(await call(CAT, 'companyVote', { gameId: gid, decisionId: r.decisionId, choice: 'no', ...req() }));
+  assert.equal(bank(await dash(BOB, gid)).last.status, 'vetoed');
+  assert.equal((await cfg()).LOAN_RATE_ANNUAL, 0.12);
+  // Город «за» (65%), Cat ещё может запретить — ждём; Cat «за» — принято.
+  r = await call(BOB, 'proposePrice', { gameId: gid, kind: 'bank', value: 15, ...req() });
+  ok(r);
+  ok(await call(HOST, 'cityCompanyVote', { gameId: gid, decisionId: r.decisionId, choice: 'yes', ...req() }));
+  assert.equal(bank(await monitor(gid)).open.result.yesPct, 65);
+  ok(await call(CAT, 'companyVote', { gameId: gid, decisionId: r.decisionId, choice: 'yes', ...req() }));
+  assert.equal((await cfg()).LOAN_RATE_ANNUAL, 0.15);
+  err(await call(BOB, 'proposePrice', { gameId: gid, kind: 'bank', value: 15 }), 'same_price');
+  // Время вышло, «за» только 40% — не принято.
+  r = await call(BOB, 'proposePrice', { gameId: gid, kind: 'bank', value: 16, ...req() });
+  ok(r);
+  await sql`update company_decisions set closes_at = now() - interval '1 second' where id = ${r.decisionId}`;
+  assert.equal(bank(await monitor(gid)).last.status, 'rejected');
+  assert.equal((await cfg()).LOAN_RATE_ANNUAL, 0.15);
+
+  // Закон «Потолок цены»: аренда не выше 6 500 — цена снижается до потолка.
+  const vote = (e, voteId) => call(e, 'castVote', { gameId: gid, voteId, choice: 'yes', ...req() });
+  err(await call(HOST, 'startVote', { gameId: gid, template: 'rent', value: 8000, seconds: 60 }), 'bad_vote');
+  err(await call(HOST, 'startVote', { gameId: gid, template: 'cap_off', target: 'landlord', seconds: 60 }), 'no_cap');
+  err(await call(HOST, 'startVote', { gameId: gid, template: 'price_cap', target: 'casino', value: 1, seconds: 60 }), 'bad_vote');
+  err(await call(HOST, 'startVote', { gameId: gid, template: 'price_cap', target: 'bank', value: 300, seconds: 60 }), 'vote_range_pct');
+  let v = await call(HOST, 'startVote', { gameId: gid, template: 'price_cap', target: 'landlord', value: 6500, seconds: 60 });
+  ok(v);
+  for (const e of [ANN, BOB, CAT]) ok(await vote(e, v.voteId));
+  ok(await call(HOST, 'closeVote', { gameId: gid, voteId: v.voteId }));
+  ok(await call(HOST, 'decideVote', { gameId: gid, voteId: v.voteId, decision: 'sign' }));
+  let c = await cfg();
+  assert.deepEqual([c.RENT_CAP, c.RENT], [6500, 6500]);
+  m = await monitor(gid);
+  assert.equal(land(m).cap, 6500);
+  assert.deepEqual(m.vote.last.applied, { kind: 'landlord', cap: 6500, lowered: { from: 7000, to: 6500 } });
+  err(await call(ANN, 'proposePrice', { gameId: gid, kind: 'landlord', value: 7000 }), 'over_cap');
+  ok(await call(ANN, 'proposePrice', { gameId: gid, kind: 'landlord', value: 6000, ...req() }));
+  // Снять потолок.
+  v = await call(HOST, 'startVote', { gameId: gid, template: 'cap_off', target: 'landlord', seconds: 60 });
+  ok(v);
+  for (const e of [ANN, BOB, CAT]) ok(await vote(e, v.voteId));
+  ok(await call(HOST, 'closeVote', { gameId: gid, voteId: v.voteId }));
+  ok(await call(HOST, 'decideVote', { gameId: gid, voteId: v.voteId, decision: 'sign' }));
+  c = await cfg();
+  assert.equal(c.RENT_CAP, undefined);
+  assert.equal(c.RENT, 6000);
+
+  // Инициативы: команда предлагает, ведущий выносит на голосование или отклоняет.
+  err(await call(CAT, 'proposeInitiative', { gameId: gid, template: 'profit_tax', value: 500 }), 'vote_range_pct');
+  r = await call(CAT, 'proposeInitiative', { gameId: gid, template: 'price_cap', target: 'bank', value: 14, ...req() });
+  ok(r);
+  err(await call(CAT, 'proposeInitiative', { gameId: gid, template: 'custom', question: 'Park?' }), 'initiative_pending');
+  ok(await call(DAN, 'proposeInitiative', { gameId: gid, template: 'custom', question: 'Build a park?', ...req() }));
+  const bobIni = await call(BOB, 'proposeInitiative', { gameId: gid, template: 'grant_off', value: 300, ...req() });
+  ok(bobIni);
+  ok(await call(BOB, 'withdrawInitiative', { gameId: gid, initiativeId: bobIni.initiativeId, ...req() }));
+  assert.equal((await dash(BOB, gid)).myInitiative.status, 'withdrawn');
+  m = await monitor(gid);
+  assert.deepEqual(m.initiatives.map((x) => [x.team, x.template]), [['Cat Diner', 'price_cap'], ['Dan Diner', 'custom']]);
+  ok(await call(HOST, 'rejectInitiative', { gameId: gid, initiativeId: m.initiatives[1].id, ...req() }));
+  assert.equal((await dash(DAN, gid)).myInitiative.status, 'rejected');
+  v = await call(HOST, 'startVote', { gameId: gid, initiativeId: r.initiativeId, seconds: 60 });
+  ok(v);
+  err(await call(HOST, 'startVote', { gameId: gid, initiativeId: r.initiativeId, seconds: 60 }), 'vote_open');
+  err(await call(HOST, 'rejectInitiative', { gameId: gid, initiativeId: r.initiativeId }), 'initiative_closed');
+  d = await dash(CAT, gid);
+  assert.equal(d.myInitiative.status, 'voted');
+  assert.deepEqual([d.vote.active.template, d.vote.active.target, d.vote.active.value, d.vote.active.proposer],
+    ['price_cap', 'bank', 14, 'Cat Diner']);
+  for (const e of [ANN, BOB, CAT]) ok(await vote(e, v.voteId));
+  ok(await call(HOST, 'closeVote', { gameId: gid, voteId: v.voteId }));
+  ok(await call(HOST, 'decideVote', { gameId: gid, voteId: v.voteId, decision: 'sign' }));
+  c = await cfg();
+  assert.deepEqual([c.LOAN_RATE_CAP, c.LOAN_RATE_ANNUAL], [0.14, 0.14]);
+  err(await call(BOB, 'proposePrice', { gameId: gid, kind: 'bank', value: 15 }), 'over_rate_cap');
+
+  // Ведущий снимает решение; новости и отчёт.
+  r = await call(BOB, 'proposePrice', { gameId: gid, kind: 'bank', value: 13, ...req() });
+  ok(r);
+  ok(await call(HOST, 'cancelCompanyDecision', { gameId: gid, decisionId: r.decisionId, ...req() }));
+  err(await call(CAT, 'companyVote', { gameId: gid, decisionId: r.decisionId, choice: 'yes' }), 'decision_closed');
+  const board = await call(DAN, 'board', { gameId: gid });
+  ok(board);
+  const types = new Set(board.news.map((x) => x.type));
+  assert.ok(types.has('law') && types.has('company') && types.has('stake'), [...types].join());
+  assert.equal(board.companies.length, 4);
+  const stake = board.news.find((x) => x.type === 'stake' && x.kind === 'bank' && x.buyer === 'Cat Diner');
+  assert.deepEqual([stake.pct, stake.seller, stake.price], [35, null, 100]);
+  const rep = await call(HOST, 'gameReport', { gameId: gid });
+  ok(rep);
+  assert.deepEqual(rep.companyDecisions.map((x) => x.status).sort(),
+    ['passed', 'passed', 'passed', 'passed', 'passed', 'rejected', 'vetoed', 'vetoed']);
+  // «Сыграть ещё раз» — без потолков цен.
+  const again = await call(HOST, 'playAgain', { gameId: gid });
+  ok(again);
+  const [ng] = await sql`select config from games where id = ${again.gameId}`;
+  assert.equal(ng.config.LOAN_RATE_CAP, undefined);
   await moneyInvariants(sql, gid);
 });
 

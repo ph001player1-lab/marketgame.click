@@ -60,6 +60,10 @@ export default {
   },
 
   tabs: {
+    bank: 'Banco',
+    invest: 'Investir',
+    city: 'Cidade',
+    news: 'Notícias',
     business: 'Negócio', console: 'Painel', board: 'Placar', guide: 'Guia'
   },
 
@@ -114,6 +118,8 @@ export default {
   },
 
   profile: {
+    first: 'Primeiro preencha o perfil da equipe na aba Negócio.',
+    goFill: 'Preencher o perfil',
     title: 'Boas-vindas ao jogo',
     lead: 'Conte às outras equipes quem vocês são. Elas veem seu nome e seu restaurante, nunca seu e-mail.',
     name: 'Seu nome',
@@ -222,6 +228,8 @@ export default {
   },
 
   bank: {
+    closedBankrupt: 'O restaurante fechou por falência: empréstimos e transferências indisponíveis.',
+    onlyRestaurant: 'Só um restaurante aberto pode pegar empréstimo. As transferências estão abaixo.',
     title: 'Banco',
     balance: 'Saldo devedor', rate: 'Taxa', nextPayment: 'Próxima parcela (amortização + juros)',
     termLeft: 'Parcelas restantes', available: 'Disponível para empréstimo', limit: 'Limite de crédito',
@@ -638,6 +646,8 @@ export default {
     configSave: 'Salvar para o próximo mês',
     configSaved: 'Salvo. Vale a partir do próximo mês.',
     configWhy: {
+      shareholders: 'este preço é definido pelos donos da empresa (Cidade → Decisões das empresas)',
+      over_cap: 'acima do teto legal de preço',
       not_editable: 'não pode ser alterado',
       not_number: 'não é um número',
       not_whole: 'precisa ser um número inteiro',
@@ -914,14 +924,21 @@ export default {
           '> Suas cotas contam no seu capital: cota × valor da empresa. O lucro é a média dos últimos 3 meses; se a empresa lucra mais, sua cota vale mais, e se o facilitador muda a taxa dos empréstimos, a avaliação muda. É assim que se avalia um negócio real: quanto seria preciso aplicar à mesma taxa para ganhar o mesmo.',
           '- Exemplo: uma empresa lucra {exProfit} por mês → {exYear} por ano ÷ {rate} = {exValue}; uma cota de 10% vale {exTen}.',
           'Quando uma equipe sai do jogo, as cotas dela voltam para a cidade.',
-          'Uma jogada clássica: pegar um empréstimo, comprar cotas da seguradora e depois convencer a cidade a aumentar os prêmios de seguro.'
+          '**Quem define o preço de uma empresa.** Aluguel, seguro, contas de consumo e juros dos empréstimos são definidos pelos donos da empresa, não pela cidade:',
+          '- **Mais de 50%** — controle: o dono define o novo preço.',
+          '- **Mais de 30%** — bloqueio: 3 minutos para vetar.',
+          '- Sem controle, decide a **assembleia de acionistas** em 3 minutos: os votos pesam pela participação; aprovado se o «sim» passar de 50% de todas as participações; o «não» de um dono com mais de 30% é veto.',
+          'A participação da cidade é votada pelo facilitador; donos privados não votam. O novo preço vale a partir do mês seguinte e não pode passar do teto de preço, se os cidadãos aprovaram essa lei. Tudo isso fica na aba Investir.',
+          'Uma jogada clássica: pegar um empréstimo, comprar mais de 50% da seguradora e aumentar o seguro — todos os restaurantes pagam, o lucro é seu. Os cidadãos podem responder com a lei do teto de preço.'
         ]
       },
       city: {
         title: 'A cidade e o facilitador',
         body: [
           'O facilitador joga como a cidade. A cidade arrecada o imposto sobre o lucro, multas, taxas municipais, sua parte do lucro das empresas e o dinheiro da venda de cotas. Ela paga subsídios, salários do emprego público e recompras de cotas. O orçamento dela está no placar.',
-          'Fazer lobby funciona: convença o facilitador a mudar as regras — aluguel, seguro, contas, folha, impostos, taxa de juros. As mudanças valem a partir do mês seguinte e são anunciadas antes.'
+          '**Votação dos cidadãos.** O facilitador põe uma pergunta em votação: o imposto sobre o lucro, o salário de servidor, uma taxa ou um auxílio único, a lei do teto de preço para uma empresa — ou uma pergunta própria. Todas as equipes votam; o facilitador assina o que foi aprovado ou veta. As leis valem a partir do mês seguinte.',
+          '**Iniciativa.** Uma equipe pode propor uma pergunta na aba Cidade — o facilitador a põe em votação ou a rejeita.',
+          'Fazer lobby funciona: convença o facilitador a mudar outras regras também — folha, impostos, capital inicial. Os preços das empresas são definidos pelos donos.'
         ]
       },
       board: {
@@ -1018,9 +1035,142 @@ export default {
     stakesPart: 'cotas de empresas',
     note: 'Capital = dinheiro − dívida + cotas de empresas pela avaliação. Uma empresa vale seu lucro mensal × 12 ÷ a taxa dos empréstimos ({rate}). A posição e o vencedor são definidos pelo capital.'
   },
+  strip: {
+    vote: 'Votação em andamento',
+    company: 'Seu voto é esperado',
+    voteText: 'Votação: {q}',
+    companyText: 'Decisão de acionistas: {company}',
+  },
+
+  laws: {
+    title: 'Leis em vigor',
+    tax: 'Imposto sobre o lucro — {value}',
+    civil: 'Salário de servidor — {value} por mês',
+    cap: 'Teto de preço: {what} no máximo {value}',
+    noCaps: 'Sem tetos de preço: os preços das empresas são definidos pelos donos.',
+  },
+
+  companies: {
+    title: 'Empresas',
+    hostTitle: 'Decisões das empresas',
+    lead: 'O preço de uma empresa é decidido pelos donos. Mais de 50% é controle: o dono define o preço. Mais de 30% é bloqueio: 3 minutos para vetar. Sem controle, decide a assembleia de acionistas, com votos pelo tamanho da participação.',
+    hostLead: 'Os preços das empresas são decididos pelos donos; você vota a participação da cidade. Enquanto a cidade tiver mais de 50% e nenhuma equipe mais de 30%, você também pode mudar o preço nas Configurações.',
+    perMonth: '{value} por mês',
+    perYear: '{value} ao ano',
+    what: {
+      landlord: 'o aluguel',
+      bank: 'os juros dos empréstimos',
+      insurer: 'o seguro',
+      utility: 'as contas de consumo',
+    },
+    priceLabel: {
+      landlord: 'Aluguel',
+      bank: 'Juros dos empréstimos',
+      insurer: 'Seguro',
+      utility: 'Contas de consumo',
+    },
+    city: 'Cidade',
+    private: 'donos privados',
+    passive: 'não votam',
+    roles: {
+      control: 'controle',
+      block: 'veto',
+      vote: 'voto',
+    },
+    whoControl: '{who} define o preço — controle ({pct}).',
+    whoControlCity: 'A cidade define o preço — controle ({pct}).',
+    vetoBy: 'Pode vetar: {list}.',
+    noVeto: 'Ninguém tem bloqueio — o preço é aceito na hora.',
+    meeting: 'Sem controle, decide a assembleia de acionistas: aprovado se o «sim» passar de 50% de todas as participações. O «não» de um dono com mais de 30% é veto.',
+    noQuorum: 'Os donos que votam somam 50% ou menos — o preço não pode mudar. Donos privados não votam.',
+    hostMayEdit: 'A cidade é a principal dona e nenhuma equipe tem bloqueio: você também pode mudar o preço nas Configurações.',
+    cityPct: 'cidade {pct}',
+    myPct: 'seus {pct}',
+    cap: 'teto legal — {value}',
+    newPrice: 'Novo preço',
+    newRate: 'Nova taxa, %',
+    propose: 'Propor',
+    proposeControl: 'Donos com mais de 30% poderão vetar em 3 minutos.',
+    proposeInstant: 'Ninguém pode vetar — o preço é aceito na hora e vale a partir do próximo mês.',
+    proposeMeeting: 'A assembleia dura 3 minutos; seu «sim» já conta.',
+    proposedToast: 'Proposta enviada',
+    acceptedToast: 'Aceito — a partir do próximo mês',
+    votedToast: 'Voto registrado',
+    openControl: 'Novo preço do dono',
+    openMeeting: 'Assembleia de acionistas',
+    proposed: '{who} propõe: {what} {value} (agora {old})',
+    tally: '«Sim» — {yes}, «não» — {no}; é preciso mais de 50%',
+    vetoWait: 'Pode vetar: {list}. Ainda sem veto.',
+    veto: 'Vetar',
+    noObjection: 'Sem objeção',
+    yes: 'Sim',
+    no: 'Não',
+    vetoHint: 'Você tem mais de 30%: seu «não» é veto.',
+    myVote: 'Seu voto: {choice}',
+    choices: {
+      yes: '«sim»',
+      no: '«não»',
+    },
+    cancel: 'Retirar a decisão',
+    cancelledToast: 'Decisão retirada',
+    left: 'faltam {time}',
+    counting: 'Apurando…',
+    line: '{what}: {value} — {status}',
+    status: {
+      passed: 'aprovado',
+      rejected: 'não aprovado',
+      vetoed: 'vetado',
+      cancelled: 'retirado pelo anfitrião',
+      open: 'em andamento',
+    },
+    last: 'Última decisão: {line}',
+    history: 'Decisões de acionistas',
+    by: 'proposta de {who}',
+  },
+
+  news: {
+    title: 'Notícias do jogo',
+    empty: 'Ainda não há eventos: aqui aparecerão leis, decisões de acionistas, compras de participações e falências.',
+    showAll: 'Ver tudo',
+    lawSigned: 'Lei aprovada: {q}',
+    lawFailed: 'Rejeitado na votação: {q}',
+    lawPending: 'Aprovado na votação, aguarda a assinatura do anfitrião: {q}',
+    lawVetoed: 'O anfitrião vetou: {q}',
+    initiative: '(iniciativa de {team})',
+    company: {
+      passed: '{company}: {what} {value} a partir do próximo mês ({who})',
+      rejected: '{company}: a assembleia rejeitou {what} {value}',
+      vetoed: '{company}: veto a {what} {value}',
+    },
+    stakeFromCity: '{buyer} comprou {pct} {inst} da cidade por {price}',
+    stakeFromTeam: '{buyer} comprou {pct} {inst} de {seller} por {price}',
+    bankrupt: 'Falência: {team}',
+  },
+
   vote: {
+    company: 'Preço de',
+    capValue: 'Teto',
+    initiativeBy: 'Iniciativa de {team}',
+    initiatives: 'Iniciativas das equipes: {n}',
+    toVote: 'Para votação',
+    reject: 'Rejeitar',
+    initiativeRejected: 'Iniciativa rejeitada',
+    initiativeTitle: 'Iniciativa',
+    initiativeLead: 'Proponha uma pergunta para a votação dos cidadãos: uma lei, uma taxa, um auxílio ou sua própria pergunta. O anfitrião a põe em votação ou a rejeita.',
+    propose: 'Enviar ao anfitrião',
+    initiativeSent: 'Iniciativa enviada ao anfitrião',
+    initiativeStatus: {
+      pending: 'Aguardando o anfitrião.',
+      voted: 'O anfitrião a pôs em votação.',
+      rejected: 'O anfitrião a rejeitou.',
+      withdrawn: 'Você a retirou.',
+    },
+    withdraw: 'Retirar',
+    initiativeWithdrawn: 'Iniciativa retirada',
     title: 'Votação',
     templates: {
+      price_cap: 'Lei do teto de preço: {what} no máximo {value}',
+      cap_off: 'Retirar o teto de preço: {what}',
       profit_tax: 'Fixar o imposto sobre o lucro em {value}',
       rent: 'Fixar o aluguel em {value} por mês',
       loan_rate: 'Fixar a taxa dos empréstimos em {value} ao ano',
@@ -1029,6 +1179,8 @@ export default {
       grant_off: 'Dar um subsídio único de {value} a cada um fora do negócio',
     },
     names: {
+      price_cap: 'Teto de preço de uma empresa',
+      cap_off: 'Retirar um teto de preço',
       profit_tax: 'Imposto sobre o lucro',
       rent: 'Aluguel',
       loan_rate: 'Taxa dos empréstimos',
@@ -1078,6 +1230,10 @@ export default {
     vetoedToast: 'Vetado.'
   },
   errors: {
+    vote_range_pct: 'O valor deve ser de {fromPct}% a {toPct}%.',
+    no_cap: 'Esta empresa não tem teto de preço.',
+    initiative_pending: 'Sua iniciativa já aguarda o anfitrião: retire-a ou aguarde a decisão.',
+    initiative_closed: 'Esta iniciativa já foi decidida.',
     join_host: 'Este é o e-mail do anfitrião: o anfitrião não joga como equipe.',
     already_in_game: 'Este e-mail já está no jogo.',
     join_gone: 'O pedido não existe mais. Envie de novo.',

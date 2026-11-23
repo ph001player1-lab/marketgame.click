@@ -32,6 +32,9 @@ import { renderHosts } from './views/admin.js';
 import { renderCreate } from './views/create.js';
 import { renderRatingPage } from './views/rating.js';
 import { starsBadge } from './views/common.js';
+import { newsCard } from './views/news.js';
+import { waitingDecisions } from './views/companies.js';
+import { voteQuestion } from './views/vote.js';
 
 const root = document.getElementById('app');
 let me = null;            // кто вошёл: почта, роли, игры
@@ -258,6 +261,31 @@ function topbarSimple() {
       h('div', { class: 'topbar__name' }, t('brand'))));
 }
 
+// ----------------------------------------------------------------- значки вкладок
+
+const ICONS = {
+  main: 'M7 3v8M5 3v5a2 2 0 0 0 4 0V3M7 11v10M17 3c-2 2-2 6 0 8v10',
+  bank: 'M3 10h18M5 10v8M9.5 10v8M14.5 10v8M19 10v8M3 21h18M12 3l9 5H3z',
+  invest: 'M3 17l6-6 4 4 8-8M15 7h6v6',
+  city: 'M5 21V4a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v17M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2M3 21h18',
+  board: 'M4 5h13v14H6a2 2 0 0 1-2-2zM17 9h3v8a2 2 0 0 1-2 2M8 9h5M8 13h5M8 16h3',
+  help: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .9-1 1.6v.6M12 17h.01'
+};
+
+/** Значок линией: currentColor, 22 px. */
+function icon(name) {
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  for (const [k, v] of Object.entries({ width: 22, height: 22, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor',
+    'stroke-width': 2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true', class: 'tab__icon' })) {
+    svg.setAttribute(k, String(v));
+  }
+  const path = document.createElementNS(NS, 'path');
+  path.setAttribute('d', ICONS[name] || '');
+  svg.append(path);
+  return svg;
+}
+
 // ----------------------------------------------------------------- экран игры
 
 function openGame(gameId, asPlayerId) {
@@ -270,7 +298,14 @@ function openGame(gameId, asPlayerId) {
     ? prefetched : null;
   prefetched = null;
   const tabKey = 'mg-tab-' + gameId + (isHostView ? '-host' : '');
+  // У команды четыре вкладки кабинета и «Новости» (табло); памятка — «?» в
+  // шапке. У ведущего — пульт, табло и памятка, как раньше.
+  const MAIN_TABS = isHostView ? ['main'] : ['main', 'bank', 'invest', 'city'];
+  const ALL_TABS = [...MAIN_TABS, 'board', 'guide'];
   let tab = sessionStorage.getItem(tabKey) || 'main';
+  if (!ALL_TABS.includes(tab)) tab = 'main';
+  let mainTab = MAIN_TABS.includes(tab) ? tab : (sessionStorage.getItem(tabKey + '-main') || 'main');
+  if (!MAIN_TABS.includes(mainTab)) mainTab = 'main';
   let side = tab === 'guide' ? 'guide' : 'board';
   let last = null;
   let lastRoundKey = '';
@@ -286,10 +321,22 @@ function openGame(gameId, asPlayerId) {
   const subEl = h('div', { class: 'topbar__sub' }, '');
   const timerEl = h('div', { class: 'timer', hidden: true, 'aria-live': 'off' }, '');
   const moneyEl = h('div', { class: 'topbar__money', hidden: isHostView });
+  // Памятка у команды — кнопкой «?» в шапке: внизу место только для пяти вкладок.
+  const helpBtn = isHostView ? null : h('button', {
+    class: 'topbar__help tab--guide', type: 'button', 'aria-label': t('tabs.guide'), title: t('tabs.guide'),
+    dataset: { tab: 'guide' }, onclick: () => setTab(tab === 'guide' ? mainTab : 'guide')
+  }, icon('help'));
   const header = h('header', { class: 'topbar' },
     h('button', { class: 'topbar__menu', type: 'button', 'aria-label': t('common.menu'), onclick: openMenu }, '☰'),
     h('div', { class: 'topbar__title' }, nameEl, subEl),
-    timerEl, moneyEl);
+    timerEl, moneyEl, helpBtn);
+  // Срочное — голосование, решение акционеров — видно с любой вкладки.
+  const stripText = h('span', { class: 'strip__text' });
+  const stripClock = h('span', { class: 'strip__clock' });
+  const strip = h('button', { class: 'strip', type: 'button', hidden: true, onclick: () => strip.dataset.target && setTab(strip.dataset.target) },
+    h('span', { class: 'strip__dot', 'aria-hidden': 'true' }), stripText, stripClock,
+    h('span', { class: 'strip__go', 'aria-hidden': 'true' }, '›'));
+  let stripDeadline = null;
 
   const impersonation = asPlayerId
     ? h('div', { class: 'impersonation' }, h('span', { id: 'imp-text' }, ''),
@@ -297,18 +344,29 @@ function openGame(gameId, asPlayerId) {
     : null;
 
   const mainTabLabel = isHostView ? t('tabs.console') : t('tabs.business');
-  const tabBtn = (id, label) => h('button', {
+  const TAB_LABEL = { main: mainTabLabel, bank: t('tabs.bank'), invest: t('tabs.invest'), city: t('tabs.city'),
+    board: isHostView ? t('tabs.board') : t('tabs.news'), guide: t('tabs.guide') };
+  const tabBtn = (id) => h('button', {
     class: ['tab', 'tab--' + id], type: 'button', role: 'tab', 'aria-selected': 'false', dataset: { tab: id },
     onclick: () => setTab(id)
-  }, label);
+  }, isHostView ? null : icon(id), h('span', { class: 'tab__label' }, TAB_LABEL[id]));
   const tabs = h('nav', { class: 'tabs', role: 'tablist' },
-    tabBtn('main', mainTabLabel), tabBtn('board', t('tabs.board')), tabBtn('guide', t('tabs.guide')));
+    isHostView ? ['main', 'board', 'guide'].map(tabBtn) : [...MAIN_TABS, 'board'].map(tabBtn));
 
-  const paneMain = h('section', { class: 'pane pane--main', 'aria-label': mainTabLabel }, h('div', { class: 'pane__inner' }));
-  const paneBoard = h('section', { class: 'pane pane--board', 'aria-label': t('tabs.board') }, h('div', { class: 'pane__inner' }));
+  // Вкладки кабинета команды — части левой панели: на широком экране справа
+  // остаются «Новости» (и памятка).
+  const subs = Object.fromEntries(MAIN_TABS.map((id) => [id,
+    h('div', { class: 'sub sub--' + id, role: 'region', 'aria-label': TAB_LABEL[id] })]));
+  const paneMain = h('section', { class: 'pane pane--main', 'aria-label': mainTabLabel },
+    h('div', { class: 'pane__inner' }, isHostView ? null : Object.values(subs)));
+  // «Новости»: лента событий над табло.
+  const news = newsCard();
+  const boardRoot = h('div', {});
+  const paneBoard = h('section', { class: 'pane pane--board', 'aria-label': TAB_LABEL.board },
+    h('div', { class: 'pane__inner' }, news.el, boardRoot));
   const paneGuide = h('section', { class: 'pane pane--guide', 'aria-label': t('tabs.guide') }, h('div', { class: 'pane__inner' }));
-  const shell = h('div', { class: 'app game', dataset: { tab, side } },
-    header, impersonation, tabs, h('div', { class: 'panes' }, paneMain, paneBoard, paneGuide));
+  const shell = h('div', { class: ['app', 'game', isHostView ? null : 'game--player'], dataset: { tab, side, main: mainTab } },
+    header, strip, impersonation, tabs, h('div', { class: 'panes' }, paneMain, paneBoard, paneGuide));
   replace(root, shell);
 
   const scrollAt = {};
@@ -317,14 +375,20 @@ function openGame(gameId, asPlayerId) {
     if (phone && id !== tab) scrollAt[tab] = window.scrollY;
     const changed = id !== tab;
     tab = id;
-    if (id !== 'main') side = id;
+    if (MAIN_TABS.includes(id)) mainTab = id;
+    else side = id;
     shell.dataset.tab = tab;
     shell.dataset.side = side;
+    shell.dataset.main = mainTab;
     sessionStorage.setItem(tabKey, id);
+    sessionStorage.setItem(tabKey + '-main', mainTab);
     for (const b of tabs.querySelectorAll('.tab')) {
-      const on = window.innerWidth >= 768 ? b.dataset.tab === side : b.dataset.tab === tab;
+      const x = b.dataset.tab;
+      const on = window.innerWidth >= 768 ? (MAIN_TABS.includes(x) ? x === mainTab : x === side) : x === tab;
       b.setAttribute('aria-selected', on ? 'true' : 'false');
     }
+    helpBtn?.setAttribute('aria-pressed', side === 'guide' && (window.innerWidth >= 768 || tab === 'guide') ? 'true' : 'false');
+    paintStrip();
     if (id === 'board') refreshBoard(true);
     if (phone && changed) window.scrollTo(0, scrollAt[id] || 0);
   }
@@ -335,12 +399,13 @@ function openGame(gameId, asPlayerId) {
   const ctx = {
     gameId, asPlayerId, isHostView,
     showGuide(section) { setTab('guide'); guide.show(section); },
+    showTab: (id) => setTab(id),
     applyState(state) { markFresh(); render(state); },
     reloadMe: () => loadMe(),
     refreshNow: () => tick(true)
   };
-  const main = isHostView ? createConsole(paneMain.firstChild, ctx) : createBusiness(paneMain.firstChild, ctx);
-  const board = createScoreboard(paneBoard.firstChild, { mode: 'app' });
+  const main = isHostView ? createConsole(paneMain.firstChild, ctx) : createBusiness(subs, ctx);
+  const board = createScoreboard(boardRoot, { mode: 'app' });
   const guide = createGuide(paneGuide.firstChild);
   setTab(tab);
 
@@ -358,6 +423,16 @@ function openGame(gameId, asPlayerId) {
     timerEl.setAttribute('aria-label', t('header.timerOpen') + ' ' + clock(left));
     if (left <= 0 && !firedAtZero) { firedAtZero = true; tick(true); }
   }
+  /** Полоса срочного: часы и видна, только пока её вкладка не открыта. */
+  function paintStrip() {
+    const target = strip.dataset.target;
+    const here = window.innerWidth >= 768 ? mainTab === target : tab === target;
+    strip.hidden = !target || here;
+    if (strip.hidden || !stripDeadline) { stripClock.textContent = ''; return; }
+    const left = Math.max(0, (stripDeadline - (Date.now() + clockOffset)) / 1000);
+    stripClock.textContent = clock(left);
+  }
+  const stripId = setInterval(() => { if (!strip.hidden) paintStrip(); }, 500);
   const timerId = setInterval(paintTimer, 250);
 
   // ---- состояние (объявлено выше: вкладка табло может открыться сразу)
@@ -403,9 +478,26 @@ function openGame(gameId, asPlayerId) {
     }
     // Точка на вкладке: месяц открыт, а решение ещё не отправлено.
     const needs = !isHostView && state.lifecycle === 'active' && g.roundStatus === 'open' && state.decision && !state.decision.submitted;
-    const mainTab = tabs.querySelector('.tab--main');
-    mainTab.querySelector('.tab__dot')?.remove();
-    if (needs) mainTab.append(h('span', { class: 'tab__dot', 'aria-label': t('decision.needed') }));
+    badge('main', needs, t('decision.needed'));
+    if (!isHostView) {
+      // Голосование и решения акционеров, где ждут голоса этой команды.
+      const vote = state.vote?.active && !state.vote.active.mine ? state.vote.active : null;
+      const waiting = waitingDecisions(state.companies);
+      badge('city', !!vote, t('strip.vote'));
+      badge('invest', waiting.length || false, t('strip.company'));
+      const urgent = vote ? { target: 'city', text: t('strip.voteText', { q: voteQuestion(vote) }), at: vote.closesAt }
+        : waiting.length ? { target: 'invest', text: t('strip.companyText', { company: t('institutions.' + waiting[0].kind) }),
+            at: waiting[0].open.closesAt } : null;
+      if (urgent) {
+        strip.dataset.target = urgent.target;
+        stripText.textContent = urgent.text;
+        stripDeadline = new Date(urgent.at).getTime();
+      } else {
+        delete strip.dataset.target;
+        stripDeadline = null;
+      }
+      paintStrip();
+    }
 
     main.update(state);
     guide.update(state.rules, g);
@@ -424,6 +516,17 @@ function openGame(gameId, asPlayerId) {
     if (stopped || !data?.ok) return;
     boardData = data;
     board.update(data, last);
+    news.update(data.news);
+  }
+
+  /** Значок на вкладке: точка (true) или число. */
+  function badge(id, value, label) {
+    const b = tabs.querySelector('.tab--' + id);
+    if (!b) return;
+    b.querySelector('.tab__dot')?.remove();
+    if (value === false || value === null || value === undefined || value === 0) return;
+    b.append(h('span', { class: ['tab__dot', value === true ? null : 'tab__dot--n'], 'aria-label': label },
+      value === true ? '' : String(value)));
   }
 
   async function refreshBoard(force) {
@@ -488,6 +591,7 @@ function openGame(gameId, asPlayerId) {
     stopped = true;
     clearInterval(pollId);
     clearInterval(timerId);
+    clearInterval(stripId);
     clearTimeout(retryId);
     document.removeEventListener('visibilitychange', onVisible);
     window.removeEventListener('focus', onFocus);

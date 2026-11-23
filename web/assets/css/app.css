@@ -148,6 +148,42 @@ table.table{width:100%;border-collapse:collapse;font-size:15px}
   color:var(--mute);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px}
 .tab[aria-selected="true"]{border-color:var(--ink);color:var(--ink);background:#fff}
 .tab__dot{width:8px;height:8px;border-radius:50%;background:var(--red)}
+.tab__dot--n{width:auto;height:18px;min-width:18px;padding:0 5px;border-radius:9px;color:#fff;font-size:11px;font-weight:800;
+  line-height:18px;text-align:center}
+.tab__label{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+/* На телефоне значок — над подписью, точка — у значка. */
+@media (max-width:767px){
+  .game--player .tab__label{font-size:11px;letter-spacing:-.01em}
+  .game--player .tab__dot{position:absolute;top:3px;right:calc(50% - 20px)}
+  .game--player .tab__dot--n{right:calc(50% - 26px)}
+}
+/* Узкий телефон (360 px): пять подписей помещаются целиком — «Инвестиции» тоже. */
+@media (max-width:389px){
+  .game--player .tabs{gap:1px;padding-left:2px;padding-right:2px}
+  .game--player .tab{padding:2px 0;border-width:1.5px}
+  .game--player .tab__label{font-size:10.5px;letter-spacing:-.03em}
+}
+
+/* Вкладки кабинета команды — части левой панели. */
+.game--player .sub{display:none}
+.game--player[data-main="main"] .sub--main,.game--player[data-main="bank"] .sub--bank,
+.game--player[data-main="invest"] .sub--invest,.game--player[data-main="city"] .sub--city{display:block}
+
+/* Памятка — «?» в шапке. */
+.topbar__help{flex:none;width:44px;height:44px;border:0;border-radius:10px;background:transparent;color:var(--paper);
+  display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+.topbar__help[aria-pressed="true"]{background:#2A2A31}
+.topbar__help svg{width:24px;height:24px}
+
+/* Срочное под шапкой: голосование, решение акционеров. */
+.strip{position:sticky;top:var(--bar-h);z-index:19;display:flex;align-items:center;gap:10px;width:100%;min-height:46px;
+  padding:8px 14px;border:0;border-bottom:2px solid var(--red);background:var(--red-bg);color:var(--ink);font:inherit;
+  font-weight:700;font-size:14px;text-align:left;cursor:pointer}
+.strip[hidden]{display:none}
+.strip__dot{flex:none;width:10px;height:10px;border-radius:50%;background:var(--red)}
+.strip__text{flex:1;min-width:0;line-height:1.3}
+.strip__clock{font-weight:800;font-variant-numeric:tabular-nums}
+.strip__go{font-weight:800;font-size:20px;color:var(--red-ink)}
 
 .panes{display:grid}
 .pane{padding:14px;min-width:0}
@@ -160,23 +196,33 @@ table.table{width:100%;border-collapse:collapse;font-size:15px}
   .game .tabs{position:fixed;left:0;right:0;bottom:0;z-index:25;border-bottom:0;border-top:2px solid var(--ink);
     padding-bottom:calc(8px + env(safe-area-inset-bottom))}
   .game .panes{padding-bottom:calc(var(--tabs-h) + env(safe-area-inset-bottom) + 8px)}
-  .game[data-tab="main"] .pane--board,.game[data-tab="main"] .pane--guide,
-  .game[data-tab="board"] .pane--main,.game[data-tab="board"] .pane--guide,
-  .game[data-tab="guide"] .pane--main,.game[data-tab="guide"] .pane--board{display:none}
+  .game:not([data-tab="board"]) .pane--board,.game:not([data-tab="guide"]) .pane--guide,
+  .game[data-tab="board"] .pane--main,.game[data-tab="guide"] .pane--main{display:none}
+  /* Пять вкладок команды: значок и короткая подпись, без прокрутки вбок. */
+  .game--player .tabs{gap:2px;padding:6px 4px;padding-bottom:calc(6px + env(safe-area-inset-bottom))}
+  .game--player .tab{flex-direction:column;gap:2px;min-height:52px;min-width:0;padding:2px;border-color:transparent;position:relative}
+  .game--player .tab[aria-selected="true"]{border-color:var(--ink)}
   .stats{grid-template-columns:repeat(2,1fr)}
 }
 
 /* Планшет и ноутбук: бизнес всегда слева, справа — табло или памятка. */
 @media (min-width:768px){
-  .game{height:100vh;height:100dvh;display:grid;grid-template-rows:auto auto auto 1fr}
+  .game{height:100vh;height:100dvh;display:grid;grid-template-rows:auto auto auto auto 1fr}
+  /* Панели — всегда в последней строке: шапка, полоса срочного, вход за команду и вкладки — над ними. */
+  .game>.panes{grid-row:-2/-1}
+  .game>.strip{position:static}
   .game .panes{grid-template-columns:minmax(0,5fr) minmax(0,6fr);min-height:0;overflow:hidden}
   .game .pane{overflow-y:auto;height:100%;overscroll-behavior:contain}
   .game .pane--main{grid-column:1;grid-row:1;border-right:2px solid var(--line)}
   .game .pane--board,.game .pane--guide{grid-column:2;grid-row:1}
   .game[data-side="board"] .pane--guide,.game[data-side="guide"] .pane--board{display:none}
-  .game .tab--main{display:none}
+  .game:not(.game--player) .tab--main{display:none}
   .game .tabs{justify-content:flex-end}
   .game .tabs .tab{flex:0 0 auto;padding:0 18px}
+  /* Команда: вкладки кабинета — над левой панелью, «Новости» — справа. */
+  .game--player .tabs{justify-content:flex-start}
+  .game--player .tabs .tab--board{margin-left:auto}
+  .game--player .tab__icon{width:18px;height:18px}
 }
 
 /* Широкий экран: все три панели сразу, вкладки не нужны. */
@@ -184,7 +230,10 @@ table.table{width:100%;border-collapse:collapse;font-size:15px}
   .game .panes{grid-template-columns:minmax(0,5fr) minmax(0,7fr) minmax(0,4fr)}
   .game .pane--guide{grid-column:3;display:block!important;border-left:2px solid var(--line)}
   .game .pane--board{display:block!important}
-  .game .tabs{display:none}
+  .game:not(.game--player) .tabs{display:none}
+  /* Команда: табло и памятка видны всегда — вкладки нужны только кабинету. */
+  .game--player .tabs .tab--board{display:none}
+  .game--player .topbar__help{display:none}
 }
 
 /* ------------------------------------------------------------ страницы без панелей */
@@ -625,3 +674,37 @@ select.input.input--inline,.input.input--inline{width:auto;max-width:100%;min-he
 .card--big .forbes__name{font-size:20px}
 .card--big .forbes__sum{font-size:20px}
 .card--big .forbes__src{font-size:15px}
+
+/* ------------------------------------------------------------ компании и решения акционеров */
+.companies{display:grid;gap:12px}
+.company{border:2px solid var(--line);border-radius:12px;padding:12px;background:var(--surface);min-width:0}
+.company__head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.company__icon{font-size:20px;line-height:1}
+.company__name{margin:0;flex:1;min-width:0;font-size:16px}
+.company__price{margin:6px 0}
+.company__open{margin:10px 0 0}
+.company__form{margin-top:10px}
+.company__last{margin:8px 0 0}
+.owners-bar{display:flex;gap:2px;height:10px;border-radius:5px;overflow:hidden;margin:6px 0}
+.own{display:block;height:100%;flex-basis:0}
+.own--city{background:var(--navy)}
+.own--team{background:#9B9BA3}
+.own--mine{background:var(--red)}
+.own--passive{background:var(--line)}
+.owners-list{list-style:none;margin:0 0 6px;padding:0;display:flex;flex-wrap:wrap;gap:4px 12px;font-size:14px}
+.owners-list .chip{margin-left:6px;padding:1px 8px;font-size:12px}
+.chip--control{border-color:var(--red);color:var(--red-ink);background:var(--red-bg)}
+.chip--block{border-color:#D9A93A;color:var(--amber);background:var(--amber-bg)}
+.chip--vote{color:var(--ink-2)}
+.company-projector{margin-top:12px}
+
+/* ------------------------------------------------------------ лента «Новости» и законы */
+.news{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.news__item{display:flex;gap:8px;align-items:baseline;font-size:15px;line-height:1.4}
+.news__month{flex:none;font-size:12px;font-weight:800;color:var(--mute);background:var(--paper-2);border-radius:999px;padding:1px 8px}
+.news__more{margin-top:8px}
+.news__more>summary{cursor:pointer;font-weight:800;color:var(--red-ink);margin-bottom:8px}
+.laws{margin:0;padding-left:20px;display:grid;gap:4px}
+.initiatives{display:grid;gap:8px;margin:0 0 var(--gap)}
+.initiative{margin:0}
+.vote__by{margin:-4px 0 6px}

@@ -8,15 +8,26 @@
 
 import { t } from '../i18n.js';
 import { h, replace, field } from '../dom.js';
-import { usd, pctRaw, clock, parseMoney, currencySign } from '../fmt.js';
+import { usd, pctRaw, clock, parseMoney, currencySign, dateTime } from '../fmt.js';
+import { teamName } from './common.js';
+import { whatOf } from './companies.js';
 
-/** Шаблоны в том же порядке, что на сервере; unit — в чём вводится число. */
+/**
+ * Шаблоны в том же порядке, что на сервере; unit — в чём вводится число
+ * (cap — потолок цены: деньги, у банка — проценты). Цены компаний решают
+ * их владельцы, горожане — только потолок цены.
+ */
 export const VOTE_TEMPLATES = [
-  ['profit_tax', 'pct', 'PROFIT_TAX_RATE'], ['rent', 'money', 'RENT'], ['loan_rate', 'pct', 'LOAN_RATE_ANNUAL'],
-  ['civil_salary', 'money', 'CIVIL_SERVICE_SALARY'], ['city_fee', 'money', null], ['grant_off', 'money', null],
-  ['custom', null, null]
+  ['profit_tax', 'pct', 'PROFIT_TAX_RATE'], ['civil_salary', 'money', 'CIVIL_SERVICE_SALARY'],
+  ['price_cap', 'cap', null], ['cap_off', 'capoff', null],
+  ['city_fee', 'money', null], ['grant_off', 'money', null], ['custom', null, null]
 ];
-const UNIT = Object.fromEntries(VOTE_TEMPLATES.map(([id, unit]) => [id, unit]));
+// Аренда и ставка по кредитам — старые голосования, до решений акционеров.
+const UNIT = { ...Object.fromEntries(VOTE_TEMPLATES.map(([id, unit]) => [id, unit])), rent: 'money', loan_rate: 'pct' };
+const COMPANIES = ['landlord', 'bank', 'insurer', 'utility'];
+const PRICE_KEY = { landlord: 'RENT', bank: 'LOAN_RATE_ANNUAL', insurer: 'INSURANCE', utility: 'UTILITIES' };
+/** Число вопроса: ставки и потолок ставки банка — в процентах, остальное — деньги. */
+const isPct = (template, target) => UNIT[template] === 'pct' || (UNIT[template] === 'cap' && target === 'bank');
 const SECONDS = [60, 120, 180, 300];
 // Итог видно ещё столько после конца: у команды — пока не нажали «Понятно».
 const RESULT_MS = { team: 30 * 60_000, projector: 3 * 60_000 };
@@ -24,9 +35,14 @@ const RESULT_MS = { team: 30 * 60_000, projector: 3 * 60_000 };
 /** Текст вопроса: шаблон с числом или свой вопрос. */
 export function voteQuestion(v) {
   if (v.template === 'custom') return v.question || '';
-  const value = UNIT[v.template] === 'pct' ? pctRaw(v.value) : usd(v.value);
-  return t('vote.templates.' + v.template, { value });
+  if (v.template === 'cap_off') return t('vote.templates.cap_off', { what: whatOf(v.target) });
+  const value = isPct(v.template, v.target) ? pctRaw(v.value) : usd(v.value);
+  return t('vote.templates.' + v.template, { value, what: v.target ? whatOf(v.target) : '' });
 }
+
+/** «Инициатива команды …» под вопросом, если вопрос предложила команда. */
+const proposerLine = (v) => (v.proposer
+  ? h('p', { class: 'small muted vote__by' }, t('vote.initiativeBy', { team: teamName(v.proposer) })) : null);
 
 const pctOf = (n, total) => pctRaw(total > 0 ? Math.round((n / total) * 1000) / 10 : 0);
 
@@ -131,7 +147,7 @@ export function teamVotePart(onVote) {
         const clockBox = clockEl();
         replace(el, h('section', { class: 'banner vote', role: 'region', 'aria-label': t('vote.title') },
           h('div', { class: 'vote__head' }, h('b', {}, t('vote.title')), clockBox),
-          h('p', { class: 'vote__q' }, voteQuestion(a)),
+          h('p', { class: 'vote__q' }, voteQuestion(a)), proposerLine(a),
           h('p', { class: 'muted small' }, t('vote.ruleLabel') + ' ' + t('vote.rules.' + a.rule)),
           h('div', { class: 'btn-row vote__choices' }, ['yes', 'no', 'abstain'].map((c) =>
             h('button', { class: ['btn', 'vote__choice', 'vote__choice--' + c], type: 'button', 'aria-pressed': a.mine === c ? 'true' : 'false',
@@ -170,6 +186,10 @@ export function hostVotePart(run) {
     oninput: () => { valueTouched = true; preview(); } });
   const valueLabel = h('span', {});
   const valueField = field(valueLabel, value);
+  // Потолок цены — какой компании.
+  const target = h('select', { class: 'input', onchange: () => { valueTouched = false; sync(); } },
+    COMPANIES.map((k) => h('option', { value: k }, t('institutions.' + k))));
+  const targetField = field(t('vote.company'), target);
   const question = h('textarea', { class: 'input', rows: 2, maxlength: 200, placeholder: t('vote.questionPlaceholder'),
     oninput: () => preview() });
   const questionField = field(t('vote.question'), question);
@@ -181,39 +201,47 @@ export function hostVotePart(run) {
   const startBtn = h('button', { class: 'btn btn--primary', type: 'button', onclick: (e) => start(e.currentTarget) },
     t('vote.start'));
   const form = h('div', { class: 'vote-form' },
-    field(t('vote.topic'), tpl), valueField, questionField,
+    field(t('vote.topic'), tpl), targetField, valueField, questionField,
     h('div', { class: 'grid-2' }, field(t('vote.duration'), seconds), field(t('vote.ruleLabel'), rule)),
     previewEl, h('div', { class: 'btn-row' }, startBtn));
   const activeBox = h('div', {});
   const lastBox = h('div', {});
-  const el = h('div', {}, h('p', { class: 'muted small' }, t('vote.lead')), activeBox, lastBox, form);
+  // Инициативы команд: ведущий выносит на голосование или отклоняет.
+  const initBox = h('div', {});
+  const el = h('div', {}, h('p', { class: 'muted small' }, t('vote.lead')), activeBox, lastBox, initBox, form);
 
   /** Число шаблона по умолчанию — нынешнее значение настройки. */
   function sync() {
-    const [, unit, key] = VOTE_TEMPLATES.find(([id]) => id === tpl.value);
-    valueField.hidden = !unit;
+    const [, unit, tplKey] = VOTE_TEMPLATES.find(([id]) => id === tpl.value);
+    const cap = unit === 'cap' || unit === 'capoff';
+    const key = unit === 'cap' ? PRICE_KEY[target.value] : tplKey;
+    const inPct = isPct(tpl.value, target.value);
+    targetField.hidden = !cap;
+    valueField.hidden = !unit || unit === 'capoff';
     questionField.hidden = !!unit;
-    valueLabel.textContent = t('vote.value') + (unit === 'pct' ? ', %' : unit === 'money' ? ', ' + currencySign() : '');
+    valueLabel.textContent = t(unit === 'cap' ? 'vote.capValue' : 'vote.value') + (inPct ? ', %' : unit ? ', ' + currencySign() : '');
     if (!valueTouched) {
       const cur = key && state?.config ? Number(state.config[key]) : NaN;
-      value.value = Number.isFinite(cur) ? String(unit === 'pct' ? Math.round(cur * 10000) / 100 : cur) : '';
+      value.value = Number.isFinite(cur) ? String(inPct ? Math.round(cur * 10000) / 100 : cur) : '';
     }
     preview();
   }
   function read() {
     const unit = UNIT[tpl.value];
-    const v = unit ? parseMoney(String(value.value).replace('%', '')) : null;
-    return { template: tpl.value, value: v, question: question.value.trim(), seconds: Number(seconds.value), rule: rule.value };
+    const v = unit && unit !== 'capoff' ? parseMoney(String(value.value).replace('%', '')) : null;
+    return { template: tpl.value, target: unit === 'cap' || unit === 'capoff' ? target.value : null, value: v,
+      question: question.value.trim(), seconds: Number(seconds.value), rule: rule.value };
   }
   function preview() {
     const p = read();
-    const ready = UNIT[p.template] ? Number.isFinite(p.value) : !!p.question;
+    const unit = UNIT[p.template];
+    const ready = unit === 'capoff' ? true : unit ? Number.isFinite(p.value) : !!p.question;
     previewEl.textContent = ready ? t('vote.preview', { text: voteQuestion(p) }) : '';
     startBtn.disabled = !ready;
   }
   async function start(btn) {
     const p = read();
-    const res = await run(btn, 'startVote', { template: p.template, value: p.value, question: p.question,
+    const res = await run(btn, 'startVote', { template: p.template, target: p.target, value: p.value, question: p.question,
       seconds: p.seconds, rule: p.rule }, t('vote.started'));
     if (res?.ok) { valueTouched = false; question.value = ''; }
   }
@@ -235,7 +263,7 @@ export function hostVotePart(run) {
         const clockBox = clockEl();
         replace(activeBox, h('div', { class: 'banner vote' },
           h('div', { class: 'vote__head' }, h('b', {}, t('vote.title')), clockBox),
-          h('p', { class: 'vote__q' }, voteQuestion(a)),
+          h('p', { class: 'vote__q' }, voteQuestion(a)), proposerLine(a),
           h('p', { class: 'muted small' }, t('vote.ruleLabel') + ' ' + t('vote.rules.' + a.rule)),
           h('p', {}, t('vote.voted', { voted: a.voted, total: a.total })),
           h('div', { class: 'btn-row' },
@@ -247,6 +275,24 @@ export function hostVotePart(run) {
       } else {
         replace(activeBox);
       }
+    }
+    // Инициативы команд — пока голосования нет, любую можно вынести.
+    const inits = s.initiatives || [];
+    const initKey = JSON.stringify([inits.map((x) => x.id), !!a || pending || finished]);
+    if (initBox.dataset.key !== initKey) {
+      initBox.dataset.key = initKey;
+      replace(initBox, inits.length ? h('div', { class: 'initiatives' },
+        h('div', { class: 'stat__label' }, t('vote.initiatives', { n: inits.length })),
+        inits.map((x) => h('div', { class: 'banner initiative' },
+          h('p', { class: 'vote__q' }, voteQuestion(x)),
+          h('p', { class: 'small muted' }, t('vote.initiativeBy', { team: teamName(x.team) }) + ' · ' + dateTime(x.createdAt)),
+          h('div', { class: 'btn-row' },
+            h('button', { class: 'btn btn--primary btn--small', type: 'button', disabled: !!a || pending || finished,
+              onclick: (e) => run(e.currentTarget, 'startVote', { initiativeId: x.id, seconds: Number(seconds.value), rule: rule.value },
+                t('vote.started')) }, t('vote.toVote')),
+            h('button', { class: 'btn btn--ghost btn--small', type: 'button',
+              onclick: (e) => run(e.currentTarget, 'rejectInitiative', { initiativeId: x.id }, t('vote.initiativeRejected')) },
+              t('vote.reject')))))) : null);
     }
     const lastKey = v.last ? v.last.id + ':' + (v.last.decision || '') : '';
     if (lastBox.dataset.key !== lastKey) {
@@ -266,6 +312,79 @@ export function hostVotePart(run) {
     }
   }
 
+  return { el, update };
+}
+
+// ----------------------------------------------------------------- инициатива
+
+/**
+ * Инициатива команды-горожанина: предложить ведущему вопрос на
+ * голосование. Пока он ждёт ведущего, новый не предложить — можно отозвать.
+ */
+export function teamInitiativePart(run) {
+  let state = null;
+  let valueTouched = false;
+  const tpl = h('select', { class: 'input', onchange: () => { valueTouched = false; sync(); } },
+    VOTE_TEMPLATES.map(([id]) => h('option', { value: id }, t('vote.names.' + id))));
+  const target = h('select', { class: 'input', onchange: () => { valueTouched = false; sync(); } },
+    COMPANIES.map((k) => h('option', { value: k }, t('institutions.' + k))));
+  const targetField = field(t('vote.company'), target);
+  const value = h('input', { class: 'input', inputmode: 'decimal', autocomplete: 'off', oninput: () => { valueTouched = true; } });
+  const valueLabel = h('span', {});
+  const valueField = field(valueLabel, value);
+  const question = h('textarea', { class: 'input', rows: 2, maxlength: 200, placeholder: t('vote.questionPlaceholder') });
+  const questionField = field(t('vote.question'), question);
+  const send = h('button', { class: 'btn btn--primary', type: 'button', onclick: (e) => submit(e.currentTarget) },
+    t('vote.propose'));
+  const form = h('div', {}, field(t('vote.topic'), tpl), targetField, valueField, questionField, h('div', { class: 'btn-row' }, send));
+  const status = h('div', {});
+  const el = h('section', { class: 'card', id: 'initiative' },
+    h('h3', { class: 'card__title' }, t('vote.initiativeTitle')),
+    h('p', { class: 'muted small' }, t('vote.initiativeLead')), status, form);
+
+  function sync() {
+    const [, unit, tplKey] = VOTE_TEMPLATES.find(([id]) => id === tpl.value);
+    const cap = unit === 'cap' || unit === 'capoff';
+    const inPct = isPct(tpl.value, target.value);
+    targetField.hidden = !cap;
+    valueField.hidden = !unit || unit === 'capoff';
+    questionField.hidden = !!unit;
+    valueLabel.textContent = t(unit === 'cap' ? 'vote.capValue' : 'vote.value') + (inPct ? ', %' : unit ? ', ' + currencySign() : '');
+    if (!valueTouched) {
+      const r = state?.rules || {};
+      const now = { PROFIT_TAX_RATE: r.taxRate, CIVIL_SERVICE_SALARY: r.civilSalary };
+      const company = (state?.companies || []).find((c) => c.kind === target.value);
+      const cur = unit === 'cap' ? company?.price : now[tplKey];
+      value.value = Number.isFinite(Number(cur)) && cur !== undefined ? String(inPct ? Math.round(cur * 10000) / 100 : cur) : '';
+    }
+  }
+  async function submit(btn) {
+    const unit = UNIT[tpl.value];
+    const cap = unit === 'cap' || unit === 'capoff';
+    const res = await run(btn, 'proposeInitiative', {
+      template: tpl.value, target: cap ? target.value : null,
+      value: unit && unit !== 'capoff' ? parseMoney(String(value.value).replace('%', '')) : null,
+      question: question.value.trim()
+    }, t('vote.initiativeSent'));
+    if (res?.ok) { question.value = ''; valueTouched = false; }
+  }
+
+  function update(s) {
+    state = s;
+    const i = s.myInitiative;
+    const waiting = i?.status === 'pending';
+    form.hidden = waiting || s.game?.status === 'finished';
+    if (!form.hidden && !el.contains(document.activeElement)) sync();
+    const key = JSON.stringify(i && [i.id, i.status]);
+    if (status.dataset.key === key) return;
+    status.dataset.key = key;
+    replace(status, i ? h('div', { class: ['banner', waiting ? 'banner--warn' : i.status === 'voted' ? 'banner--ok' : null] },
+      h('p', { class: 'vote__q' }, voteQuestion(i)),
+      h('p', { class: 'small' }, t('vote.initiativeStatus.' + i.status)),
+      waiting ? h('div', { class: 'btn-row' }, h('button', { class: 'btn btn--small btn--ghost', type: 'button',
+        onclick: (e) => run(e.currentTarget, 'withdrawInitiative', { initiativeId: i.id }, t('vote.initiativeWithdrawn')) },
+        t('vote.withdraw'))) : null) : null);
+  }
   return { el, update };
 }
 

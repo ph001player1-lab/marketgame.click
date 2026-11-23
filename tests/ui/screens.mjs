@@ -448,6 +448,8 @@ try {
     const team = TEAMS.find((x) => x.restaurant === 'Green Bowl');
     const p = await page(browser, 'laptop', team.email);
     await p.goto(base + '#/g/' + live.gameId);
+    // Кредит и переводы — на вкладке «Банк».
+    await p.locator('.tab--bank').click();
     await p.getByLabel('Borrow', { exact: true }).fill('5,000');
     await p.getByRole('button', { name: 'Borrow', exact: true }).click();
     await p.getByText('Loan received: $5,000.').waitFor();
@@ -715,6 +717,9 @@ try {
     // Команда видит вопрос, часы и голосует.
     const phone = await page(browser, 'phone', TEAMS[0].email);
     await phone.goto(base + '#/g/' + g.gameId);
+    // Голосование — на вкладке «Город»; с любой вкладки туда ведёт полоса срочного.
+    await phone.locator('.strip', { hasText: 'Set the profit tax at 25%' }).click();
+    assert.equal(await phone.locator('.tab--city').getAttribute('aria-selected'), 'true');
     const banner = phone.locator('.vote');
     await banner.getByText('Set the profit tax at 25%').waitFor();
     await banner.getByRole('button', { name: 'Yes' }).click();
@@ -750,6 +755,91 @@ try {
     await proj.locator('.projector__vote').getByText('The host signed it.').waitFor({ timeout: 15000 });
     await shot(proj, 'vote-06-projector-result');
     for (const x of [host, phone, proj]) await x.close();
+  });
+
+  await step('shareholders: the owner of 60% sets rent, the city has 3 minutes to veto; initiative; news', async () => {
+    const g = await seedGame(server.sql, { months: 1, title: 'Owners night', sponsor: false });
+    const mon = await g.call(ADMIN, 'monitor', { gameId: g.gameId });
+    const owner = mon.players.find((x) => x.email === TEAMS[0].email);
+    const sold = await g.call(ADMIN, 'sellStake', { gameId: g.gameId, kind: 'landlord', playerId: owner.id, pct: 60, price: 100 });
+    assert.equal(sold.ok, true, JSON.stringify(sold));
+    // Команда: вкладка «Инвестиции» — компании, владельцы, своя цена.
+    const phone = await page(browser, 'phone', TEAMS[0].email);
+    await phone.goto(base + '#/g/' + g.gameId);
+    await phone.locator('.tab--invest').click();
+    const land = phone.locator('#company-landlord');
+    await land.getByText('yours 60% · control').waitFor();
+    await land.getByText(/sets the price — a controlling stake \(60%\)\. Can veto: City \(40%\)\./).waitFor();
+    await land.getByLabel('New price, $').fill('9000');
+    await land.getByRole('button', { name: 'Propose' }).click();
+    await phone.getByText('Proposal sent').first().waitFor();
+    await land.getByText(/proposes: rent \$9,000 a month \(now \$7,500 a month\)/).waitFor();
+    await shot(phone, 'owners-01-phone-invest', true);
+    // Ведущий: «Город» → «Решения компаний» — голос за город.
+    const host = await page(browser, 'laptop', ADMIN);
+    await host.goto(base + '#/g/' + g.gameId);
+    await host.getByRole('button', { name: 'City', exact: true }).click();
+    const hostLand = host.locator('#host-companies #company-landlord');
+    await hostLand.getByText('city 40% · veto').waitFor();
+    await shot(host, 'owners-02-host-decision');
+    await hostLand.getByRole('button', { name: 'No objection' }).click();
+    await hostLand.getByText('Last decision: rent $9,000 a month — accepted').waitFor();
+    const [{ rent }] = await server.sql`select (config->>'RENT')::float as rent from games where id = ${g.gameId}`;
+    assert.equal(rent, 9000);
+    // Ведущему эту цену в настройках менять нельзя: блокирующий пакет у города, контроль — у команды.
+    const up = await g.call(ADMIN, 'updateConfig', { gameId: g.gameId, updates: { RENT: 8000 } });
+    assert.equal(up.rejected.RENT.code, 'shareholders');
+
+    // Инициатива: команда предлагает потолок аренды, ведущий выносит на голосование.
+    await phone.locator('.tab--city').click();
+    const ini = phone.locator('#initiative');
+    await ini.getByLabel('What to vote on').selectOption('price_cap');
+    await ini.getByLabel('Price of').selectOption('landlord');
+    await ini.getByLabel('Cap, $').fill('8500');
+    await ini.getByRole('button', { name: 'Send to the host' }).click();
+    await ini.getByText('Waiting for the host.').waitFor();
+    await shot(phone, 'owners-03-phone-initiative', true);
+    await host.getByRole('button', { name: 'Run', exact: true }).click();
+    const votes = host.locator('.card', { hasText: 'Start the vote' });
+    await votes.getByText('Price cap law: rent no more than $8,500').waitFor();
+    await votes.getByText('Initiative of Taco Town').waitFor();
+    await shot(host, 'owners-04-host-initiative');
+    await votes.getByRole('button', { name: 'Put to a vote' }).click();
+    await host.getByText('The vote has started.').waitFor();
+    await ini.getByText('The host put it to a vote.').waitFor({ timeout: 15000 });
+    await phone.locator('.vote').getByText('Initiative of Taco Town').waitFor();
+    await host.getByRole('button', { name: 'Cancel the vote', exact: true }).click();
+
+    // «Новости»: решение акционеров и сделка с долей — в ленте.
+    await phone.locator('.tab--board').click();
+    const feed = phone.locator('.news-card');
+    await feed.getByText(/Landlord: rent \$9,000 a month from next month/).waitFor();
+    await feed.getByText(/Taco Town bought 60% of the landlord from the city/).waitFor();
+    await shot(phone, 'owners-05-phone-news');
+    for (const x of [host, phone]) await x.close();
+  });
+
+  await step('phone 360 px: five tabs fit in every language, no sideways scroll', async () => {
+    const g = await seedGame(server.sql, { months: 1, title: 'Narrow phones', sponsor: false });
+    for (const lang of ['en', 'ru', 'es', 'pt']) {
+      const ctx = await browser.newContext({ viewport: { width: 360, height: 740 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true });
+      await ctx.addInitScript(([e, l]) => { localStorage.setItem('mg-test-email', e); localStorage.setItem('mg-lang', l); }, [TEAMS[1].email, lang]);
+      const p = await ctx.newPage();
+      p.on('pageerror', (e) => errors.push('narrow: ' + e.message));
+      await p.goto(base + '#/g/' + g.gameId);
+      await p.locator('.tab--invest').waitFor();
+      for (const id of ['main', 'bank', 'invest', 'city', 'board']) {
+        await p.locator('.tab--' + id).click();
+        await p.waitForTimeout(150);
+        const wide = await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+        assert.ok(wide <= 0, lang + ' ' + id + ': page scrolls sideways by ' + wide + 'px');
+      }
+      const cut = await p.evaluate(() => [...document.querySelectorAll('.tab__label')]
+        .filter((el) => el.scrollWidth > el.clientWidth + 1).map((el) => el.textContent));
+      assert.deepEqual(cut, [], lang + ': tab labels cut');
+      if (lang === 'ru') await p.screenshot({ path: `${OUT}/phone-360-ru-tabs.png` });
+      await ctx.close();
+    }
   });
 
   await step('projector scoreboard: sign in first, then only this game\'s people see it', async () => {

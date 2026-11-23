@@ -62,6 +62,10 @@ export default {
   },
 
   tabs: {
+    bank: 'Bank',
+    invest: 'Invest',
+    city: 'City',
+    news: 'News',
     business: 'Business', console: 'Console', board: 'Scoreboard', guide: 'Guide'
   },
 
@@ -116,6 +120,8 @@ export default {
   },
 
   profile: {
+    first: 'First fill in the team profile on the Business tab.',
+    goFill: 'Fill in the profile',
     title: 'Welcome to the game',
     lead: 'Tell the other teams who you are. They see your name and restaurant, never your email.',
     name: 'Your name',
@@ -224,6 +230,8 @@ export default {
   },
 
   bank: {
+    closedBankrupt: 'The restaurant closed in bankruptcy: loans and transfers are not available.',
+    onlyRestaurant: 'Only an open restaurant can take a loan. Transfers are below.',
     title: 'Bank',
     balance: 'Loan balance', rate: 'Rate', nextPayment: 'Next payment (principal + interest)',
     termLeft: 'Payments left', available: 'Available to borrow', limit: 'Credit limit',
@@ -640,6 +648,8 @@ export default {
     configSave: 'Save for next month',
     configSaved: 'Saved. Applies from the next month.',
     configWhy: {
+      shareholders: 'the company\'s owners set this price (City → Company decisions)',
+      over_cap: 'above the legal price cap',
       not_editable: 'can\'t be changed',
       not_number: 'not a number',
       not_whole: 'must be a whole number',
@@ -916,14 +926,21 @@ export default {
           '> Your stakes count in your capital: stake × company value. Profit is the average of the last 3 months; when the company earns more, your stake is worth more, and when the host changes the loan rate, the valuation changes too. That is how real businesses are valued: how much you would need to put in at the same rate to earn the same income.',
           '- Example: a company earns {exProfit} a month → {exYear} a year ÷ {rate} = {exValue}; a 10% stake is worth {exTen}.',
           'When a team leaves the game, its stakes go back to the city.',
-          'A classic play: take a loan, buy a stake in the insurance company, then lobby the city to raise insurance premiums.'
+          '**Who sets a company\'s price.** Rent, insurance, utilities and the loan rate are set by the company\'s owners, not by the city:',
+          '- **Over 50%** — a controlling stake: the owner sets the new price.',
+          '- **Over 30%** — a blocking stake: 3 minutes to veto it.',
+          '- No controlling stake — a **shareholders\' meeting** for 3 minutes: votes are weighted by stake; it passes if “yes” is over 50% of all shares; a “no” from an owner of over 30% is a veto.',
+          'The host votes the city\'s stake; private owners don\'t vote. A new price applies from the next month and can\'t exceed a price cap if the citizens passed one. All of this is on the Invest tab.',
+          'A classic play: take a loan, buy over 50% of the insurance company and raise insurance — every restaurant pays, the profit is yours. The citizens can answer with a price cap law.'
         ]
       },
       city: {
         title: 'The city and the host',
         body: [
           'The host plays the city. The city collects profit tax, fines, city taxes, its share of company profits and money from stake sales. It pays grants, government salaries and stake buybacks. Its budget is on the scoreboard.',
-          'Lobbying works: convince the host to change the rules — rent, insurance, utilities, payroll, taxes, the loan rate. Changes apply from the next month and are announced before they do.'
+          '**Citizens\' vote.** The host puts a question to a vote: the profit tax, the civil service salary, a one-off fee or grant, a price cap law for a company — or a question of their own. All teams vote; the host signs what passed or vetoes it. Laws apply from the next month.',
+          '**Initiative.** A team can propose a question itself on the City tab — the host puts it to a vote or rejects it.',
+          'Lobbying works: convince the host to change other rules too — payroll, taxes, starting capital. Company prices are set by their owners.'
         ]
       },
       board: {
@@ -1022,9 +1039,142 @@ export default {
     stakesPart: 'company stakes',
     note: 'Capital = money − debt + company stakes at their valuation. A company is valued at its profit per month × 12 ÷ the loan rate ({rate}). Place and the winner go by capital.'
   },
+  strip: {
+    vote: 'A vote is on',
+    company: 'Your vote is needed',
+    voteText: 'Vote: {q}',
+    companyText: 'Shareholder decision: {company}',
+  },
+
+  laws: {
+    title: 'Laws in force',
+    tax: 'Profit tax — {value}',
+    civil: 'Civil service salary — {value} a month',
+    cap: 'Price cap: {what} no more than {value}',
+    noCaps: 'No price caps: company prices are set by their owners.',
+  },
+
+  companies: {
+    title: 'Companies',
+    hostTitle: 'Company decisions',
+    lead: 'A company\'s price is set by its owners. Over 50% is a controlling stake: the owner sets the price. Over 30% is a blocking stake: 3 minutes to veto it. No controlling stake — a shareholders\' meeting, votes weighted by stake.',
+    hostLead: 'Company prices are set by their owners; you vote the city\'s stake. While the city holds over 50% and no team holds over 30%, you can also change the price in Settings.',
+    perMonth: '{value} a month',
+    perYear: '{value} a year',
+    what: {
+      landlord: 'rent',
+      bank: 'the loan rate',
+      insurer: 'insurance',
+      utility: 'utilities',
+    },
+    priceLabel: {
+      landlord: 'Rent',
+      bank: 'Loan rate',
+      insurer: 'Insurance',
+      utility: 'Utilities',
+    },
+    city: 'City',
+    private: 'private owners',
+    passive: 'don\'t vote',
+    roles: {
+      control: 'control',
+      block: 'veto',
+      vote: 'vote',
+    },
+    whoControl: '{who} sets the price — a controlling stake ({pct}).',
+    whoControlCity: 'The city sets the price — a controlling stake ({pct}).',
+    vetoBy: 'Can veto: {list}.',
+    noVeto: 'Nobody has a blocking stake — the price is accepted at once.',
+    meeting: 'No controlling stake — a shareholders\' meeting decides: it passes if “yes” is over 50% of all shares. A “no” from an owner of over 30% is a veto.',
+    noQuorum: 'Voting owners hold 50% or less together — the price can\'t be changed. Private owners don\'t vote.',
+    hostMayEdit: 'The city is the main owner and no team has a blocking stake: you can also change the price in Settings.',
+    cityPct: 'city {pct}',
+    myPct: 'yours {pct}',
+    cap: 'legal cap — {value}',
+    newPrice: 'New price',
+    newRate: 'New rate, %',
+    propose: 'Propose',
+    proposeControl: 'Owners of over 30% can veto it within 3 minutes.',
+    proposeInstant: 'Nobody can veto — the price is accepted at once and applies from next month.',
+    proposeMeeting: 'The meeting lasts 3 minutes; your “yes” is already counted.',
+    proposedToast: 'Proposal sent',
+    acceptedToast: 'Accepted — from next month',
+    votedToast: 'Vote counted',
+    openControl: 'Owner\'s new price',
+    openMeeting: 'Shareholders\' meeting',
+    proposed: '{who} proposes: {what} {value} (now {old})',
+    tally: '“Yes” — {yes}, “no” — {no}; over 50% needed',
+    vetoWait: 'Can veto: {list}. No veto so far.',
+    veto: 'Veto',
+    noObjection: 'No objection',
+    yes: 'Yes',
+    no: 'No',
+    vetoHint: 'You hold over 30%: your “no” is a veto.',
+    myVote: 'Your vote: {choice}',
+    choices: {
+      yes: '“yes”',
+      no: '“no”',
+    },
+    cancel: 'Withdraw decision',
+    cancelledToast: 'Decision withdrawn',
+    left: '{time} left',
+    counting: 'Counting…',
+    line: '{what} {value} — {status}',
+    status: {
+      passed: 'accepted',
+      rejected: 'not accepted',
+      vetoed: 'vetoed',
+      cancelled: 'withdrawn by the host',
+      open: 'under way',
+    },
+    last: 'Last decision: {line}',
+    history: 'Shareholder decisions',
+    by: 'proposed by {who}',
+  },
+
+  news: {
+    title: 'News feed',
+    empty: 'No events yet: laws, shareholder decisions, stake deals and bankruptcies will appear here.',
+    showAll: 'Show all',
+    lawSigned: 'Law passed: {q}',
+    lawFailed: 'Voted down: {q}',
+    lawPending: 'Passed by vote, waiting for the host\'s signature: {q}',
+    lawVetoed: 'The host vetoed: {q}',
+    initiative: '(initiative of {team})',
+    company: {
+      passed: '{company}: {what} {value} from next month ({who})',
+      rejected: '{company}: the meeting rejected {what} {value}',
+      vetoed: '{company}: veto on {what} {value}',
+    },
+    stakeFromCity: '{buyer} bought {pct} of {inst} from the city for {price}',
+    stakeFromTeam: '{buyer} bought {pct} of {inst} from {seller} for {price}',
+    bankrupt: 'Bankruptcy: {team}',
+  },
+
   vote: {
+    company: 'Price of',
+    capValue: 'Cap',
+    initiativeBy: 'Initiative of {team}',
+    initiatives: 'Team initiatives: {n}',
+    toVote: 'Put to a vote',
+    reject: 'Reject',
+    initiativeRejected: 'Initiative rejected',
+    initiativeTitle: 'Initiative',
+    initiativeLead: 'Propose a question for the citizens\' vote: a law, a fee, a grant or your own question. The host puts it to a vote or rejects it.',
+    propose: 'Send to the host',
+    initiativeSent: 'Initiative sent to the host',
+    initiativeStatus: {
+      pending: 'Waiting for the host.',
+      voted: 'The host put it to a vote.',
+      rejected: 'The host rejected it.',
+      withdrawn: 'You withdrew it.',
+    },
+    withdraw: 'Withdraw',
+    initiativeWithdrawn: 'Initiative withdrawn',
     title: 'Vote',
     templates: {
+      price_cap: 'Price cap law: {what} no more than {value}',
+      cap_off: 'Lift the price cap: {what}',
       profit_tax: 'Set the profit tax at {value}',
       rent: 'Set rent at {value} a month',
       loan_rate: 'Set the loan rate at {value} a year',
@@ -1033,6 +1183,8 @@ export default {
       grant_off: 'Give a one-off grant of {value} to everyone out of business',
     },
     names: {
+      price_cap: 'Company price cap',
+      cap_off: 'Lift a price cap',
       profit_tax: 'Profit tax',
       rent: 'Rent',
       loan_rate: 'Loan rate',
@@ -1082,6 +1234,10 @@ export default {
     vetoedToast: 'Vetoed.'
   },
   errors: {
+    vote_range_pct: 'The value must be from {fromPct}% to {toPct}%.',
+    no_cap: 'This company has no price cap.',
+    initiative_pending: 'Your initiative is already waiting for the host: withdraw it or wait for the decision.',
+    initiative_closed: 'This initiative has already been decided.',
     join_host: 'This is the host’s email: the host does not play as a team.',
     already_in_game: 'This email is already in the game.',
     join_gone: 'The request is no longer there. Send it again.',

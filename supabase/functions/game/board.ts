@@ -330,21 +330,75 @@ async function timeline(sql: Sql, game: Row) {
   return { players: [...byPlayer.values()], marketTotals };
 }
 
+// ----------------------------------------------------------------- новости
+
+/**
+ * Лента «Новости»: законы горожан, решения акционеров, сделки с долями,
+ * банкротства — от новых к старым. Тексты пишет сайт на языке читателя
+ * по коду события (news.* в словарях).
+ */
+export async function newsFeed(sql: Sql, gameId: string, limit = 40) {
+  const [votes, decisions, deals, bankrupt]: Row[][] = await Promise.all([
+    sql`select id, template, target, value, question, result, decision, proposer, round_number,
+               coalesce(decided_at, closed_at) as at
+        from votes where game_id = ${gameId} and status = 'closed'
+        order by closed_at desc limit ${limit}`,
+    sql`select id, kind, status, value, old_value, mode, proposer, owners, applied, round_number, closed_at as at
+        from company_decisions where game_id = ${gameId} and status in ('passed', 'rejected', 'vetoed')
+        order by closed_at desc limit ${limit}`,
+    sql`select l.id, l.amount, l.params, l.round_number, l.created_at as at, p.restaurant_name, p.display_name
+        from ledger l join players p on p.id = l.player_id
+        where l.game_id = ${gameId} and l.kind = 'stake_buy'
+        order by l.created_at desc limit ${limit}`,
+    sql`select n.id, n.round_number, n.created_at as at, p.restaurant_name, p.display_name
+        from notices n join players p on p.id = n.player_id
+        where n.game_id = ${gameId} and n.kind = 'bankrupt'
+        order by n.created_at desc limit ${limit}`
+  ]);
+  const ownerLabel = (d: Row, id: string) =>
+    id === 'city' ? null : ((d.owners as Row[] | null)?.find((o) => o.id === id)?.label ?? null);
+  const items = [
+    ...votes.map((v) => ({
+      type: 'law', id: 'v' + v.id, at: v.at, round: num(v.round_number),
+      template: String(v.template), target: v.target ?? null,
+      value: v.value === null ? null : num(v.value), question: v.question ?? null,
+      passed: !!(v.result as Row | null)?.passed, decision: v.decision ?? null, proposer: v.proposer ?? null
+    })),
+    ...decisions.map((d) => ({
+      type: 'company', id: 'c' + d.id, at: d.at, round: num(d.round_number),
+      kind: String(d.kind), status: String(d.status), mode: String(d.mode),
+      value: num((d.applied as Row | null)?.value ?? d.value), oldValue: d.old_value === null ? null : num(d.old_value),
+      proposer: { city: d.proposer === 'city', label: ownerLabel(d, String(d.proposer)) }
+    })),
+    ...deals.map((x) => {
+      const pr = (x.params ?? {}) as Row;
+      return {
+        type: 'stake', id: 's' + x.id, at: x.at, round: num(x.round_number),
+        buyer: teamLabel(x), seller: pr.code === 'stake_bought' ? (pr.team ?? null) : null,
+        kind: pr.inst ?? null, pct: num(pr.pct), price: Math.abs(num(x.amount))
+      };
+    }),
+    ...bankrupt.map((x) => ({ type: 'bankrupt', id: 'b' + x.id, at: x.at, round: num(x.round_number), team: teamLabel(x) }))
+  ];
+  return items.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime()).slice(0, limit);
+}
+
 export async function boardData(sql: Sql, game: Row) {
-  const [round, tl, institutions, city, money, ocean, signup] = await Promise.all([
+  const [round, tl, institutions, city, money, ocean, signup, news] = await Promise.all([
     currentRound(sql, game.id), timeline(sql, game), institutionsState(sql, game),
     cityBudget(sql, game.id), moneyMap(sql, game.id), oceanByMonth(sql, game.id),
     // До начала игры проектор показывает QR-код и сколько команд уже записалось.
     game.status === 'setup'
       ? sql`select (select count(*) from players where game_id = ${game.id})::int as teams,
                    (select count(*) from join_requests where game_id = ${game.id} and status = 'pending')::int as waiting`
-      : Promise.resolve(null)
+      : Promise.resolve(null),
+    newsFeed(sql, String(game.id))
   ]);
   return {
     ok: true,
     game: gameMeta(game, round),
     rules: rulesFor(activeConfig(game, round)),
-    ...tl, institutions, city, moneyMap: money, ocean,
+    ...tl, institutions, city, moneyMap: money, ocean, news,
     signup: signup ? { teams: num(signup[0].teams), waiting: num(signup[0].waiting) } : null
   };
 }

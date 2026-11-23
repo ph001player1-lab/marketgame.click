@@ -22,6 +22,7 @@ import { createCake } from '../views/cake.js';
 import { siteBase, sponsorBanner } from '../views/common.js';
 import { qrSvg } from '../views/qr.js';
 import { projectorVote } from '../views/vote.js';
+import { projectorCompanies } from '../views/companies.js';
 
 const root = document.getElementById('app');
 const params = new URLSearchParams(location.search);
@@ -103,12 +104,16 @@ async function start(gameCode) {
   // Голосование — крупно поверх экрана: вопрос и часы, потом итог.
   const voteBox = h('div', { class: 'projector__vote', hidden: true, role: 'status' });
   const paintVote = projectorVote(voteBox);
+  // Решения акционеров по ценам компаний — крупно, с часами.
+  const companiesBox = h('div', { class: 'projector__vote', hidden: true, role: 'status' });
+  const companiesOffset = { value: 0 };
+  const paintCompanies = projectorCompanies(companiesBox, companiesOffset);
   const pageBtn = h('button', { class: 'btn btn--small no-print', type: 'button', onclick: () => showPage(page === 'cake' ? 'board' : 'cake') });
   const shell = h('div', { class: 'projector' },
     h('header', { class: 'projector__head' },
       h('div', { class: 'projector__title' }, titleEl, subEl),
       timerEl, joinEl),
-    errorEl, voteBox, h('div', { class: 'projector__body' }, signupBox, cakeBox, boardBox),
+    errorEl, voteBox, companiesBox, h('div', { class: 'projector__body' }, signupBox, cakeBox, boardBox),
     h('footer', { class: 'projector__foot no-print' }, rotateBox, sponsorEl,
       h('div', { class: 'btn-row' }, pageBtn, fullBtn)));
   replace(root, shell);
@@ -164,6 +169,8 @@ async function start(gameCode) {
     deadline = g.deadline ? new Date(g.deadline).getTime() : null;
     lastData = data;
     paintVote(data.vote);
+    if (data.vote?.serverNow) companiesOffset.value = new Date(data.vote.serverNow).getTime() - Date.now();
+    paintCompanies(data.companies);
     // Плашку перерисовываем, только если спонсор сменился: логотип не мигает.
     const sponsorSig = JSON.stringify(g.sponsor || null);
     if (sponsorSig !== sponsorEl.dataset.sig) {

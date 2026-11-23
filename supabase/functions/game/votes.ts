@@ -1,9 +1,16 @@
 // ============================================================================
 //  Голосования — как в парламенте.
 //
-//  Ведущий выносит вопрос: закон по шаблону (налог на прибыль, аренда,
-//  ставка по кредитам, зарплата на госслужбе), разовый сбор с работающих
-//  ресторанов, разовый грант тем, кто вне бизнеса, — или свой вопрос.
+//  Ведущий выносит вопрос: закон по шаблону (налог на прибыль, зарплата на
+//  госслужбе, «Потолок цены» компании или его отмена), разовый сбор с
+//  работающих ресторанов, разовый грант тем, кто вне бизнеса, — или свой
+//  вопрос. Цены компаний (аренду, ставку по кредитам…) решают не горожане,
+//  а владельцы компаний (companies.ts); горожане могут только ограничить
+//  цену сверху законом «Потолок цены».
+//
+//  Команда может предложить вопрос сама — инициатива: она ждёт ведущего,
+//  ведущий выносит её на голосование или отклоняет. У команды не больше
+//  одной инициативы, которая ждёт ведущего.
 //  Голосует каждая команда игры, кроме вышедших: «за», «против»,
 //  «воздержался»; голос можно изменить до конца. Пока голосование идёт,
 //  видно только, сколько команд проголосовало. Итог считается сам, когда
@@ -22,19 +29,24 @@
 // ============================================================================
 
 import {
-  type Sql, type Row, fail, num, currentRound, accountingRound, logHostAction, nested
+  type Sql, type Row, fail, num, currentRound, accountingRound, logHostAction, nested, isInstitution, teamLabel
 } from './lib.ts';
 import { editableFor } from './presets.ts';
 import { updateConfig, massAdjust } from './host.ts';
+import { setCap, capOf, priceRange, toConfig, toShown, unitOf } from './companies.ts';
 
-type Template = { key?: string; mass?: 'tax_active' | 'grant_off_business'; unit?: 'pct' | 'money' };
+type Template = {
+  key?: string; mass?: 'tax_active' | 'grant_off_business'; unit?: 'pct' | 'money';
+  // Закон «Потолок цены» компании (target): set — задать, off — снять.
+  cap?: 'set' | 'off';
+};
 
 /** Шаблоны вопросов: закон (настройка игры), разовый сбор или грант, свой вопрос. */
 export const VOTE_TEMPLATES: Record<string, Template> = {
   profit_tax: { key: 'PROFIT_TAX_RATE', unit: 'pct' },
-  rent: { key: 'RENT', unit: 'money' },
-  loan_rate: { key: 'LOAN_RATE_ANNUAL', unit: 'pct' },
   civil_salary: { key: 'CIVIL_SERVICE_SALARY', unit: 'money' },
+  price_cap: { cap: 'set' },
+  cap_off: { cap: 'off' },
   city_fee: { mass: 'tax_active', unit: 'money' },
   grant_off: { mass: 'grant_off_business', unit: 'money' },
   custom: {}
@@ -51,32 +63,61 @@ function text(v: unknown, max: number): string | null {
 
 // ----------------------------------------------------------------- ведущий
 
-/** Ведущий начинает голосование. Открыт месяц — он продлевается на столько же. */
-export async function startVote(sql: Sql, game: Row, actor: string, b: Row) {
-  if (game.status === 'finished') fail('game_finished');
+/**
+ * Вопрос голосования — по шаблону: { template, target, value, question }.
+ * Та же проверка — у вопроса ведущего и у инициативы команды. Ставки и
+ * налог — в процентах (25 — это 25%), цены — деньгами.
+ */
+export function voteParams(game: Row, b: Row) {
   const template = String(b.template ?? '');
   const tpl = VOTE_TEMPLATES[template];
   if (!tpl) fail('bad_vote');
-  const seconds = Number(b.seconds ?? 120);
-  if (!VOTE_SECONDS.includes(seconds)) fail('bad_vote');
-  const rule = b.rule === 'voted' ? 'voted' : 'all';
   let value: number | null = null;
   let question: string | null = null;
+  let target: string | null = null;
+  const range = (min: number, max: number, pct: boolean) =>
+    pct ? fail('vote_range_pct', { fromPct: min, toPct: max }) : fail('vote_range', { min, max });
   if (template === 'custom') {
     question = text(b.question, 200);
     if (!question) fail('empty');
+  } else if (tpl.cap) {
+    target = String(b.target ?? '');
+    if (!isInstitution(target)) fail('bad_vote');
+    if (tpl.cap === 'off') {
+      if (capOf(game.config as Row, target) === null) fail('no_cap');
+    } else {
+      value = Number(b.value);
+      if (b.value === null || b.value === undefined || b.value === '' || !Number.isFinite(value)) fail('bad_vote');
+      const r = priceRange(game, target);
+      const v = toConfig(target, value);
+      if (v < r.min || v > r.max) range(toShown(target, r.min), toShown(target, r.max), unitOf(target) === 'pct');
+    }
   } else {
     value = Number(b.value);
-    if (!Number.isFinite(value)) fail('bad_vote');
+    if (b.value === null || b.value === undefined || b.value === '' || !Number.isFinite(value)) fail('bad_vote');
     if (tpl.key) {
       // Тот же диапазон, что у правки ведущего; ставки — в процентах.
-      const range = editableFor(game.currency)[tpl.key];
+      const r = editableFor(game.currency)[tpl.key];
       const v = tpl.unit === 'pct' ? value / 100 : value;
-      if (!range || v < range.min || v > range.max) {
-        fail('vote_range', { min: tpl.unit === 'pct' ? range.min * 100 : range.min, max: tpl.unit === 'pct' ? range.max * 100 : range.max });
+      if (!r || v < r.min || v > r.max) {
+        range(tpl.unit === 'pct' ? r.min * 100 : r.min, tpl.unit === 'pct' ? r.max * 100 : r.max, tpl.unit === 'pct');
       }
     } else if (!(value > 0) || value > 1e9) fail('bad_vote');
   }
+  return { template, target, value, question };
+}
+
+/**
+ * Ведущий начинает голосование — свой вопрос или инициативу команды
+ * (initiativeId). Открыт месяц — он продлевается на столько же.
+ */
+export async function startVote(sql: Sql, game: Row, actor: string, b: Row) {
+  if (game.status === 'finished') fail('game_finished');
+  const seconds = Number(b.seconds ?? 120);
+  if (!VOTE_SECONDS.includes(seconds)) fail('bad_vote');
+  const rule = b.rule === 'voted' ? 'voted' : 'all';
+  const initiativeId = b.initiativeId ? String(b.initiativeId) : null;
+  if (initiativeId && !/^[0-9a-f-]{36}$/i.test(initiativeId)) fail('bad_params');
 
   return await sql.begin(async (tx: Sql) => {
     // Одно голосование за раз; закончившееся по времени закрываем сначала.
@@ -86,10 +127,25 @@ export async function startVote(sql: Sql, game: Row, actor: string, b: Row) {
     if (open) fail('vote_open');
     const [pending] = await tx`select 1 from votes where game_id = ${game.id} and decision = 'pending'`;
     if (pending) fail('vote_pending');
+    let proposer: string | null = null;
+    let params;
+    if (initiativeId) {
+      const [ini] = await tx`
+        select i.*, p.restaurant_name, p.display_name from initiatives i join players p on p.id = i.player_id
+        where i.id = ${initiativeId} and i.game_id = ${game.id} for update of i`;
+      if (!ini || ini.status !== 'pending') fail('initiative_closed');
+      params = voteParams(game, ini);
+      proposer = teamLabel(ini);
+      await tx`update initiatives set status = 'voted', decided_at = now(), decided_by = ${actor}
+               where id = ${initiativeId}`;
+    } else {
+      params = voteParams(game, b);
+    }
     const round = await currentRound(tx, game.id);
     const [v] = await tx`
       insert into votes ${tx({
-        game_id: game.id, round_number: accountingRound(round), template, question, value, rule, seconds,
+        game_id: game.id, round_number: accountingRound(round), ...params, rule, seconds,
+        initiative_id: initiativeId, proposer,
         closes_at: new Date(Date.now() + seconds * 1000), created_by: actor
       })} returning id`;
     // Время на голосование месяц не съедает: он продлевается ровно на столько же.
@@ -98,7 +154,7 @@ export async function startVote(sql: Sql, game: Row, actor: string, b: Row) {
                where game_id = ${game.id} and round_number = ${round.round_number} and status = 'open'
                  and deadline is not null`;
     }
-    await logHostAction(tx, game.id, actor, 'vote_start', { template, value, question, rule, seconds });
+    await logHostAction(tx, game.id, actor, 'vote_start', { ...params, rule, seconds, initiativeId });
     return { ok: true, voteId: String(v.id) };
   });
 }
@@ -125,11 +181,15 @@ export async function decideVote(sql: Sql, game: Row, actor: string, b: Row) {
     if (!v || v.decision !== 'pending') fail('vote_decided');
     let applied: Row | null = null;
     const tpl = VOTE_TEMPLATES[String(v.template)];
-    if (decision === 'signed' && tpl && (tpl.key || tpl.mass)) {
+    if (decision === 'signed' && tpl && (tpl.key || tpl.mass || tpl.cap)) {
       const [g] = await tx`select * from games where id = ${game.id} for update`;
       if (g.status === 'finished') fail('game_finished');
       const value = num(v.value);
-      if (tpl.key) {
+      if (tpl.cap && isInstitution(v.target)) {
+        // Потолок цены: цена выше потолка снижается до него со следующего месяца.
+        applied = await setCap(tx, String(game.id), v.target,
+          tpl.cap === 'off' ? null : toConfig(String(v.target), value));
+      } else if (tpl.key) {
         const r = await updateConfig(tx, g, actor, { updates: { [tpl.key]: tpl.unit === 'pct' ? value / 100 : value } });
         applied = { config: r.applied, rejected: r.rejected };
       } else if (tpl.mass) {
@@ -215,6 +275,8 @@ function voteRow(v: Row) {
   return {
     id: String(v.id), template: String(v.template), question: v.question ?? null,
     value: v.value === null || v.value === undefined ? null : num(v.value),
+    // Компания закона «Потолок цены»; команда, чья это инициатива.
+    target: v.target ?? null, proposer: v.proposer ?? null,
     rule: String(v.rule), seconds: num(v.seconds), roundNumber: num(v.round_number),
     openedAt: v.opened_at, closesAt: v.closes_at,
     decision: v.decision ?? null, decidedAt: v.decided_at ?? null
@@ -254,4 +316,65 @@ export async function voteState(sql: Sql, gameId: string, playerId: string | nul
 export async function voteHistory(sql: Sql, gameId: string) {
   const rows: Row[] = await sql`select * from votes where game_id = ${gameId} and status = 'closed' order by opened_at`;
   return rows.map((v) => ({ ...voteRow(v), result: v.result, applied: v.applied ?? null, closedAt: v.closed_at }));
+}
+
+// ----------------------------------------------------------------- инициативы
+
+const INITIATIVE_ID = /^[0-9a-f-]{36}$/i;
+
+/** Команда предлагает вопрос на голосование горожан; решает ведущий. */
+export async function proposeInitiative(sql: Sql, game: Row, playerId: string, b: Row) {
+  if (game.status === 'finished') fail('game_finished');
+  const params = voteParams(game, b);
+  const [p] = await sql`select status from players where id = ${playerId}`;
+  if (!p || p.status === 'left') fail('not_active');
+  const [busy] = await sql`select 1 from initiatives where player_id = ${playerId} and status = 'pending'`;
+  if (busy) fail('initiative_pending');
+  const [row] = await sql`
+    insert into initiatives ${sql({ game_id: game.id, player_id: playerId, ...params })} returning id`;
+  return { ok: true, initiativeId: String(row.id) };
+}
+
+/** Команда отзывает свою инициативу, пока ведущий её не рассмотрел. */
+export async function withdrawInitiative(sql: Sql, game: Row, playerId: string, b: Row) {
+  const id = String(b.initiativeId ?? '');
+  if (!INITIATIVE_ID.test(id)) fail('bad_params');
+  const [row] = await sql`update initiatives set status = 'withdrawn', decided_at = now()
+    where id = ${id} and game_id = ${game.id} and player_id = ${playerId} and status = 'pending' returning id`;
+  if (!row) fail('initiative_closed');
+  return { ok: true };
+}
+
+/** Ведущий отклоняет инициативу. */
+export async function rejectInitiative(sql: Sql, game: Row, actor: string, b: Row) {
+  const id = String(b.initiativeId ?? '');
+  if (!INITIATIVE_ID.test(id)) fail('bad_params');
+  const [row] = await sql`update initiatives set status = 'rejected', decided_at = now(), decided_by = ${actor}
+    where id = ${id} and game_id = ${game.id} and status = 'pending' returning id`;
+  if (!row) fail('initiative_closed');
+  await logHostAction(sql, game.id, actor, 'initiative_reject', { initiativeId: id });
+  return { ok: true };
+}
+
+function initiativeRow(i: Row) {
+  return {
+    id: String(i.id), template: String(i.template), target: i.target ?? null,
+    value: i.value === null || i.value === undefined ? null : num(i.value), question: i.question ?? null,
+    status: String(i.status), createdAt: i.created_at, decidedAt: i.decided_at ?? null
+  };
+}
+
+/** Инициативы, которые ждут ведущего, — для пульта. */
+export async function pendingInitiatives(sql: Sql, gameId: string) {
+  const rows: Row[] = await sql`
+    select i.*, p.restaurant_name, p.display_name from initiatives i join players p on p.id = i.player_id
+    where i.game_id = ${gameId} and i.status = 'pending' order by i.created_at`;
+  return rows.map((i) => ({ ...initiativeRow(i), playerId: String(i.player_id), team: teamLabel(i) }));
+}
+
+/** Последняя инициатива команды — что с ней. */
+export async function myInitiative(sql: Sql, gameId: string, playerId: string) {
+  const [i] = await sql`select * from initiatives where game_id = ${gameId} and player_id = ${playerId}
+    order by created_at desc limit 1`;
+  return i ? initiativeRow(i) : null;
 }

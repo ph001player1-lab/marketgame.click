@@ -1,4 +1,8 @@
-// Раздел Business — кабинет команды.
+// Кабинет команды — четыре вкладки: «Бизнес» (решение месяца, итоги,
+// сотрудники, смена деятельности, профиль), «Банк» (кредит, переводы),
+// «Инвестиции» (доли, компании и решения акционеров) и «Город»
+// (голосование, инициатива, действующие законы). «Новости» — табло, его
+// рисует scoreboard.js.
 //
 // Формы строятся один раз: фоновый опрос обновляет цифры, но не стирает то,
 // что игрок начал вводить. Форма решения пересобирается только при смене
@@ -10,7 +14,8 @@ import { h, $, replace, toast, confirmDialog, busy, field, moneyInput, card } fr
 import { usd, usdSigned, int, dec2, pct, pctRaw, parseMoney, dateTime } from '../fmt.js';
 import { act } from '../api.js';
 import { teamName, starsBadge } from './common.js';
-import { teamVotePart } from './vote.js';
+import { teamVotePart, teamInitiativePart } from './vote.js';
+import { companiesPart, priceText } from './companies.js';
 import { ONLINE, countryOptions, hasAreaList, areaOptions } from '../geo.js';
 
 const CHANNELS = ['seo', 'promo', 'maps', 'social', 'outdoor', 'affiliate'];
@@ -20,7 +25,7 @@ const CHANNEL_FIELD = {
 };
 const OFF = ['civil_service', 'freelance', 'custom_employed'];
 
-export function createBusiness(root, ctx) {
+export function createBusiness(roots, ctx) {
   let state = null;
   let shapeKey = '';       // при смене — полная пересборка раздела
   let formKey = '';        // при смене — пересборка формы решения
@@ -58,44 +63,97 @@ export function createBusiness(root, ctx) {
   function build() {
     for (const k of Object.keys(parts)) delete parts[k];
     const s = state;
-    const blocks = [];
-    // Голосование — первым: на него отведены минуты.
-    parts.vote = teamVotePart((btn, voteId, choice) => run(btn, 'castVote', { voteId, choice }));
-    blocks.push(parts.vote.el);
-    parts.notices = noticesPart(); blocks.push(parts.notices.el);
-    parts.upcoming = upcomingPart(); blocks.push(parts.upcoming.el);
+    const out = { main: [], bank: [], invest: [], city: [] };
+    const put = (pane, name, part) => { parts[name] = part; out[pane].push(part.el); };
+    // «Город»: голосование — первым, на него отведены минуты; потом
+    // инициатива и законы, которые действуют.
+    put('city', 'vote', teamVotePart((btn, voteId, choice) => run(btn, 'castVote', { voteId, choice })));
+    put('main', 'notices', noticesPart());
+    put('main', 'upcoming', upcomingPart());
 
     if (s.needsProfile) {
-      parts.profile = profilePart(); blocks.push(parts.profile.el);
-      replace(root, blocks);
+      put('main', 'profile', profilePart());
+      for (const pane of ['bank', 'invest', 'city']) out[pane].push(profileFirst());
+      paint(out);
       return;
     }
 
-    if (s.lifecycle === 'active') {
-      parts.stats = statsPart(); blocks.push(parts.stats.el);
-      parts.decision = decisionPart(); blocks.push(parts.decision.el);
-      parts.result = resultPart(); blocks.push(parts.result.el);
-      parts.bank = bankPart(); blocks.push(parts.bank.el);
-      parts.employees = employeesPart(); blocks.push(parts.employees.el);
-      parts.transfer = transferPart(); blocks.push(parts.transfer.el);
-      parts.stakes = stakesPart(); blocks.push(parts.stakes.el);
-      parts.career = careerPart(true); blocks.push(parts.career.el);
-    } else if (s.lifecycle === 'bankrupt') {
-      parts.bankrupt = bankruptPart(); blocks.push(parts.bankrupt.el);
-      parts.result = resultPart(); blocks.push(parts.result.el);
-      parts.stakes = stakesPart(); blocks.push(parts.stakes.el);
-    } else if (OFF.includes(s.lifecycle)) {
-      parts.off = offBusinessPart(); blocks.push(parts.off.el);
-      parts.transfer = transferPart(); blocks.push(parts.transfer.el);
-      parts.stakes = stakesPart(); blocks.push(parts.stakes.el);
-      parts.career = careerPart(false); blocks.push(parts.career.el);
-      parts.result = resultPart(); blocks.push(parts.result.el);
-    } else {
-      blocks.push(card(t('life.leftTitle'), h('p', {}, t('life.leftLead'))));
-      parts.result = resultPart(); blocks.push(parts.result.el);
+    if (s.lifecycle !== 'left') {
+      put('city', 'initiative', teamInitiativePart(run));
+      put('invest', 'stakes', stakesPart());
+      put('invest', 'companies', companiesCard());
     }
-    parts.profileEdit = profileEditPart(); blocks.push(parts.profileEdit.el);
-    replace(root, blocks);
+    put('city', 'laws', lawsPart());
+
+    if (s.lifecycle === 'active') {
+      put('main', 'stats', statsPart());
+      put('main', 'decision', decisionPart());
+      put('main', 'result', resultPart());
+      put('main', 'employees', employeesPart());
+      put('main', 'career', careerPart(true));
+      put('bank', 'bank', bankPart());
+      put('bank', 'transfer', transferPart());
+    } else if (s.lifecycle === 'bankrupt') {
+      put('main', 'bankrupt', bankruptPart());
+      put('main', 'result', resultPart());
+      out.bank.push(card(t('bank.title'), h('p', { class: 'muted' }, t('bank.closedBankrupt'))));
+    } else if (OFF.includes(s.lifecycle)) {
+      put('main', 'off', offBusinessPart());
+      put('main', 'career', careerPart(false));
+      put('main', 'result', resultPart());
+      out.bank.push(card(t('bank.title'), h('p', { class: 'muted small' }, t('bank.onlyRestaurant'))));
+      put('bank', 'transfer', transferPart());
+    } else {
+      out.main.push(card(t('life.leftTitle'), h('p', {}, t('life.leftLead'))));
+      put('main', 'result', resultPart());
+      out.bank.push(card(t('bank.title'), h('p', { class: 'muted' }, t('life.leftLead'))));
+      out.invest.push(card(t('stakes.title'), h('p', { class: 'muted' }, t('life.leftLead'))));
+    }
+    put('main', 'profileEdit', profileEditPart());
+    paint(out);
+  }
+
+  function paint(out) {
+    for (const [pane, blocks] of Object.entries(out)) if (roots[pane]) replace(roots[pane], blocks);
+  }
+
+  /** На других вкладках до профиля — куда идти. */
+  function profileFirst() {
+    return card(null, h('p', { class: 'muted' }, t('profile.first')),
+      h('button', { class: 'btn btn--small', type: 'button', onclick: () => ctx.showTab?.('main') }, t('profile.goFill')));
+  }
+
+  // ----------------------------------------------------------------- компании и законы
+
+  /** Компании: владельцы, цена, решения акционеров — и что может эта команда. */
+  function companiesCard() {
+    const part = companiesPart(run);
+    const el = card(h('span', {}, t('companies.title') + ' ', info('owners')), part.el);
+    el.id = 'companies';
+    return { el, update: (s) => part.update(s) };
+  }
+
+  /** Законы, которые действуют: налог, зарплата на госслужбе, потолки цен. */
+  function lawsPart() {
+    const body = h('ul', { class: 'laws' });
+    const el = card(t('laws.title'), body);
+    let sig = '';
+    return {
+      el,
+      update(s) {
+        const r = s.rules || {};
+        const caps = (s.companies || []).filter((c) => c.cap !== null);
+        const next = JSON.stringify([r.taxRate, r.civilSalary, caps.map((c) => [c.kind, c.cap])]);
+        if (next === sig) return;
+        sig = next;
+        replace(body,
+          h('li', {}, t('laws.tax', { value: pct(r.taxRate || 0) })),
+          h('li', {}, t('laws.civil', { value: usd(r.civilSalary) })),
+          caps.length
+            ? caps.map((c) => h('li', {}, t('laws.cap', { what: t('companies.what.' + c.kind), value: priceText(c.kind, c.cap) })))
+            : h('li', { class: 'muted' }, t('laws.noCaps')));
+      }
+    };
   }
 
   // ----------------------------------------------------------------- уведомления

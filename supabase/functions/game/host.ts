@@ -20,7 +20,7 @@ import { gameMeta, rulesFor, upcomingChanges } from './player.ts';
 import { gameLocation, teamLocation, ONLINE } from './geo.ts';
 import { cityBudget, institutionsState, oceanByMonth } from './board.ts';
 import { pendingJoins } from './join.ts';
-import { CAP_KEY } from './companies.ts';
+import { ownership, hostMayEdit, capOf, KIND_OF_PRICE, CAP_KEY } from './companies.ts';
 
 const INSTITUTION_NAMES: Record<string, string> = {
   landlord: 'the landlord', bank: 'the bank', insurer: 'the insurer', utility: 'the utility company'
@@ -388,6 +388,11 @@ export async function updateConfig(sql: Sql, game: Row, actor: string, b: Row) {
   // Причины отказа — кодами (host.configWhy на сайте).
   const rejected: Record<string, Row> = {};
   const editable = editableFor(game.currency);
+  // Цены компаний решают их владельцы (companies.ts): ведущий меняет их
+  // напрямую, только пока у города контрольный пакет и ни у одной команды
+  // нет блокирующего. Выше потолка цены по закону — нельзя.
+  const owned = Object.keys(updates).some((k) => KIND_OF_PRICE[k])
+    ? await ownership(sql, String(game.id)) : {};
   for (const [key, raw] of Object.entries(updates)) {
     const rule = editable[key];
     if (!rule) { rejected[key] = { code: 'not_editable' }; continue; }
@@ -397,6 +402,12 @@ export async function updateConfig(sql: Sql, game: Row, actor: string, b: Row) {
     if (v < rule.min || v > rule.max) { rejected[key] = { code: 'range', min: rule.min, max: rule.max }; continue; }
     // Рынок игры со спросом на ресторан считается сам: команды × спрос.
     if (key === 'MARKET_SIZE_PER_PLAYER' && Number(cfg.DEMAND_PER_TEAM) > 0) { rejected[key] = { code: 'not_editable' }; continue; }
+    const company = KIND_OF_PRICE[key];
+    if (company && Number(cfg[key]) !== v) {
+      if (!hostMayEdit(owned[company])) { rejected[key] = { code: 'shareholders', kind: company }; continue; }
+      const cap = capOf(cfg, company);
+      if (cap !== null && v > cap) { rejected[key] = { code: 'over_cap', cap }; continue; }
+    }
     cfg[key] = v;
     applied[key] = v;
   }

@@ -22,6 +22,7 @@ import * as B from './board.ts';
 import { openMonth, calculateMonth } from './round.ts';
 import * as J from './join.ts';
 import * as V from './votes.ts';
+import * as C from './companies.ts';
 
 export const VERSION = '5.0';
 
@@ -43,7 +44,13 @@ const PLAYER_ACTIONS: Record<string, PlayerAction> = {
   proposeEmployment: (d, g, pid, b) => P.proposeEmployment(d.sql, g, pid, b),
   respondToEmployment: (d, g, pid, b) => P.respondToEmployment(d.sql, g, pid, b),
   paySalary: (d, g, pid, b, a) => P.paySalary(d.sql, g, pid, b, a),
-  castVote: (d, g, pid, b) => V.castVote(d.sql, g, pid, b)
+  castVote: (d, g, pid, b) => V.castVote(d.sql, g, pid, b),
+  // Решения акционеров: предложить цену компании, голос или вето.
+  proposePrice: (d, g, pid, b, a) => C.propose(d.sql, g, pid, a, b),
+  companyVote: (d, g, pid, b, a) => C.castBallot(d.sql, g, pid, a, b),
+  // Инициатива горожан: вопрос на голосование, решает ведущий.
+  proposeInitiative: (d, g, pid, b) => V.proposeInitiative(d.sql, g, pid, b),
+  withdrawInitiative: (d, g, pid, b) => V.withdrawInitiative(d.sql, g, pid, b)
 };
 
 const HOST_ACTIONS: Record<string, HostAction> = {
@@ -68,6 +75,11 @@ const HOST_ACTIONS: Record<string, HostAction> = {
   closeVote: (d, g, b, a) => V.closeVote(d.sql, g, a, b),
   cancelVote: (d, g, b, a) => V.cancelVote(d.sql, g, a, b),
   decideVote: (d, g, b, a) => V.decideVote(d.sql, g, a, b),
+  rejectInitiative: (d, g, b, a) => V.rejectInitiative(d.sql, g, a, b),
+  // Долей города в решениях акционеров голосует ведущий.
+  cityProposePrice: (d, g, b, a) => C.propose(d.sql, g, 'city', a, b),
+  cityCompanyVote: (d, g, b, a) => C.castBallot(d.sql, g, 'city', a, b),
+  cancelCompanyDecision: (d, g, b, a) => C.cancelDecision(d.sql, g, a, b),
   dropJoin: (d, g, b, a) => J.dropJoin(d.sql, g, a, b)
 };
 
@@ -301,8 +313,23 @@ async function route(deps: Deps, b: Row, token: string): Promise<Row> {
   // к игре. Сбой подсчёта не должен закрыть игру: ответ идёт как обычно, а
   // подсчёт повторится при следующем запросе.
   try { await V.closeDue(sql, gameId); } catch (e) { console.error('closeDue', e); }
-  const withVote = async (state: Row, playerId: string | null) =>
-    ({ ...state, vote: await V.voteState(sql, gameId, playerId) });
+  // Так же — решения акционеров. Принятая цена меняет настройки игры:
+  // дальше работаем с новыми.
+  try {
+    if (await C.closeDue(sql, gameId)) Object.assign(game, (await sql`select * from games where id = ${gameId}`)[0]);
+  } catch (e) { console.error('companies closeDue', e); }
+  // Что идёт сейчас: голосование, решения акционеров, инициативы.
+  // viewer — команда, 'city' для ведущего, null для табло.
+  const withVote = async (state: Row, viewer: string | null, g: Row = game) => {
+    const host = viewer === 'city';
+    const [vote, companies, initiatives] = await Promise.all([
+      V.voteState(sql, gameId, host ? null : viewer),
+      C.companiesState(sql, g, viewer),
+      host ? V.pendingInitiatives(sql, gameId) : viewer ? V.myInitiative(sql, gameId, viewer) : Promise.resolve(null)
+    ]);
+    return { ...state, vote, companies,
+      ...(host ? { initiatives } : viewer ? { myInitiative: initiatives } : {}) };
+  };
   // Команда в этой игре. Табло по коду приходит без id игры — ищем по ней.
   let player = mine;
   if (!player && action === 'board' && !b.gameId) {
@@ -318,12 +345,14 @@ async function route(deps: Deps, b: Row, token: string): Promise<Row> {
     if (!player && !isGameHost) fail('not_in_game');
     const report = await B.gameReport(sql, game, player ? String(player.id) : null, isGameHost);
     // В отчёте — все голосования игры с итогами.
-    return report?.ok ? { ...report, votes: await V.voteHistory(sql, gameId) } : report;
+    if (!report?.ok) return report;
+    const [votes, companyDecisions] = await Promise.all([V.voteHistory(sql, gameId), C.decisionHistory(sql, gameId)]);
+    return { ...report, votes, companyDecisions };
   }
 
   if (HOST_ACTIONS[action]) {
     if (!isGameHost) fail('not_host');
-    if (action === 'monitor') return await withVote(await H.monitor(sql, game), null);
+    if (action === 'monitor') return await withVote(await H.monitor(sql, game), 'city');
     // Ключ ссылки для входа не пишем в журнал повторов (mutations): в базе
     // только его хеш. Повтор просто выдаст новую ссылку вместо прежней.
     if (action === 'teamLink') return await J.teamLink(sql, game, me.email, b);
@@ -331,7 +360,7 @@ async function route(deps: Deps, b: Row, token: string): Promise<Row> {
       (tx) => HOST_ACTIONS[action]({ ...deps, sql: tx }, game, b, me.email));
     if (NO_STATE.has(action) || result.ok !== true) return result;
     const [fresh] = await sql`select * from games where id = ${gameId}`;
-    return { ...result, state: await withVote(await H.monitor(sql, fresh), null) };
+    return { ...result, state: await withVote(await H.monitor(sql, fresh), 'city', fresh) };
   }
 
   if (PLAYER_ACTIONS[action]) {
@@ -356,7 +385,7 @@ async function route(deps: Deps, b: Row, token: string): Promise<Row> {
       (tx) => PLAYER_ACTIONS[action]({ ...deps, sql: tx }, game, playerId, b, actor));
     if (result.ok !== true) return result;
     const [fresh] = await sql`select * from games where id = ${gameId}`;
-    return { ...result, state: await withVote(await P.dashboard(sql, fresh, playerId, impersonating), playerId) };
+    return { ...result, state: await withVote(await P.dashboard(sql, fresh, playerId, impersonating), playerId, fresh) };
   }
 
   fail('unknown_action');

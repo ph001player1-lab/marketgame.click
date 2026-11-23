@@ -13,6 +13,7 @@ import { gameForm, demandField, demandMode } from './create.js';
 import { debriefCard } from './ocean.js';
 import { qrSvg } from './qr.js';
 import { hostVotePart } from './vote.js';
+import { companiesPart } from './companies.js';
 
 const SUBTABS = ['run', 'teams', 'city', 'settings'];
 const INSTITUTIONS = ['landlord', 'bank', 'insurer', 'utility'];
@@ -585,9 +586,15 @@ export function createConsole(root, ctx) {
       h('div', { class: 'grid-2' }, field(t('host.pct'), stakePct), field(t('host.price'), stakePrice)),
       hint, h('div', { class: 'btn-row' }, stakeBtn));
 
-    const el = h('div', {}, h('p', { class: 'muted small' }, t('host.cityLead')), budgetBox, adjustCard, massCard, sharesCard, stakesCard);
+    // Решения акционеров: долей города голосует ведущий.
+    const companies = companiesPart(run, { host: true });
+    const companiesCard = card(t('companies.hostTitle'), companies.el);
+    companiesCard.id = 'host-companies';
+    const el = h('div', {}, h('p', { class: 'muted small' }, t('host.cityLead')), budgetBox, companiesCard, adjustCard, massCard,
+      sharesCard, stakesCard);
 
     function update(s) {
+      companies.update(s);
       const city = s.city;
       const last = city.months[city.months.length - 1];
       const town = s.ocean?.length ? s.ocean[s.ocean.length - 1] : null;

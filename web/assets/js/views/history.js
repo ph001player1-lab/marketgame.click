@@ -9,6 +9,7 @@ import { createScoreboard } from './scoreboard.js';
 import { plTable } from './business.js';
 import { downloadCsv, copyText, fileSlug, siteBase, simpleTable, teamName as named } from './common.js';
 import { voteHistoryCard } from './vote.js';
+import { decisionHistoryCard } from './companies.js';
 import { capitalNote } from './wealth.js';
 
 const CHANNELS = ['seo', 'promo', 'maps', 'social', 'outdoor', 'affiliate'];
@@ -76,6 +77,9 @@ export function renderReport(page, data, opts = {}) {
   // ---- голосования
   const votes = voteHistoryCard(data.votes);
   if (votes) blocks.push(votes);
+  // ---- решения акционеров
+  const decisions = decisionHistoryCard(data.companyDecisions);
+  if (decisions) blocks.push(decisions);
 
   // ---- табло
   const boardBox = h('div', {});
