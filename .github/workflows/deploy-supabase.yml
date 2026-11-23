@@ -61,7 +61,9 @@ jobs:
 
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          # Версия закреплена: «latest» спрашивает номер у GitHub, и при
+          # лимите запросов выкладка падает, не начавшись.
+          version: 3.2.0
 
       - name: Link project
         run: supabase link --project-ref "$PROJECT_REF"

@@ -105,7 +105,9 @@ jobs:
       - uses: supabase/setup-cli@v1
         if: steps.go.outputs.run == 'true'
         with:
-          version: latest
+          # Версия закреплена: «latest» спрашивает номер у GitHub, и при
+          # лимите запросов выкладка падает, не начавшись.
+          version: 3.2.0
 
       - name: Link project
         if: steps.go.outputs.run == 'true'
