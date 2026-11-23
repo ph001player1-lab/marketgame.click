@@ -315,6 +315,17 @@ export function teamLabel(p: Row): string {
  * Транзакция для кода действий, который сам открывает транзакции
  * (sql.begin): внутри уже открытой они становятся точками сохранения.
  */
+/**
+ * Очередь изменений одной игры. Каждая транзакция, которая меняет игру,
+ * сначала берёт этот замок — и изменения идут друг за другом. Без него два
+ * одновременных действия захватывали строки в разном порядке (игра →
+ * голосование и голосование → игра) и база роняла одно из них: deadlock.
+ * Замок живёт до конца транзакции и повторно берётся без ожидания.
+ */
+export async function lockGame(sql: Sql, gameId: string): Promise<void> {
+  await sql`select pg_advisory_xact_lock(hashtextextended(${'game:' + gameId}, 0))`;
+}
+
 export function nested(tx: Sql): Sql {
   return new Proxy(tx, {
     get(target, prop, receiver) {

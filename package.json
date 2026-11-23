@@ -6,10 +6,11 @@
   "scripts": {
     "build": "esbuild supabase/functions/game/economy.ts supabase/functions/game/presets.ts --format=esm --outdir=build --out-extension:.js=.mjs --log-level=warning && esbuild supabase/functions/game/handler.ts --bundle --format=esm --platform=node --outfile=build/handler.mjs --log-level=warning && esbuild supabase/functions/game/geo.ts --bundle --format=esm --platform=node --outfile=build/geo.mjs --log-level=warning",
     "test": "npm run build && node tests/golden.mjs && node tests/scale_check.mjs && node tests/v5_check.mjs && node tests/schema_check.mjs && node tests/geo_check.mjs && node tests/currency_check.mjs",
-    "test:api": "npm run build && node tests/api/game_flow.mjs && node tests/api/extras.mjs",
+    "test:api": "npm run build && node tests/api/game_flow.mjs && node tests/api/extras.mjs && node tests/api/monkey.mjs",
     "report:teams": "npm run build && node tests/teams_check.mjs",
     "report:balance": "npm run build && node tests/v5_check.mjs --report",
-    "test:ui": "npm run build && node tests/i18n_check.mjs && node tests/preload_check.mjs && node tests/ui/screens.mjs",
+    "test:ui": "npm run build && node tests/i18n_check.mjs && node tests/preload_check.mjs && node tests/ui/screens.mjs && node tests/ui/journey.mjs && node tests/ui/monkey.mjs",
+    "test:monkey": "npm run build && MONKEY_SEEDS=20 MONKEY_MONTHS=12 node tests/api/monkey.mjs && MONKEY_STEPS=300 node tests/ui/monkey.mjs",
     "site": "npm run build && node tests/ui/server.mjs --seed",
     "vendor": "printf \"export { AuthClient } from '@supabase/auth-js';\\n\" > build/auth-entry.mjs && esbuild build/auth-entry.mjs --bundle --format=esm --minify --platform=browser --target=es2020 --legal-comments=eof --outfile=web/assets/js/vendor/supabase-auth.js",
     "preload": "node tests/preload_check.mjs --write"

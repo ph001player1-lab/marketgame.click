@@ -29,7 +29,7 @@
 // ============================================================================
 
 import {
-  type Sql, type Row, fail, num, currentRound, accountingRound, logHostAction, nested, isInstitution, teamLabel
+  type Sql, type Row, fail, num, currentRound, accountingRound, logHostAction, nested, isInstitution, teamLabel, lockGame
 } from './lib.ts';
 import { editableFor } from './presets.ts';
 import { updateConfig, massAdjust } from './host.ts';
@@ -248,6 +248,7 @@ export async function closeDue(sql: Sql, gameId: string): Promise<void> {
  */
 async function finishVote(sql: Sql, voteId: string, gameId: string, actor: string): Promise<boolean> {
   return await sql.begin(async (tx: Sql) => {
+    await lockGame(tx, gameId);
     const [v] = await tx`select * from votes where id = ${voteId} and game_id = ${gameId} for update`;
     if (!v || v.status !== 'open') return false;
     const players: Row[] = await tx`select id from players where game_id = ${gameId} and status <> 'left'`;

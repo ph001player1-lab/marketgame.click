@@ -29,7 +29,7 @@
 
 import {
   type Sql, type Row, fail, num, cents, round2, currentRound, accountingRound, addLedger, addCity, addNotice,
-  logHostAction, moneyTarget, available, teamLabel, isInstitution, INSTITUTIONS, usd, nested
+  logHostAction, moneyTarget, available, teamLabel, isInstitution, INSTITUTIONS, usd, nested, lockGame
 } from './lib.ts';
 import { lockInstitution, changeStake, moveMoney, INSTITUTION_NAMES } from './host.ts';
 import { valuations } from './valuation.ts';
@@ -285,6 +285,7 @@ export async function closeDue(sql: Sql, gameId: string): Promise<number> {
   let n = 0;
   for (const x of due) {
     n += await sql.begin(async (tx: Sql) => {
+      await lockGame(tx, gameId);
       const [a] = await tx`select * from auctions where id = ${x.id} for update`;
       if (!a || a.status !== 'open') return 0;
       const bids: Row[] = await tx`select * from auction_bids where auction_id = ${a.id} order by amount desc, id`;

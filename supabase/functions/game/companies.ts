@@ -30,7 +30,7 @@
 
 import {
   type Sql, type Row, type InstitutionKind, fail, num, cents, round2, currentRound, accountingRound,
-  logHostAction, teamLabel, isInstitution, INSTITUTIONS, nested
+  logHostAction, teamLabel, isInstitution, INSTITUTIONS, nested, lockGame
 } from './lib.ts';
 import { editableFor } from './presets.ts';
 
@@ -177,6 +177,7 @@ export async function closeDue(sql: Sql, gameId: string): Promise<number> {
   let n = 0;
   for (const x of due) {
     n += await sql.begin(async (tx: Sql) => {
+      await lockGame(tx, gameId);
       const [d] = await tx`select * from company_decisions where id = ${x.id} for update`;
       if (!d || d.status !== 'open') return 0;
       const ballots: Row[] = await tx`select owner, choice from company_ballots where decision_id = ${d.id}`;

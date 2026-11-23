@@ -15,7 +15,7 @@
 //  нужен второй запрос, а значит нет гонки с фоновым опросом — как в v4.9.
 // ============================================================================
 
-import { type Deps, type Row, ApiError, fail, normEmail, isEmail, nested } from './lib.ts';
+import { type Deps, type Row, ApiError, fail, normEmail, isEmail, nested, lockGame } from './lib.ts';
 import * as P from './player.ts';
 import * as H from './host.ts';
 import * as B from './board.ts';
@@ -90,6 +90,11 @@ const HOST_ACTIONS: Record<string, HostAction> = {
   dropJoin: (d, g, b, a) => J.dropJoin(d.sql, g, a, b)
 };
 
+// Ошибки базы из-за неверных данных в запросе: 22P02 — не тот формат
+// (например, не uuid), 22003 — число вне диапазона, 22007/22008 — дата,
+// 22023 — неверный параметр.
+const BAD_INPUT = new Set(['22P02', '22003', '22007', '22008', '22023']);
+
 // Действия, после которых клиенту не нужно состояние: игра удалена или
 // создана новая.
 const NO_STATE = new Set(['deleteGame', 'playAgain']);
@@ -141,6 +146,9 @@ export function createHandler(deps: Deps) {
       return json(await retried(() => route(deps, body, token)), 200, cors);
     } catch (e) {
       if (e instanceof ApiError) return json({ ok: false, error: e.code, ...e.details }, 200, cors);
+      // Мусор в параметрах, который дошёл до базы (не uuid, не число, слишком
+      // большое число), — неверный запрос, а не сбой сервера.
+      if (BAD_INPUT.has(String((e as { code?: unknown })?.code ?? ''))) return json({ ok: false, error: 'bad_params' }, 200, cors);
       console.error(e);
       return json({ ok: false, error: 'server_error' }, 500, cors);
     }
@@ -415,7 +423,13 @@ async function route(deps: Deps, b: Row, token: string): Promise<Row> {
 async function once(deps: Deps, b: Row, gameId: string, email: string, action: string,
                     run: (sql: Deps['sql']) => Promise<Row>): Promise<Row> {
   const id = typeof b.requestId === 'string' && /^[0-9a-f-]{36}$/i.test(b.requestId) ? b.requestId : null;
-  if (!id) return await run(deps.sql);
+  // Без номера запроса — тоже одной транзакцией в очереди игры (lockGame).
+  if (!id) {
+    return await deps.sql.begin(async (tx: Deps['sql']) => {
+      await lockGame(tx, gameId);
+      return await run(nested(tx));
+    });
+  }
 
   const stored = async () => {
     const [seen] = await deps.sql`select result from mutations where id = ${id}`;
@@ -425,6 +439,10 @@ async function once(deps: Deps, b: Row, gameId: string, email: string, action: s
   if (seen) return seen;
 
   const result = await deps.sql.begin(async (tx: Deps['sql']) => {
+    // Очередь игры — первой: вставка в mutations ссылается на игру и уже
+    // держит лёгкий замок её строки; возьми его раньше очереди — и действие
+    // внутри очереди, захватывая игру, ждало бы этот запрос, а он — очередь.
+    await lockGame(tx, gameId);
     const [claimed] = await tx`
       insert into mutations (id, game_id, email, action) values (${id}, ${gameId}, ${email}, ${action})
       on conflict (id) do nothing returning id`;
