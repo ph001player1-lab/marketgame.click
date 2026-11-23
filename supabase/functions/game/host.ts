@@ -20,6 +20,7 @@ import { gameMeta, rulesFor, upcomingChanges } from './player.ts';
 import { gameLocation, teamLocation, ONLINE } from './geo.ts';
 import { cityBudget, institutionsState, oceanByMonth } from './board.ts';
 import { pendingJoins } from './join.ts';
+import { CAP_KEY } from './companies.ts';
 
 const INSTITUTION_NAMES: Record<string, string> = {
   landlord: 'the landlord', bank: 'the bank', insurer: 'the insurer', utility: 'the utility company'
@@ -404,9 +405,13 @@ export async function updateConfig(sql: Sql, game: Row, actor: string, b: Row) {
     cfg.MARKET_SIZE_PER_PLAYER = fresh.MARKET_SIZE_PER_PLAYER;
   }
   if (Object.keys(applied).length) {
-    await sql`update games set config = ${sql.json(cfg)} where id = ${game.id}`;
+    // Только изменённые ключи: решение акционеров или закон, принятые
+    // между чтением игры и этой записью, не затираются.
+    const patch: Row = { ...applied };
+    if ('DEMAND_PER_TEAM' in applied) patch.MARKET_SIZE_PER_PLAYER = cfg.MARKET_SIZE_PER_PLAYER;
+    const [g] = await sql`update games set config = config || ${sql.json(patch)} where id = ${game.id} returning config`;
     await logHostAction(sql, game.id, actor, 'config', applied);
-    game.config = cfg;
+    game.config = g.config;
   }
   return { ok: true, applied, rejected, effective: 'next month' };
 }
@@ -687,7 +692,9 @@ export async function playAgain(sql: Sql, game: Row, actor: string,
   });
   const newId = created.gameId;
   // Настройки, которые ведущий подкрутил, переносим; длина — по лиге.
-  const cfg = { ...(game.config as Config), TOTAL_ROUNDS: num(game.total_rounds) };
+  const cfg = { ...(game.config as Config), TOTAL_ROUNDS: num(game.total_rounds) } as unknown as Row;
+  // Потолки цен — законы той партии, а не настройки: в новую игру не идут.
+  for (const k of Object.values(CAP_KEY)) delete cfg[k];
   await sql`update games set config = ${sql.json(cfg)}, series_id = ${game.series_id ?? game.id}
             where id = ${newId}`;
   const [fresh] = await sql`select * from games where id = ${newId}`;
