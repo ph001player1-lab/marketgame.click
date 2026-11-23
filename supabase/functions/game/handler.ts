@@ -23,6 +23,7 @@ import { openMonth, calculateMonth } from './round.ts';
 import * as J from './join.ts';
 import * as V from './votes.ts';
 import * as C from './companies.ts';
+import * as X from './exchange.ts';
 
 export const VERSION = '5.0';
 
@@ -50,7 +51,11 @@ const PLAYER_ACTIONS: Record<string, PlayerAction> = {
   companyVote: (d, g, pid, b, a) => C.castBallot(d.sql, g, pid, a, b),
   // Инициатива горожан: вопрос на голосование, решает ведущий.
   proposeInitiative: (d, g, pid, b) => V.proposeInitiative(d.sql, g, pid, b),
-  withdrawInitiative: (d, g, pid, b) => V.withdrawInitiative(d.sql, g, pid, b)
+  withdrawInitiative: (d, g, pid, b) => V.withdrawInitiative(d.sql, g, pid, b),
+  // Биржа: заявка на покупку доли, ответ по заявке, ставка на аукционе.
+  requestStake: (d, g, pid, b, a) => X.requestStake(d.sql, g, pid, a, b),
+  answerOffer: (d, g, pid, b, a) => X.answerOffer(d.sql, g, pid, a, b),
+  placeBid: (d, g, pid, b, a) => X.placeBid(d.sql, g, pid, a, b)
 };
 
 const HOST_ACTIONS: Record<string, HostAction> = {
@@ -63,7 +68,6 @@ const HOST_ACTIONS: Record<string, HostAction> = {
   adjust: (d, g, b, a) => H.adjust(d.sql, g, a, b),
   massAdjust: (d, g, b, a) => H.massAdjust(d.sql, g, a, b),
   updateConfig: (d, g, b, a) => H.updateConfig(d.sql, g, a, b),
-  setCityShare: (d, g, b, a) => H.setCityShare(d.sql, g, a, b),
   sellStake: (d, g, b, a) => H.sellStake(d.sql, g, a, b),
   buybackStake: (d, g, b, a) => H.buybackStake(d.sql, g, a, b),
   transferStake: (d, g, b, a) => H.transferStake(d.sql, g, a, b),
@@ -80,6 +84,9 @@ const HOST_ACTIONS: Record<string, HostAction> = {
   cityProposePrice: (d, g, b, a) => C.propose(d.sql, g, 'city', a, b),
   cityCompanyVote: (d, g, b, a) => C.castBallot(d.sql, g, 'city', a, b),
   cancelCompanyDecision: (d, g, b, a) => C.cancelDecision(d.sql, g, a, b),
+  // Биржа: ведущий отвечает по заявкам к городу и может снять аукцион.
+  cityAnswerOffer: (d, g, b, a) => X.answerOffer(d.sql, g, 'city', a, b),
+  cancelAuction: (d, g, b, a) => X.cancelAuction(d.sql, g, a, b),
   dropJoin: (d, g, b, a) => J.dropJoin(d.sql, g, a, b)
 };
 
@@ -318,16 +325,19 @@ async function route(deps: Deps, b: Row, token: string): Promise<Row> {
   try {
     if (await C.closeDue(sql, gameId)) Object.assign(game, (await sql`select * from games where id = ${gameId}`)[0]);
   } catch (e) { console.error('companies closeDue', e); }
+  // И аукционы, у которых вышло время.
+  try { await X.closeDue(sql, gameId); } catch (e) { console.error('auctions closeDue', e); }
   // Что идёт сейчас: голосование, решения акционеров, инициативы.
   // viewer — команда, 'city' для ведущего, null для табло.
   const withVote = async (state: Row, viewer: string | null, g: Row = game) => {
     const host = viewer === 'city';
-    const [vote, companies, initiatives] = await Promise.all([
+    const [vote, companies, initiatives, exchange] = await Promise.all([
       V.voteState(sql, gameId, host ? null : viewer),
       C.companiesState(sql, g, viewer),
-      host ? V.pendingInitiatives(sql, gameId) : viewer ? V.myInitiative(sql, gameId, viewer) : Promise.resolve(null)
+      host ? V.pendingInitiatives(sql, gameId) : viewer ? V.myInitiative(sql, gameId, viewer) : Promise.resolve(null),
+      X.exchangeState(sql, g, viewer)
     ]);
-    return { ...state, vote, companies,
+    return { ...state, vote, companies, exchange,
       ...(host ? { initiatives } : viewer ? { myInitiative: initiatives } : {}) };
   };
   // Команда в этой игре. Табло по коду приходит без id игры — ищем по ней.

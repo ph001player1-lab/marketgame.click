@@ -20,6 +20,7 @@ import {
 
 /** Откуда каждый участник экономики получает деньги ресторанов. */
 import { recordValues } from './valuation.ts';
+import { expireOffers } from './exchange.ts';
 
 const INCOME_FIELD: Record<string, keyof RoundResult> = {
   landlord: 'rent', bank: 'interest', insurer: 'insurance', utility: 'utilities'
@@ -313,6 +314,8 @@ export async function calculateMonth(sql: Sql, gameId: string) {
     // ---- Оценка компаний и стоимость долей команд на конец месяца:
     // доли входят в капитал (valuation.ts).
     await recordValues(tx, gameId, rn, cfg);
+    // Заявки на покупку долей действуют до расчёта месяца.
+    await expireOffers(tx, gameId);
 
     // ---- Месяц закрыт. Последний месяц лиги закрывает игру: она сразу
     // попадает в рейтинг, без ожидания.

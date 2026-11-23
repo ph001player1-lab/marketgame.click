@@ -34,6 +34,7 @@ import { renderRatingPage } from './views/rating.js';
 import { starsBadge } from './views/common.js';
 import { newsCard } from './views/news.js';
 import { waitingDecisions } from './views/companies.js';
+import { waitingExchange, stakeText } from './views/exchange.js';
 import { voteQuestion } from './views/vote.js';
 
 const root = document.getElementById('app');
@@ -483,15 +484,21 @@ function openGame(gameId, asPlayerId) {
       // Голосование и решения акционеров, где ждут голоса этой команды.
       const vote = state.vote?.active && !state.vote.active.mine ? state.vote.active : null;
       const waiting = waitingDecisions(state.companies);
+      // Биржа: заявки, где ждут ответа этой команды, и аукционы, где можно ставить.
+      const ex = waitingExchange(state.exchange);
       badge('city', !!vote, t('strip.vote'));
-      badge('invest', waiting.length || false, t('strip.company'));
+      badge('invest', (waiting.length + ex.offers.length) || (ex.auctions.length ? true : false), t('strip.company'));
+      const stake = (x) => stakeText(x.pct, x.kind);
       const urgent = vote ? { target: 'city', text: t('strip.voteText', { q: voteQuestion(vote) }), at: vote.closesAt }
         : waiting.length ? { target: 'invest', text: t('strip.companyText', { company: t('institutions.' + waiting[0].kind) }),
-            at: waiting[0].open.closesAt } : null;
+            at: waiting[0].open.closesAt }
+        : ex.offers.length ? { target: 'invest', text: t('strip.offerText', { stake: stake(ex.offers[0]) }), at: null }
+        : ex.auctions.length ? { target: 'invest', text: t('strip.auctionText', { stake: stake(ex.auctions[0]) }),
+            at: ex.auctions[0].closesAt } : null;
       if (urgent) {
         strip.dataset.target = urgent.target;
         stripText.textContent = urgent.text;
-        stripDeadline = new Date(urgent.at).getTime();
+        stripDeadline = urgent.at ? new Date(urgent.at).getTime() : null;
       } else {
         delete strip.dataset.target;
         stripDeadline = null;

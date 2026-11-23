@@ -8,12 +8,12 @@ import { h, replace, toast, confirmDialog, busy, field, moneyInput, card } from 
 import { usd, int, dec2, pct, pctRaw, parseMoney, currencySign, emailTypo } from '../fmt.js';
 import { act } from '../api.js';
 import { locationBadge, statusBadge, copyText, siteBase, teamName as named, starsBadge } from './common.js';
-import { OWNER_COLORS } from './scoreboard.js';
 import { gameForm, demandField, demandMode } from './create.js';
 import { debriefCard } from './ocean.js';
 import { qrSvg } from './qr.js';
 import { hostVotePart } from './vote.js';
 import { companiesPart } from './companies.js';
+import { exchangePart } from './exchange.js';
 
 const SUBTABS = ['run', 'teams', 'city', 'settings'];
 const INSTITUTIONS = ['landlord', 'bank', 'insurer', 'utility'];
@@ -459,28 +459,6 @@ export function createConsole(root, ctx) {
         h('button', { class: 'btn', type: 'button', onclick: (e) => mass(e.currentTarget, 'tax_active') }, t('host.taxAll')),
         h('button', { class: 'btn', type: 'button', onclick: (e) => mass(e.currentTarget, 'grant_off_business') }, t('host.grantAll'))));
 
-    // Доли города в четырёх компаниях.
-    const shareRows = {};
-    const sharesList = h('div', { class: 'share-list' }, INSTITUTIONS.map((kind) => {
-      const input = h('input', { class: 'input input--pct', type: 'number', min: 0, max: 100, step: 0.5, inputmode: 'decimal',
-        'aria-label': t('institutions.' + kind) + ' — ' + t('host.cityPct') });
-      input.addEventListener('input', () => { input.dataset.dirty = '1'; });
-      const bar = h('div', {});
-      const btn = h('button', { class: 'btn btn--small', type: 'button', onclick: async () => {
-        const v = Number(String(input.value).replace(',', '.'));
-        if (!Number.isFinite(v) || v < 0 || v > 100) { toast(t('errors.bad_pct'), 'bad'); return; }
-        const res = await run(btn, 'setCityShare', { kind, pct: v }, t('host.cityShareSaved', { inst: t('institutionsOf.' + kind), pct: pctRaw(v) }));
-        if (res?.ok) delete input.dataset.dirty;
-      } }, t('common.save'));
-      shareRows[kind] = { input, bar };
-      return h('div', { class: 'share-row' },
-        h('div', { class: 'share-row__name' }, h('b', {}, t('institutions.' + kind)),
-          h('span', { class: 'muted small' }, t('institutions.' + kind + 'What'))),
-        bar,
-        h('div', { class: 'share-row__edit' }, h('label', { class: 'small' }, t('host.cityPct')), input, btn));
-    }));
-    const sharesCard = card(t('host.sharesTitle'), h('p', { class: 'muted small' }, t('host.sharesLead')), sharesList);
-
     // Сделки с долями.
     let op = 'sell';
     const kindSel = h('select', { class: 'input' }, INSTITUTIONS.map((k) => h('option', { value: k }, t('institutions.' + k))));
@@ -590,11 +568,16 @@ export function createConsole(root, ctx) {
     const companies = companiesPart(run, { host: true });
     const companiesCard = card(t('companies.hostTitle'), companies.el);
     companiesCard.id = 'host-companies';
-    const el = h('div', {}, h('p', { class: 'muted small' }, t('host.cityLead')), budgetBox, companiesCard, adjustCard, massCard,
-      sharesCard, stakesCard);
+    // Биржа: заявки к городу — ответ за город; аукционы — снять.
+    const exchange = exchangePart(run, { host: true });
+    const exchangeCard = card(t('exchange.hostTitle'), exchange.el);
+    exchangeCard.id = 'host-exchange';
+    const el = h('div', {}, h('p', { class: 'muted small' }, t('host.cityLead')), budgetBox, exchangeCard, companiesCard,
+      adjustCard, massCard, stakesCard);
 
     function update(s) {
       companies.update(s);
+      exchange.update(s);
       const city = s.city;
       const last = city.months[city.months.length - 1];
       const town = s.ocean?.length ? s.ocean[s.ocean.length - 1] : null;
@@ -612,20 +595,6 @@ export function createConsole(root, ctx) {
       const traders = (p) => p.status !== 'left' && p.status !== 'bankrupt';
       buyer.fill(s.players, traders);
       seller.fill(s.players, (p) => p.status !== 'left');
-      for (const inst of s.institutions) {
-        const row = shareRows[inst.kind];
-        if (!row) continue;
-        if (!row.input.dataset.dirty && document.activeElement !== row.input) row.input.value = String(inst.ownership.cityPct);
-        const o = inst.ownership;
-        replace(row.bar, h('div', { class: 'owners' },
-          o.cityPct > 0 ? h('span', { style: { width: o.cityPct + '%', background: OWNER_COLORS.city } }) : null,
-          o.playersPct > 0 ? h('span', { style: { width: o.playersPct + '%', background: OWNER_COLORS.players } }) : null,
-          o.privatePct > 0 ? h('span', { style: { width: o.privatePct + '%', background: OWNER_COLORS.private } }) : null),
-        h('div', { class: 'owner-keys' },
-          h('span', {}, t('common.city') + ' ' + pctRaw(o.cityPct)),
-          h('span', {}, t('board.teamOwners') + ' ' + pctRaw(o.playersPct)),
-          h('span', {}, t('common.private') + ' ' + pctRaw(o.privatePct))));
-      }
       paintOp();
     }
 

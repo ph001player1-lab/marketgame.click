@@ -132,10 +132,10 @@ await step('повторное открытие дела на накоплени
   await moneyInvariants(sql, gameId);
 });
 
-await step('доли: лимит доли города, сделка между командами, выкуп', async () => {
+await step('доли: продажа городом, сделка между командами, выкуп; частных владельцев нет', async () => {
   ok(await call(HOST, 'sellStake', { gameId, kind: 'bank', playerId: ids[BOB], pct: 20, price: 1000 }));
-  err(await call(HOST, 'setCityShare', { gameId, kind: 'bank', pct: 90 }), 'over_100');
-  ok(await call(HOST, 'setCityShare', { gameId, kind: 'bank', pct: 80 }));
+  // Частных владельцев нет: долю города отдельно не уменьшить — только продать команде.
+  err(await call(HOST, 'setCityShare', { gameId, kind: 'bank', pct: 80 }), 'unknown_action');
   err(await call(HOST, 'transferStake', { gameId, kind: 'bank', fromPlayerId: ids[BOB], toPlayerId: ids[DAN], pct: 25, price: 10 }), 'not_enough_stake');
   ok(await call(HOST, 'transferStake', { gameId, kind: 'bank', fromPlayerId: ids[BOB], toPlayerId: ids[DAN], pct: 5, price: 400 }));
   ok(await call(HOST, 'buybackStake', { gameId, kind: 'bank', playerId: ids[BOB], pct: 15, price: 900 }));
@@ -967,6 +967,135 @@ await step('решения акционеров: контроль, вето, с�
   ok(again);
   const [ng] = await sql`select config from games where id = ${again.gameId}`;
   assert.equal(ng.config.LOAN_RATE_CAP, undefined);
+  await moneyInvariants(sql, gid);
+});
+
+await step('биржа: заявка, торг, сделка; отказ; аукцион с продлением и запасной ставкой; заявка до расчёта месяца', async () => {
+  const g = await call(HOST, 'createGame', { title: 'Exchange', league: 'start', region: 'north_america', country: 'US',
+    demandPerTeam: 2500 });
+  ok(g);
+  const gid = g.gameId;
+  ok(await call(HOST, 'setRoster', { gameId: gid, emails: [ANN, BOB, CAT, DAN].join('\n') }));
+  for (const [e, name] of [[ANN, 'Ann'], [BOB, 'Bob'], [CAT, 'Cat'], [DAN, 'Dan']]) {
+    ok(await call(e, 'setProfile', { gameId: gid, displayName: name, restaurantName: name + ' Cafe' }));
+  }
+  const m0 = await monitor(gid);
+  const id = (e) => m0.players.find((p) => p.email === e).id;
+  const req = () => ({ requestId: crypto.randomUUID() });
+  const cash = async (e) => Number((await sql`select cash from players where id = ${id(e)}`)[0].cash);
+  const stake = async (e, kind) => Number((await sql`select coalesce(sum(pct), 0) as p from stakes where player_id = ${id(e)} and kind = ${kind}`)[0].p);
+  const cityPct = async (kind) => Number((await sql`select city_pct from institutions where game_id = ${gid} and kind = ${kind}`)[0].city_pct);
+
+  // Ann просит у города 10% арендодателя за $3,000; вторая заявка — нельзя.
+  let r = await call(ANN, 'requestStake', { gameId: gid, kind: 'landlord', seller: 'city', pct: 10, price: 3000, ...req() });
+  ok(r);
+  const offer = r.offerId;
+  err(await call(ANN, 'requestStake', { gameId: gid, kind: 'bank', seller: 'city', pct: 5, price: 100 }), 'offer_pending');
+  err(await call(BOB, 'requestStake', { gameId: gid, kind: 'landlord', seller: id(ANN), pct: 5, price: 100 }), 'seller_has_less');
+  err(await call(BOB, 'requestStake', { gameId: gid, kind: 'landlord', seller: 'city', pct: 0, price: 100 }), 'bad_pct');
+  // Торг видят двое и ведущий.
+  let m = await monitor(gid);
+  assert.deepEqual(m.exchange.offers.map((o) => [o.buyer.label, o.turn, o.can.accept]), [['Ann Cafe', 'seller', true]]);
+  assert.equal((await dash(BOB, gid)).exchange.offers.length, 0);
+  // Город называет свою цену — ход Ann.
+  ok(await call(HOST, 'cityAnswerOffer', { gameId: gid, offerId: offer, answer: 'counter', price: 4000, ...req() }));
+  err(await call(HOST, 'cityAnswerOffer', { gameId: gid, offerId: offer, answer: 'accept' }), 'not_your_turn');
+  let d = await dash(ANN, gid);
+  assert.deepEqual([d.exchange.offers[0].price, d.exchange.offers[0].can.accept], [4000, true]);
+  assert.ok(d.notices.some((n) => n.params?.code === 'offer_counter_city'));
+  ok(await call(ANN, 'answerOffer', { gameId: gid, offerId: offer, answer: 'counter', price: 3500, ...req() }));
+  const annBefore = await cash(ANN);
+  ok(await call(HOST, 'cityAnswerOffer', { gameId: gid, offerId: offer, answer: 'accept', ...req() }));
+  assert.equal(await cash(ANN), annBefore - 3500);
+  assert.deepEqual([await stake(ANN, 'landlord'), await cityPct('landlord')], [10, 90]);
+  err(await call(ANN, 'answerOffer', { gameId: gid, offerId: offer, answer: 'withdraw' }), 'offer_closed');
+
+  // Команда у команды: Ann отказывает Bob, потом у Bob не хватает денег.
+  r = await call(BOB, 'requestStake', { gameId: gid, kind: 'landlord', seller: id(ANN), pct: 5, price: 2000, ...req() });
+  ok(r);
+  d = await dash(ANN, gid);
+  assert.deepEqual(d.exchange.offers.filter((o) => o.status === 'open').map((o) => [o.side, o.can.accept, o.can.reject]),
+    [['seller', true, true]]);
+  assert.ok(d.notices.some((n) => n.params?.code === 'offer_in'));
+  err(await call(CAT, 'answerOffer', { gameId: gid, offerId: r.offerId, answer: 'accept' }), 'not_your_offer');
+  ok(await call(ANN, 'answerOffer', { gameId: gid, offerId: r.offerId, answer: 'reject', ...req() }));
+  d = await dash(BOB, gid);
+  assert.equal(d.exchange.offers.find((o) => o.side === 'buyer').status, 'rejected');
+  assert.ok(d.notices.some((n) => n.params?.code === 'offer_rejected'));
+  r = await call(BOB, 'requestStake', { gameId: gid, kind: 'landlord', seller: id(ANN), pct: 5, price: 2500, ...req() });
+  ok(r);
+  const bobCash = await cash(BOB);
+  await sql`update players set cash = 100 where id = ${id(BOB)}`;
+  err(await call(ANN, 'answerOffer', { gameId: gid, offerId: r.offerId, answer: 'accept' }), 'buyer_short');
+  await sql`update players set cash = ${bobCash} where id = ${id(BOB)}`;
+  const annCash = await cash(ANN);
+  ok(await call(ANN, 'answerOffer', { gameId: gid, offerId: r.offerId, answer: 'accept', ...req() }));
+  assert.deepEqual([await stake(ANN, 'landlord'), await stake(BOB, 'landlord'), await cash(ANN)], [5, 5, annCash + 2500]);
+
+  // Аукцион: Cat просит 10% банка за $1,000, город объявляет аукцион.
+  r = await call(CAT, 'requestStake', { gameId: gid, kind: 'bank', seller: 'city', pct: 10, price: 1000, ...req() });
+  ok(r);
+  const a = await call(HOST, 'cityAnswerOffer', { gameId: gid, offerId: r.offerId, answer: 'auction', ...req() });
+  ok(a);
+  const bid = (e, amount) => call(e, 'placeBid', { gameId: gid, auctionId: a.auctionId, amount, requestId: crypto.randomUUID() });
+  d = await dash(DAN, gid);
+  assert.deepEqual([d.exchange.auctions[0].best.amount, d.exchange.auctions[0].best.team.label, d.exchange.auctions[0].minBid],
+    [1000, 'Cat Cafe', 1001]);
+  assert.equal((await dash(CAT, gid)).exchange.canRequest, true, 'the request became the first bid: a new request is allowed');
+  err(await bid(DAN, 1000), 'bid_low');
+  ok(await bid(DAN, 1001));
+  err(await bid(DAN, 1100), 'already_best');
+  err(await bid(BOB, 99999999), 'bid_over_cash');
+  ok(await bid(CAT, 1500));
+  // Ставка в последние 15 секунд продлевает аукцион.
+  await sql`update auctions set closes_at = now() + interval '5 seconds' where id = ${a.auctionId}`;
+  ok(await bid(DAN, 1600));
+  const [{ left }] = await sql`select extract(epoch from closes_at - now())::float as left from auctions where id = ${a.auctionId}`;
+  assert.ok(left > 13, 'extended to 15 seconds, left ' + left);
+  // Аукцион — всем, и на табло; торг — нет.
+  const board = await call(BOB, 'board', { gameId: gid });
+  assert.deepEqual([board.exchange.auctions.length, board.exchange.offers.length], [1, 0]);
+  // Время вышло — продано лучшей ставке.
+  const danCash = await cash(DAN);
+  await sql`update auctions set closes_at = now() - interval '1 second' where id = ${a.auctionId}`;
+  d = await dash(DAN, gid);
+  assert.deepEqual([d.exchange.auctions[0].status, d.exchange.auctions[0].price], ['sold', 1600]);
+  assert.deepEqual([await stake(DAN, 'bank'), await cityPct('bank'), await cash(DAN)], [10, 90, danCash - 1600]);
+  err(await bid(CAT, 2000), 'auction_closed');
+
+  // Лучшей ставке не хватает денег к концу — доля уходит следующей.
+  r = await call(ANN, 'requestStake', { gameId: gid, kind: 'insurer', seller: 'city', pct: 5, price: 500, ...req() });
+  ok(r);
+  const a2 = await call(HOST, 'cityAnswerOffer', { gameId: gid, offerId: r.offerId, answer: 'auction', ...req() });
+  ok(a2);
+  ok(await call(BOB, 'placeBid', { gameId: gid, auctionId: a2.auctionId, amount: 900, ...req() }));
+  const bobNow = await cash(BOB);
+  await sql`update players set cash = 10 where id = ${id(BOB)}`;
+  await sql`update auctions set closes_at = now() - interval '1 second' where id = ${a2.auctionId}`;
+  m = await monitor(gid);
+  const sold = m.exchange.auctions.find((x) => x.id === a2.auctionId);
+  assert.deepEqual([sold.status, sold.winner.label, sold.price], ['sold', 'Ann Cafe', 500]);
+  await sql`update players set cash = ${bobNow} where id = ${id(BOB)}`;
+  // Ведущий снимает аукцион.
+  r = await call(DAN, 'requestStake', { gameId: gid, kind: 'utility', seller: 'city', pct: 5, price: 300, ...req() });
+  ok(r);
+  const a3 = await call(HOST, 'cityAnswerOffer', { gameId: gid, offerId: r.offerId, answer: 'auction', ...req() });
+  ok(a3);
+  ok(await call(HOST, 'cancelAuction', { gameId: gid, auctionId: a3.auctionId, ...req() }));
+  err(await call(CAT, 'placeBid', { gameId: gid, auctionId: a3.auctionId, amount: 400 }), 'auction_closed');
+  assert.equal(await cityPct('utility'), 100);
+
+  // Заявка действует до расчёта месяца.
+  r = await call(CAT, 'requestStake', { gameId: gid, kind: 'utility', seller: 'city', pct: 5, price: 300, ...req() });
+  ok(r);
+  await month(gid);
+  d = await dash(CAT, gid);
+  assert.equal(d.exchange.offers.find((o) => o.id === r.offerId).status, 'expired');
+  assert.equal(d.exchange.canRequest, true);
+  // Новости: сделки, в том числе с аукциона.
+  const news = (await call(CAT, 'board', { gameId: gid })).news.filter((x) => x.type === 'stake');
+  assert.ok(news.some((x) => x.buyer === 'Dan Cafe' && x.via === 'auction' && x.price === 1600), JSON.stringify(news));
+  assert.ok(news.some((x) => x.buyer === 'Bob Cafe' && x.seller === 'Ann Cafe'));
   await moneyInvariants(sql, gid);
 });
 

@@ -40,8 +40,12 @@ const secondsLeft = (iso, offset) => (new Date(iso).getTime() - (Date.now() + of
 
 /** Часы решения: тикают раз в секунду, пока элемент на странице. */
 function runClock(el, iso, offsetRef) {
+  // Часы запускают до того, как карточку вставили на страницу: ждём пару
+  // секунд, и только потом считаем, что карточку убрали.
+  let away = 0;
   const paint = () => {
-    if (!el.isConnected) { clearInterval(id); return; }
+    if (el.isConnected) away = 0;
+    else if (++away > 3) { clearInterval(id); return; }
     const left = secondsLeft(iso, offsetRef.value);
     el.textContent = left > 0 ? t('companies.left', { time: clock(left) }) : t('companies.counting');
     el.classList.toggle('is-urgent', left <= 15);

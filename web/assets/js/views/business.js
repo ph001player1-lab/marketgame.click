@@ -16,6 +16,7 @@ import { act } from '../api.js';
 import { teamName, starsBadge } from './common.js';
 import { teamVotePart, teamInitiativePart } from './vote.js';
 import { companiesPart, priceText } from './companies.js';
+import { exchangePart } from './exchange.js';
 import { ONLINE, countryOptions, hasAreaList, areaOptions } from '../geo.js';
 
 const CHANNELS = ['seo', 'promo', 'maps', 'social', 'outdoor', 'affiliate'];
@@ -80,6 +81,8 @@ export function createBusiness(roots, ctx) {
 
     if (s.lifecycle !== 'left') {
       put('city', 'initiative', teamInitiativePart(run));
+      // «Инвестиции»: сначала биржа — там ждут ответа и идут аукционы.
+      put('invest', 'exchange', exchangeCard());
       put('invest', 'stakes', stakesPart());
       put('invest', 'companies', companiesCard());
     }
@@ -130,6 +133,14 @@ export function createBusiness(roots, ctx) {
     const part = companiesPart(run);
     const el = card(h('span', {}, t('companies.title') + ' ', info('owners')), part.el);
     el.id = 'companies';
+    return { el, update: (s) => part.update(s) };
+  }
+
+  /** Биржа: заявки, торг, аукционы, «Купить долю». */
+  function exchangeCard() {
+    const part = exchangePart(run);
+    const el = card(h('span', {}, t('exchange.title') + ' ', info('deals')), part.el);
+    el.id = 'exchange';
     return { el, update: (s) => part.update(s) };
   }
 

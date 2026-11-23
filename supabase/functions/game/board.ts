@@ -375,7 +375,7 @@ export async function newsFeed(sql: Sql, gameId: string, limit = 40) {
       return {
         type: 'stake', id: 's' + x.id, at: x.at, round: num(x.round_number),
         buyer: teamLabel(x), seller: pr.code === 'stake_bought' ? (pr.team ?? null) : null,
-        kind: pr.inst ?? null, pct: num(pr.pct), price: Math.abs(num(x.amount))
+        kind: pr.inst ?? null, pct: num(pr.pct), price: Math.abs(num(x.amount)), via: pr.via ?? null
       };
     }),
     ...bankrupt.map((x) => ({ type: 'bankrupt', id: 'b' + x.id, at: x.at, round: num(x.round_number), team: teamLabel(x) }))

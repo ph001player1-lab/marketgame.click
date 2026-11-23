@@ -22,7 +22,7 @@ import { cityBudget, institutionsState, oceanByMonth } from './board.ts';
 import { pendingJoins } from './join.ts';
 import { ownership, hostMayEdit, capOf, KIND_OF_PRICE, CAP_KEY } from './companies.ts';
 
-const INSTITUTION_NAMES: Record<string, string> = {
+export const INSTITUTION_NAMES: Record<string, string> = {
   landlord: 'the landlord', bank: 'the bank', insurer: 'the insurer', utility: 'the utility company'
 };
 
@@ -511,7 +511,7 @@ export async function massAdjust(sql: Sql, game: Row, actor: string, b: Row) {
 
 // ----------------------------------------------------------------- доли
 
-async function lockInstitution(tx: Sql, gameId: string, kind: string) {
+export async function lockInstitution(tx: Sql, gameId: string, kind: string) {
   if (!isInstitution(kind)) fail('bad_institution');
   const [inst] = await tx`select * from institutions where game_id = ${gameId} and kind = ${kind} for update`;
   if (!inst) fail('bad_institution');
@@ -526,20 +526,7 @@ function pctOf(v: unknown): number {
   return p;
 }
 
-/** Доля города задаётся ведущим. Проданные игрокам доли она не трогает. */
-export async function setCityShare(sql: Sql, game: Row, actor: string, b: Row) {
-  const pct = round2(num(b.pct, -1));
-  if (pct < 0 || pct > 100) fail('bad_pct');
-  return await sql.begin(async (tx: Sql) => {
-    const { playersPct } = await lockInstitution(tx, game.id, String(b.kind));
-    if (pct + playersPct > 100.0001) fail('over_100', { maxCityPct: round2(100 - playersPct) });
-    await tx`update institutions set city_pct = ${pct} where game_id = ${game.id} and kind = ${b.kind}`;
-    await logHostAction(tx, game.id, actor, 'city_share', { kind: b.kind, pct });
-    return { ok: true, kind: b.kind, cityPct: pct };
-  });
-}
-
-async function changeStake(tx: Sql, gameId: string, kind: string, playerId: string, delta: number) {
+export async function changeStake(tx: Sql, gameId: string, kind: string, playerId: string, delta: number) {
   const [s] = await tx`
     select pct from stakes where game_id = ${gameId} and kind = ${kind} and player_id = ${playerId} for update`;
   const next = round2(num(s?.pct) + delta);
@@ -560,7 +547,7 @@ async function lockBuyer(tx: Sql, gameId: string, playerId: string): Promise<Row
   return p;
 }
 
-async function moveMoney(tx: Sql, p: Row, delta: number) {
+export async function moveMoney(tx: Sql, p: Row, delta: number) {
   const col = moneyTarget(p.status) === 'cash' ? 'cash' : 'employment_savings';
   await tx`update players set ${tx({ [col]: cents(num(p[col]) + delta) })} where id = ${p.id}`;
 }

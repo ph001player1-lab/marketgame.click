@@ -29,7 +29,7 @@ export function newsText(x) {
   if (x.type === 'stake') {
     return (COMPANY_ICONS[x.kind] || '') + ' ' + t(x.seller ? 'news.stakeFromTeam' : 'news.stakeFromCity', {
       buyer: teamName(x.buyer), seller: teamName(x.seller || ''), pct: pctRaw(x.pct),
-      inst: t('institutionsOf.' + x.kind), price: usd(x.price) });
+      inst: t('institutionsOf.' + x.kind), price: usd(x.price) }) + (x.via === 'auction' ? ' ' + t('news.viaAuction') : '');
   }
   if (x.type === 'bankrupt') return t('news.bankrupt', { team: teamName(x.team) });
   return '';

@@ -298,7 +298,7 @@ try {
     await p.getByText('Team emails').waitFor();
     await shot(p, 'host-02-teams', true);
     await p.getByRole('button', { name: 'City', exact: true }).click();
-    await p.getByText('City ownership').waitFor();
+    await p.getByRole('heading', { name: 'Exchange: requests to the city and auctions' }).waitFor();
     await shot(p, 'host-03-city', true);
     await p.getByRole('button', { name: 'Settings', exact: true }).click();
     await p.getByText('Game details').waitFor();
@@ -774,6 +774,7 @@ try {
     await land.getByRole('button', { name: 'Propose' }).click();
     await phone.getByText('Proposal sent').first().waitFor();
     await land.getByText(/proposes: rent \$9,000 a month \(now \$7,500 a month\)/).waitFor();
+    await land.locator('.vote__clock', { hasText: /\d:\d\d left/ }).waitFor();
     await shot(phone, 'owners-01-phone-invest', true);
     // Ведущий: «Город» → «Решения компаний» — голос за город.
     const host = await page(browser, 'laptop', ADMIN);
@@ -817,6 +818,60 @@ try {
     await feed.getByText(/Taco Town bought 60% of the landlord from the city/).waitFor();
     await shot(phone, 'owners-05-phone-news');
     for (const x of [host, phone]) await x.close();
+  });
+
+  await step('exchange: a team asks the city for a stake, the host starts an auction, another team outbids, news', async () => {
+    const g = await seedGame(server.sql, { months: 1, title: 'Exchange night', sponsor: false });
+    // Taco Town: «Инвестиции» → «Купить долю» у города.
+    const buyer = await page(browser, 'phone', TEAMS[0].email);
+    await buyer.goto(base + '#/g/' + g.gameId);
+    await buyer.locator('.tab--invest').click();
+    const form = buyer.locator('#buy-form');
+    await form.getByLabel('Company').selectOption('landlord');
+    await form.getByLabel('How much, %').fill('5');
+    await form.getByText(/By valuation 5% is worth \$[\d,]+/).waitFor();
+    await form.getByText('After the deal you hold 5% — a vote at the shareholders\' meeting.').waitFor();
+    // Своя цена: по оценке доля стоит больше, чем касса у команд.
+    await form.getByLabel('Price for the whole stake, $').fill('1000');
+    await shot(buyer, 'exchange-01-phone-buy-form', true);
+    await form.getByRole('button', { name: 'Send the request' }).click();
+    await buyer.getByText('Request sent').first().waitFor();
+    await buyer.getByText('Your request: 5% of the landlord from the city').waitFor();
+    await buyer.getByText('Waiting for the owner.').waitFor();
+    await buyer.getByText('You already have an open request — wait for the answer or withdraw it.').waitFor();
+    // Ведущий: «Город» → «Биржа» — аукцион.
+    const host = await page(browser, 'laptop', ADMIN);
+    await host.goto(base + '#/g/' + g.gameId);
+    await host.getByRole('button', { name: 'City', exact: true }).click();
+    const ex = host.locator('#host-exchange');
+    await ex.getByText('Taco Town wants to buy 5% of the landlord from the city').waitFor();
+    await shot(host, 'exchange-02-host-request');
+    await ex.getByRole('button', { name: 'Auction', exact: true }).click();
+    await host.getByText('Auction started').first().waitFor();
+    await ex.getByText('Auction: 5% of the landlord').waitFor();
+    // Другая команда: полоса срочного ведёт на аукцион, ставка.
+    const rival = await page(browser, 'phone', TEAMS[1].email);
+    await rival.goto(base + '#/g/' + g.gameId);
+    await rival.locator('.strip', { hasText: 'Auction: 5% of the landlord' }).click();
+    const lot = rival.locator('.auction');
+    await lot.getByText(/Best bid:/).waitFor();
+    await lot.locator('.vote__clock', { hasText: /\d:\d\d left/ }).waitFor();
+    await lot.getByRole('button', { name: 'Place a bid' }).click();
+    await rival.getByText('Bid placed').first().waitFor();
+    await lot.getByText('Your bid is the best.').waitFor();
+    await shot(rival, 'exchange-03-phone-auction', true);
+    // Проектор: аукцион крупно.
+    const proj = await page(browser, 'projector', ADMIN);
+    await proj.goto(base + 'board/?code=' + g.code);
+    await proj.locator('.projector__vote').getByText('Auction: 5% of the landlord').waitFor({ timeout: 15000 });
+    await shot(proj, 'exchange-04-projector-auction');
+    // Время вышло — продано лучшей ставке; в «Новостях» — сделка с аукциона.
+    await server.sql`update auctions set closes_at = now() - interval '1 second' where game_id = ${g.gameId}`;
+    await rival.reload();
+    await rival.locator('.tab--board').click();
+    await rival.locator('.news-card').getByText(/bought 5% of the landlord from the city for \$[\d,]+ — at auction/).waitFor();
+    await shot(rival, 'exchange-05-phone-news');
+    for (const x of [buyer, host, rival, proj]) await x.close();
   });
 
   await step('phone 360 px: five tabs fit in every language, no sideways scroll', async () => {

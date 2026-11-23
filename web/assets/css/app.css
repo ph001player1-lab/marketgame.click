@@ -708,3 +708,29 @@ select.input.input--inline,.input.input--inline{width:auto;max-width:100%;min-he
 .initiatives{display:grid;gap:8px;margin:0 0 var(--gap)}
 .initiative{margin:0}
 .vote__by{margin:-4px 0 6px}
+
+/* ------------------------------------------------------------ биржа */
+.offers,.auctions{display:grid;gap:10px;margin:0 0 12px}
+.section-sub{margin:4px 0 0;font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--mute)}
+.offer{border:2px solid var(--line);border-radius:12px;padding:12px;background:var(--surface);min-width:0}
+.offer--turn{border-color:var(--red)}
+.offer__title{margin:0 0 6px;font-weight:800;font-size:15px;line-height:1.35}
+.offer__price{margin:0 0 6px}
+.offer__price b{font-size:22px}
+.offer__buttons{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:8px}
+.offer__buttons .btn{width:100%}
+.offer__counter{margin-top:10px}
+.offer__result{font-weight:800;margin:6px 0 0}
+.offer__lead{color:var(--green);font-weight:800}
+.offer__after{margin:4px 0 8px;padding:8px 10px;border-radius:10px;background:var(--green-bg);color:var(--green);font-weight:700;font-size:14px}
+.offer__after:empty{display:none}
+.auction__bids{margin:0 0 6px;padding-left:20px}
+.auction__bid{margin-top:8px}
+.sellers{display:grid;gap:6px}
+.seller{display:flex;align-items:center;gap:10px;min-height:44px;padding:0 12px;border:2px solid var(--line);border-radius:10px;
+  background:#fff;cursor:pointer}
+.seller.is-on{border-color:var(--ink)}
+.seller input{width:18px;height:18px;margin:0;accent-color:var(--btn)}
+.seller__name{flex:1;min-width:0;font-weight:700}
+.buy-form .chips{margin:6px 0 10px}
+.buy-form .chip{cursor:pointer}
