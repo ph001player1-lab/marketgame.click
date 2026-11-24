@@ -169,7 +169,9 @@ export function companiesPart(run, { host = false } = {}) {
     for (const c of companies) {
       const b = blocks[c.kind] || (blocks[c.kind] = block(c.kind));
       const me = viewer();
-      const infoSig = JSON.stringify([c.price, c.cap, c.owners, c.passivePct, c.mode, c.canDecide, c.myRole, c.hostMayEdit]);
+      // Оценка всей компании (100%): прибыль в месяц × 12 ÷ ставка.
+      const value = s.exchange?.values?.[c.kind] ?? null;
+      const infoSig = JSON.stringify([c.price, c.cap, c.owners, c.passivePct, c.mode, c.canDecide, c.myRole, c.hostMayEdit, value]);
       if (b.sig.info !== infoSig) {
         b.sig.info = infoSig;
         replace(b.info,
@@ -180,6 +182,7 @@ export function companiesPart(run, { host = false } = {}) {
               t(host ? 'companies.cityPct' : 'companies.myPct', { pct: pctRaw(c.myPct) }) + ' · ' + t('companies.roles.' + c.myRole)) : null),
           h('p', { class: 'company__price' }, h('b', {}, t('companies.priceLabel.' + c.kind) + ': ' + priceText(c.kind, c.price)),
             c.cap !== null ? h('span', { class: 'muted' }, ' · ' + t('companies.cap', { value: priceText(c.kind, c.cap) })) : null),
+          value > 0 ? h('p', { class: 'small company__value' }, t('companies.valueLine', { value: usd(value), one: usd(value / 100) })) : null,
           ownersBar(c, me), ownersList(c), whoDecides(c),
           host && c.hostMayEdit ? h('p', { class: 'small muted' }, t('companies.hostMayEdit')) : null);
       }

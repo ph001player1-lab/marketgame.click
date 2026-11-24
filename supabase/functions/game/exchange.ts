@@ -135,6 +135,8 @@ export async function requestStake(sql: Sql, game: Row, buyerId: string, actor: 
   if (!(price > 0)) fail('bad_price');
   return await sql.begin(async (tx: Sql) => {
     const buyer = await tradingTeam(tx, gameId, buyerId);
+    // Предложить можно только то, что команда может заплатить сейчас.
+    if (available(buyer) < price) fail('insufficient_cash', { available: available(buyer) });
     if (seller !== CITY) {
       const [s] = await tx`select status from players where id = ${seller} and game_id = ${gameId}`;
       if (!s || s.status === 'left') fail('player_not_found');
@@ -204,6 +206,11 @@ export async function answerOffer(sql: Sql, game: Row, who: string, actor: strin
       const price = cents(num(b.price));
       if (!(price > 0)) fail('bad_price');
       if (Math.abs(price - num(o.price)) < 0.005) fail('same_price');
+      // Покупатель не предлагает больше, чем у него есть.
+      if (side === 'buyer') {
+        const [p] = await tx`select * from players where id = ${buyerId}`;
+        if (available(p) < price) fail('insufficient_cash', { available: available(p) });
+      }
       const history = [...((o.history as Row[]) ?? []), { by: side, price, at: new Date().toISOString() }];
       await tx`update stake_offers set price = ${price}, turn = ${side === 'seller' ? 'buyer' : 'seller'},
         history = ${tx.json(history)}, updated_at = now() where id = ${id}`;

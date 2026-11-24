@@ -14,6 +14,7 @@ import { qrSvg } from './qr.js';
 import { hostVotePart } from './vote.js';
 import { companiesPart } from './companies.js';
 import { exchangePart } from './exchange.js';
+import { hostWaiting } from './attention.js';
 
 const SUBTABS = ['run', 'teams', 'city', 'settings'];
 const INSTITUTIONS = ['landlord', 'bank', 'insurer', 'utility'];
@@ -51,8 +52,8 @@ export function createConsole(root, ctx) {
   }
 
   // ---- вкладки пульта
-  const tabButtons = SUBTABS.map((id) => h('button', { type: 'button', 'aria-pressed': 'false',
-    onclick: () => { tab = id; sessionStorage.setItem('mg-console-' + ctx.gameId, id); showTab(); } },
+  const tabButtons = SUBTABS.map((id) => h('button', { type: 'button', 'aria-pressed': 'false', dataset: { sub: id },
+    onclick: () => showSubtab(id) },
     t('host.' + (id === 'city' ? 'cityTab' : id))));
   // Регистрация по QR-коду: на вкладке «Игра» — до начала игры, на вкладке
   // «Команды» — всегда, пока игра идёт.
@@ -69,11 +70,31 @@ export function createConsole(root, ctx) {
       tabButtons[i].setAttribute('aria-pressed', id === tab ? 'true' : 'false');
       parts[id].el.hidden = id !== tab;
     });
+    ctx.onSubtab?.();
+  }
+
+  /** Открыть вкладку пульта — и из полосы «ждёт ответа». */
+  function showSubtab(id) {
+    if (!SUBTABS.includes(id)) return;
+    tab = id;
+    sessionStorage.setItem('mg-console-' + ctx.gameId, id);
+    showTab();
   }
 
   function update(state) {
     m = state;
     for (const p of [...Object.values(parts), joinRun, joinTeams]) p.update(state);
+    // Значки на вкладках: сколько вопросов ждёт ведущего там.
+    const waiting = hostWaiting(state);
+    SUBTABS.forEach((id, i) => {
+      const n = waiting.filter((x) => x.tab === id).length;
+      const btn = tabButtons[i];
+      btn.querySelector('.tab__dot')?.remove();
+      // Число — рядом с названием, но не в нём: кнопка по-прежнему «Город»,
+      // а «ждут ответа: N» — в подсказке.
+      if (n) btn.append(h('span', { class: 'tab__dot tab__dot--n', 'aria-hidden': 'true' }, String(n)));
+      if (n) btn.title = t('attention.badge', { n }); else btn.removeAttribute('title');
+    });
   }
 
   // ----------------------------------------------------------------- QR-код и заявки
@@ -734,5 +755,5 @@ export function createConsole(root, ctx) {
     return { el, update };
   }
 
-  return { update };
+  return { update, showSubtab, currentSubtab: () => tab };
 }

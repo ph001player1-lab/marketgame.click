@@ -986,6 +986,8 @@ await step('биржа: заявка, торг, сделка; отказ; аук
   const stake = async (e, kind) => Number((await sql`select coalesce(sum(pct), 0) as p from stakes where player_id = ${id(e)} and kind = ${kind}`)[0].p);
   const cityPct = async (kind) => Number((await sql`select city_pct from institutions where game_id = ${gid} and kind = ${kind}`)[0].city_pct);
 
+  // Заявка дороже денег команды — не отправить.
+  err(await call(ANN, 'requestStake', { gameId: gid, kind: 'landlord', seller: 'city', pct: 10, price: 999999 }), 'insufficient_cash');
   // Ann просит у города 10% арендодателя за $3,000; вторая заявка — нельзя.
   let r = await call(ANN, 'requestStake', { gameId: gid, kind: 'landlord', seller: 'city', pct: 10, price: 3000, ...req() });
   ok(r);
@@ -993,6 +995,8 @@ await step('биржа: заявка, торг, сделка; отказ; аук
   err(await call(ANN, 'requestStake', { gameId: gid, kind: 'bank', seller: 'city', pct: 5, price: 100 }), 'offer_pending');
   err(await call(BOB, 'requestStake', { gameId: gid, kind: 'landlord', seller: id(ANN), pct: 5, price: 100 }), 'seller_has_less');
   err(await call(BOB, 'requestStake', { gameId: gid, kind: 'landlord', seller: 'city', pct: 0, price: 100 }), 'bad_pct');
+  // На табло — только число: ведущего ждёт одна заявка.
+  assert.equal((await call(BOB, 'board', { gameId: gid })).hostWaiting, 1);
   // Торг видят двое и ведущий.
   let m = await monitor(gid);
   assert.deepEqual(m.exchange.offers.map((o) => [o.buyer.label, o.turn, o.can.accept]), [['Ann Cafe', 'seller', true]]);
@@ -1003,6 +1007,8 @@ await step('биржа: заявка, торг, сделка; отказ; аук
   let d = await dash(ANN, gid);
   assert.deepEqual([d.exchange.offers[0].price, d.exchange.offers[0].can.accept], [4000, true]);
   assert.ok(d.notices.some((n) => n.params?.code === 'offer_counter_city'));
+  // Встречная цена покупателя — тоже не больше его денег.
+  err(await call(ANN, 'answerOffer', { gameId: gid, offerId: offer, answer: 'counter', price: 999999 }), 'insufficient_cash');
   ok(await call(ANN, 'answerOffer', { gameId: gid, offerId: offer, answer: 'counter', price: 3500, ...req() }));
   const annBefore = await cash(ANN);
   ok(await call(HOST, 'cityAnswerOffer', { gameId: gid, offerId: offer, answer: 'accept', ...req() }));

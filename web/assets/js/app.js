@@ -35,6 +35,7 @@ import { starsBadge } from './views/common.js';
 import { newsCard } from './views/news.js';
 import { waitingDecisions } from './views/companies.js';
 import { waitingExchange, stakeText } from './views/exchange.js';
+import { hostWaiting } from './views/attention.js';
 import { voteQuestion } from './views/vote.js';
 
 const root = document.getElementById('app');
@@ -334,7 +335,12 @@ function openGame(gameId, asPlayerId) {
   // Срочное — голосование, решение акционеров — видно с любой вкладки.
   const stripText = h('span', { class: 'strip__text' });
   const stripClock = h('span', { class: 'strip__clock' });
-  const strip = h('button', { class: 'strip', type: 'button', hidden: true, onclick: () => strip.dataset.target && setTab(strip.dataset.target) },
+  const strip = h('button', { class: 'strip', type: 'button', hidden: true, onclick: () => {
+    if (!strip.dataset.target) return;
+    setTab(strip.dataset.target);
+    // У ведущего — ещё и нужная вкладка пульта: «Игра» или «Город».
+    if (strip.dataset.sub) main.showSubtab?.(strip.dataset.sub);
+  } },
     h('span', { class: 'strip__dot', 'aria-hidden': 'true' }), stripText, stripClock,
     h('span', { class: 'strip__go', 'aria-hidden': 'true' }, '›'));
   let stripDeadline = null;
@@ -397,15 +403,19 @@ function openGame(gameId, asPlayerId) {
   function onResize() { setTab(tab); }
 
   // ---- модули разделов
+  let shellReady = false;
   const ctx = {
     gameId, asPlayerId, isHostView,
     showGuide(section) { setTab('guide'); guide.show(section); },
     showTab: (id) => setTab(id),
+    // Ведущий сменил вкладку пульта — полоса «ждёт ответа» могла стать лишней.
+    onSubtab: () => { if (shellReady) paintStrip(); },
     applyState(state) { markFresh(); render(state); },
     reloadMe: () => loadMe(),
     refreshNow: () => tick(true)
   };
   const main = isHostView ? createConsole(paneMain.firstChild, ctx) : createBusiness(subs, ctx);
+  shellReady = true;
   const board = createScoreboard(boardRoot, { mode: 'app' });
   const guide = createGuide(paneGuide.firstChild);
   setTab(tab);
@@ -427,7 +437,9 @@ function openGame(gameId, asPlayerId) {
   /** Полоса срочного: часы и видна, только пока её вкладка не открыта. */
   function paintStrip() {
     const target = strip.dataset.target;
-    const here = window.innerWidth >= 768 ? mainTab === target : tab === target;
+    const sub = strip.dataset.sub;
+    const here = (window.innerWidth >= 768 ? mainTab === target : tab === target)
+      && (!sub || main?.currentSubtab?.() === sub);
     strip.hidden = !target || here;
     if (strip.hidden || !stripDeadline) { stripClock.textContent = ''; return; }
     const left = Math.max(0, (stripDeadline - (Date.now() + clockOffset)) / 1000);
@@ -504,9 +516,23 @@ function openGame(gameId, asPlayerId) {
         stripDeadline = null;
       }
       paintStrip();
+    } else {
+      // Ведущий: что ждёт его ответа — с любого экрана видно и куда идти.
+      const waiting = hostWaiting(state);
+      badge('main', waiting.length || false, t('attention.badge', { n: waiting.length }));
+      if (waiting.length) {
+        strip.dataset.target = 'main';
+        strip.dataset.sub = waiting[0].tab;
+        stripText.textContent = waiting[0].text + (waiting.length > 1 ? ' ' + t('attention.more', { n: waiting.length - 1 }) : '');
+      } else {
+        delete strip.dataset.target;
+        delete strip.dataset.sub;
+      }
+      stripDeadline = null;
     }
 
     main.update(state);
+    if (isHostView) paintStrip();
     guide.update(state.rules, g);
     const roundKey = g.roundNumber + ':' + g.roundStatus + ':' + g.status;
     if (roundKey !== lastRoundKey) {

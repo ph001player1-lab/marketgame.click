@@ -734,3 +734,14 @@ select.input.input--inline,.input.input--inline{width:auto;max-width:100%;min-he
 .seller__name{flex:1;min-width:0;font-weight:700}
 .buy-form .chips{margin:6px 0 10px}
 .buy-form .chip{cursor:pointer}
+
+/* ------------------------------------------------------------ ведущего ждут ответы */
+.projector__wait{align-self:center;padding:6px 14px;border-radius:999px;background:var(--red);color:#fff;font-weight:800;
+  font-size:clamp(14px,1.2vw,20px);white-space:nowrap}
+.projector__wait::before{content:'';display:inline-block;width:10px;height:10px;margin-right:8px;border-radius:50%;background:#fff;
+  vertical-align:1px}
+.projector__wait[hidden]{display:none}
+.offer__short{color:var(--red-ink);font-weight:700}
+.company__value{margin:0 0 6px;color:var(--ink-2)}
+.seg--tabs button{position:relative}
+.seg--tabs .tab__dot--n{margin-left:6px}

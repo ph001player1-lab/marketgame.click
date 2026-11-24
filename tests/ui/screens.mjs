@@ -769,6 +769,7 @@ try {
     await phone.locator('.tab--invest').click();
     const land = phone.locator('#company-landlord');
     await land.getByText('yours 60% · control').waitFor();
+    await land.getByText(/Whole company valued at \$[\d,]+ \(1% — \$[\d,]+\)/).waitFor();
     await land.getByText(/sets the price — a controlling stake \(60%\)\. Can veto: City \(40%\)\./).waitFor();
     await land.getByLabel('New price, $').fill('9000');
     await land.getByRole('button', { name: 'Propose' }).click();
@@ -829,8 +830,13 @@ try {
     const form = buyer.locator('#buy-form');
     await form.getByLabel('Company').selectOption('landlord');
     await form.getByLabel('How much, %').fill('5');
-    await form.getByText(/By valuation 5% is worth \$[\d,]+/).waitFor();
+    // Оценка всей компании и выбранной доли.
+    await form.getByText(/The whole company is valued at \$[\d,]+; 5% is \$[\d,]+/).waitFor();
     await form.getByText('After the deal you hold 5% — a vote at the shareholders\' meeting.').waitFor();
+    // Дороже, чем есть в кассе, — заявку не отправить.
+    await form.getByLabel('Price for the whole stake, $').fill('99999999');
+    await form.getByText(/not enough for this price/).waitFor();
+    assert.equal(await form.getByRole('button', { name: 'Send the request' }).isDisabled(), true);
     // Своя цена: по оценке доля стоит больше, чем касса у команд.
     await form.getByLabel('Price for the whole stake, $').fill('1000');
     await shot(buyer, 'exchange-01-phone-buy-form', true);
@@ -839,10 +845,20 @@ try {
     await buyer.getByText('Your request: 5% of the landlord from the city').waitFor();
     await buyer.getByText('Waiting for the owner.').waitFor();
     await buyer.getByText('You already have an open request — wait for the answer or withdraw it.').waitFor();
-    // Ведущий: «Город» → «Биржа» — аукцион.
+    // Табло: ведущего ждёт ответ — только число, без сути.
+    const proj0 = await page(browser, 'projector', ADMIN);
+    await proj0.goto(base + 'board/?code=' + g.code);
+    await proj0.locator('.projector__wait', { hasText: 'Waiting for the host: 1' }).waitFor({ timeout: 15000 });
+    assert.equal(await proj0.getByText('Taco Town wants to buy').count(), 0, 'no details on the projector');
+    await shot(proj0, 'exchange-00-projector-waiting');
+    await proj0.close();
+    // Ведущий: с любой вкладки — полоса «ждёт ответа» и значок на «Городе»; полоса ведёт на «Город» → «Биржа».
     const host = await page(browser, 'laptop', ADMIN);
     await host.goto(base + '#/g/' + g.gameId);
-    await host.getByRole('button', { name: 'City', exact: true }).click();
+    await host.getByRole('button', { name: 'Run', exact: true }).click();
+    await host.locator('.seg--tabs button[data-sub="city"] .tab__dot--n', { hasText: '1' }).waitFor();
+    await host.locator('.strip', { hasText: 'Taco Town wants to buy 5% of the landlord from the city' }).click();
+    assert.equal(await host.getByRole('button', { name: 'City', exact: true }).getAttribute('aria-pressed'), 'true');
     const ex = host.locator('#host-exchange');
     await ex.getByText('Taco Town wants to buy 5% of the landlord from the city').waitFor();
     await shot(host, 'exchange-02-host-request');

@@ -383,8 +383,29 @@ export async function newsFeed(sql: Sql, gameId: string, limit = 40) {
   return items.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime()).slice(0, limit);
 }
 
+/**
+ * Сколько вопросов ждёт ведущего: инициативы команд, принятое голосованием
+ * (подписать или вето), заявки к городу, решения акционеров, где нужен
+ * голос города. На табло — только число, без сути.
+ */
+export async function hostWaiting(sql: Sql, gameId: string): Promise<number> {
+  const [r] = await sql`
+    select
+      (select count(*) from initiatives where game_id = ${gameId} and status = 'pending')
+      + (select count(*) from votes where game_id = ${gameId} and decision = 'pending')
+      + (select count(*) from stake_offers where game_id = ${gameId} and status = 'open'
+           and seller = 'city' and turn = 'seller')
+      + (select count(*) from company_decisions d where d.game_id = ${gameId} and d.status = 'open'
+           and d.proposer <> 'city'
+           and exists (select 1 from jsonb_array_elements(d.owners) o
+                       where o->>'id' = 'city' and (d.mode = 'meeting' or (o->>'pct')::numeric > 30))
+           and not exists (select 1 from company_ballots b where b.decision_id = d.id and b.owner = 'city'))
+      as n`;
+  return Number(r?.n ?? 0);
+}
+
 export async function boardData(sql: Sql, game: Row) {
-  const [round, tl, institutions, city, money, ocean, signup, news] = await Promise.all([
+  const [round, tl, institutions, city, money, ocean, signup, news, waiting] = await Promise.all([
     currentRound(sql, game.id), timeline(sql, game), institutionsState(sql, game),
     cityBudget(sql, game.id), moneyMap(sql, game.id), oceanByMonth(sql, game.id),
     // До начала игры проектор показывает QR-код и сколько команд уже записалось.
@@ -392,13 +413,16 @@ export async function boardData(sql: Sql, game: Row) {
       ? sql`select (select count(*) from players where game_id = ${game.id})::int as teams,
                    (select count(*) from join_requests where game_id = ${game.id} and status = 'pending')::int as waiting`
       : Promise.resolve(null),
-    newsFeed(sql, String(game.id))
+    newsFeed(sql, String(game.id)),
+    hostWaiting(sql, String(game.id))
   ]);
   return {
     ok: true,
     game: gameMeta(game, round),
     rules: rulesFor(activeConfig(game, round)),
     ...tl, institutions, city, moneyMap: money, ocean, news,
+    // Ведущего ждут вопросы — только число: суть видна в его пульте.
+    hostWaiting: waiting,
     signup: signup ? { teams: num(signup[0].teams), waiting: num(signup[0].waiting) } : null
   };
 }

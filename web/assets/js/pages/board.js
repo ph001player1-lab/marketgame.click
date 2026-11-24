@@ -89,6 +89,9 @@ async function start(gameCode) {
   const titleEl = h('h1', {}, t('common.loading'));
   const subEl = h('div', { class: 'projector__sub' }, '');
   const timerEl = h('div', { class: 'timer', hidden: true });
+  // Ведущего ждут ответы (заявки к городу, инициативы, подпись закона…) —
+  // на табло только число: суть ведущий видит в своём пульте.
+  const waitEl = h('div', { class: 'projector__wait', hidden: true, role: 'status' });
   const joinEl = h('div', { class: 'projector__join' },
     h('div', {}, t('board.joinAt'), ' ', h('b', {}, siteBase().replace(/^https?:\/\//, '').replace(/\/$/, ''))),
     h('div', {}, t('board.code'), ' ', h('b', { class: 'code code--inline' }, gameCode)));
@@ -116,7 +119,7 @@ async function start(gameCode) {
   const shell = h('div', { class: 'projector' },
     h('header', { class: 'projector__head' },
       h('div', { class: 'projector__title' }, titleEl, subEl),
-      timerEl, joinEl),
+      waitEl, timerEl, joinEl),
     errorEl, voteBox, companiesBox, auctionsBox, h('div', { class: 'projector__body' }, signupBox, cakeBox, boardBox),
     h('footer', { class: 'projector__foot no-print' }, rotateBox, sponsorEl,
       h('div', { class: 'btn-row' }, pageBtn, fullBtn)));
@@ -173,6 +176,9 @@ async function start(gameCode) {
     deadline = g.deadline ? new Date(g.deadline).getTime() : null;
     lastData = data;
     paintVote(data.vote);
+    const waiting = Number(data.hostWaiting) || 0;
+    waitEl.hidden = !waiting;
+    waitEl.textContent = waiting ? t('board.hostWaiting', { n: waiting }) : '';
     if (data.vote?.serverNow) companiesOffset.value = new Date(data.vote.serverNow).getTime() - Date.now();
     paintCompanies(data.companies);
     paintAuctions(data.exchange);

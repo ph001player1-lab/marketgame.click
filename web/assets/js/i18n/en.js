@@ -314,6 +314,7 @@ export default {
   },
 
   board: {
+    hostWaiting: 'Waiting for the host: {n}',
     signupTitle: 'Join the game',
     signupLead: 'Point your phone camera at the QR code, enter your email and your restaurant’s name.',
     signupCount: 'Joined: {teams} · waiting for the host: {waiting}',
@@ -1064,6 +1065,7 @@ export default {
   },
 
   companies: {
+    valueLine: 'Whole company valued at {value} (1% — {one})',
     title: 'Companies',
     hostTitle: 'Company decisions',
     lead: 'A company\'s price is set by its owners. Over 50% is a controlling stake: the owner sets the price. Over 30% is a blocking stake: 3 minutes to veto it. No controlling stake — a shareholders\' meeting, votes weighted by stake.',
@@ -1162,6 +1164,10 @@ export default {
   },
 
   exchange: {
+    byValueFull: 'valuation {value} (whole company {company})',
+    priceHintFull: 'The whole company is valued at {company}; {pct} is {value}. Money moves only when the owner agrees.',
+    companyValue: 'The whole company is valued at {company}.',
+    noMoney: 'You have {available} — not enough for this price.',
     stake: '{pct} of {inst}',
     title: 'Exchange',
     hostTitle: 'Exchange: requests to the city and auctions',
@@ -1241,6 +1247,15 @@ export default {
     send: 'Send the request',
     onePending: 'You already have an open request — wait for the answer or withdraw it.',
     cantBuy: 'Only a team in the game that is not bankrupt can buy stakes.',
+  },
+
+  attention: {
+    sign: 'The vote passed “{q}” — sign it or veto it',
+    offer: '{team} wants to buy {stake} from the city',
+    company: 'Shareholder decision: {company} — the city’s vote is needed',
+    initiative: 'An initiative from {team} is waiting',
+    more: '(and {n} more)',
+    badge: 'Waiting for you: {n}',
   },
 
   vote: {

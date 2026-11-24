@@ -312,6 +312,7 @@ export default {
   },
 
   board: {
+    hostWaiting: 'Esperan al anfitrión: {n}',
     signupTitle: 'Únete al juego',
     signupLead: 'Apunta la cámara del teléfono al código QR y escribe tu correo y el nombre de tu restaurante.',
     signupCount: 'Inscritos: {teams} · esperan al anfitrión: {waiting}',
@@ -1060,6 +1061,7 @@ export default {
   },
 
   companies: {
+    valueLine: 'Toda la empresa vale {value} (1%: {one})',
     title: 'Empresas',
     hostTitle: 'Decisiones de las empresas',
     lead: 'El precio de una empresa lo deciden sus dueños. Más del 50% es paquete de control: el dueño fija el precio. Más del 30% es paquete de bloqueo: 3 minutos para vetarlo. Sin paquete de control decide la junta de accionistas, con votos según la participación.',
@@ -1158,6 +1160,10 @@ export default {
   },
 
   exchange: {
+    byValueFull: 'según la valoración: {value} (toda la empresa: {company})',
+    priceHintFull: 'Toda la empresa vale {company} según la valoración; {pct} vale {value}. El dinero se mueve solo cuando el dueño acepta.',
+    companyValue: 'Toda la empresa vale {company} según la valoración.',
+    noMoney: 'Tienes {available}: no alcanza para este precio.',
     stake: '{pct} {inst}',
     title: 'Bolsa',
     hostTitle: 'Bolsa: solicitudes a la ciudad y subastas',
@@ -1237,6 +1243,15 @@ export default {
     send: 'Enviar la solicitud',
     onePending: 'Ya tienes una solicitud abierta: espera la respuesta o retírala.',
     cantBuy: 'Solo un equipo en el juego y sin quiebra puede comprar participaciones.',
+  },
+
+  attention: {
+    sign: 'La votación aprobó «{q}»: fírmelo o vételo',
+    offer: '{team} quiere comprar a la ciudad {stake}',
+    company: 'Decisión de accionistas: {company}; falta el voto de la ciudad',
+    initiative: 'Una iniciativa de {team} espera respuesta',
+    more: '(y {n} más)',
+    badge: 'Esperan respuesta: {n}',
   },
 
   vote: {

@@ -67,6 +67,11 @@ export function exchangePart(run, { host = false } = {}) {
     offersBox, auctionsBox, formBox);
   let state = null;
   let sig = { offers: '', auctions: '' };
+  /** «по оценке — $225 000 (вся компания — $4 500 000)». */
+  const valueText = (x) => {
+    const all = state?.exchange?.values?.[x.kind] ?? 0;
+    return all > 0 ? t('exchange.byValueFull', { value: usd(x.value), company: usd(all) }) : t('exchange.byValue', { value: usd(x.value) });
+  };
   const answer = (btn, o, params, okText) =>
     run(btn, host ? 'cityAnswerOffer' : 'answerOffer', { offerId: o.id, ...params }, okText);
 
@@ -102,7 +107,7 @@ export function exchangePart(run, { host = false } = {}) {
     return h('section', { class: ['offer', open && o.can.accept ? 'offer--turn' : null], id: 'offer-' + o.id },
       h('p', { class: 'offer__title' }, (COMPANY_ICONS[o.kind] || '') + ' ' + title),
       h('div', { class: 'offer__price' }, h('b', {}, usd(o.price)),
-        o.value > 0 ? h('span', { class: 'muted small' }, ' ' + t('exchange.byValue', { value: usd(o.value) })) : null),
+        o.value > 0 ? h('span', { class: 'muted small' }, ' ' + valueText(o)) : null),
       historyLine(o), theirPrice, waiting,
       open ? h('p', { class: 'small muted' }, t('exchange.validUntil', { n: o.round })) : h('p', { class: 'small' }, t('exchange.status.' + o.status)),
       buttons, c.box);
@@ -133,7 +138,7 @@ export function exchangePart(run, { host = false } = {}) {
         t('exchange.auctionTitle', { stake: stakeText(a.pct, a.kind) })), open ? clockBox : null),
       h('p', { class: 'small muted' }, a.seller.city ? t('exchange.sellerCity') : t('exchange.sellerTeam', { team: nameOf(a.seller) }),
         ' · ', t('exchange.start', { price: usd(a.startPrice) }),
-        a.value > 0 ? ' · ' + t('exchange.byValue', { value: usd(a.value) }) : ''),
+        a.value > 0 ? ' · ' + valueText(a) : ''),
       a.best ? h('div', { class: 'offer__price' }, h('span', { class: 'small muted' }, t('exchange.best') + ' '),
         h('b', {}, usd(a.best.amount)), h('span', {}, ' — ' + nameOf(a.best.team))) : h('p', { class: 'small' }, t('exchange.noBids')),
       a.bids.length > 1 ? h('ol', { class: 'auction__bids small muted' }, a.bids.slice(1, 4).map((b) =>
@@ -160,6 +165,8 @@ export function exchangePart(run, { host = false } = {}) {
     const chips = h('div', { class: 'chips' });
     const price = moneyInput({ placeholder: currencySign(), oninput: () => { priceTouched = true; paint(); } });
     const hint = h('p', { class: 'field__hint' });
+    // Денег в кассе меньше цены — заявку не отправить.
+    const cashNote = h('p', { class: 'field__hint offer__short', hidden: true, role: 'status' });
     const after = h('p', { class: 'offer__after' });
     const send = h('button', { class: 'btn btn--primary', type: 'button', onclick: (e) => submit(e.currentTarget) },
       t('exchange.send'));
@@ -170,7 +177,7 @@ export function exchangePart(run, { host = false } = {}) {
       field(t('exchange.company'), company),
       h('div', { class: 'field' }, h('div', { class: 'field__label' }, t('exchange.from')), sellers),
       field(t('exchange.pct'), pctIn), chips,
-      field(t('exchange.price') + ', ' + currencySign(), price), hint, after,
+      field(t('exchange.price') + ', ' + currencySign(), price), hint, cashNote, after,
       h('div', { class: 'btn-row' }, send));
 
     const companyOf = () => (state?.companies || []).find((c) => c.kind === company.value);
@@ -206,11 +213,18 @@ export function exchangePart(run, { host = false } = {}) {
     function paint() {
       const v = state?.exchange?.values?.[company.value] ?? 0;
       const p = readPct();
-      hint.textContent = v > 0 && p > 0
-        ? t('exchange.priceHint', { pct: pctRaw(p), value: usd((v * p) / 100) }) : t('exchange.priceHintNoValue');
+      // Оценка всей компании (100%) и выбранной доли.
+      hint.textContent = v > 0
+        ? t(p > 0 ? 'exchange.priceHintFull' : 'exchange.companyValue', { company: usd(v), pct: pctRaw(p), value: usd((v * p) / 100) })
+        : t('exchange.priceHintNoValue');
       const total = myPct() + (p > 0 ? p : 0);
       after.textContent = p > 0 ? t('exchange.after', { pct: pctRaw(total), role: t('exchange.roles.' + roleOf(total)) }) : '';
-      send.disabled = !owners().length || !(p > 0) || p > sellerPct() + EPS || !(parseMoney(price.value) > 0);
+      const money = state?.player ? (state.lifecycle === 'active' ? state.player.cash : state.player.savings) : 0;
+      const sum = parseMoney(price.value);
+      const short = sum > money + 0.005;
+      cashNote.hidden = !short;
+      cashNote.textContent = short ? t('exchange.noMoney', { available: usd(Math.max(0, money)) }) : '';
+      send.disabled = !owners().length || !(p > 0) || p > sellerPct() + EPS || !(sum > 0) || short;
     }
     async function submit(btn) {
       const res = await run(btn, 'requestStake', { kind: company.value, seller, pct: readPct(), price: parseMoney(price.value) },
