@@ -16,7 +16,7 @@ import {
   t, errorText, setLanguage, pickLanguage, preferredLanguage, setPreferredLanguage, LANGUAGES,
   language, languageName, isLanguage
 } from './i18n.js';
-import { h, $, replace, toast } from './dom.js';
+import { h, $, replace, toast, watchButtonFit } from './dom.js';
 import { usd, clock, setCurrency, currentCurrency } from './fmt.js';
 import { read, poll, markFresh, setAuthLostHandler, pollShouldWait } from './api.js';
 import { signOut, signedInEmail, getJoin, setJoin } from './auth.js';
@@ -53,6 +53,8 @@ setAuthLostHandler(() => {
 });
 
 window.addEventListener('hashchange', route);
+// Длинные надписи на кнопках — меньше шрифт или перенос, но не за край.
+watchButtonFit();
 boot();
 
 async function boot() {

@@ -395,28 +395,29 @@ export function createConsole(root, ctx) {
             h('span', { class: 'team-cell__name' }, p.restaurant || t('host.profilePending')),
             starsBadge(p.stars), locationBadge(p.location), statusBadge(p.status)),
           p.displayName ? h('div', { class: 'team-cell__who' }, p.displayName) : null,
-          h('div', { class: 'team-cell__who' }, p.email)),
+          h('div', { class: 'team-cell__who' }, p.email),
+          // Кнопки — под именем, а не отдельным столбцом справа: иначе на
+          // ноутбуке они уезжают за край карточки и видны только при прокрутке.
+          p.status !== 'left'
+            ? h('div', { class: 'team-cell__actions' },
+                h('a', { class: 'btn btn--small', href: '#/g/' + ctx.gameId + '/as/' + p.id }, t('host.viewAs')),
+                s.game.status !== 'finished' ? h('button', { class: 'btn btn--ghost btn--small', type: 'button',
+                  onclick: (e) => showLink(e.currentTarget, p) }, t('host.linkButton')) : null)
+            : null),
         h('td', { class: 'r' }, usd(p.money), p.offBusiness ? h('div', { class: 'muted small' }, t('header.savings')) : null),
         h('td', { class: 'r' }, p.brand === null ? '—' : dec2(p.brand)),
         h('td', { class: 'r' }, p.capacity === null ? '—' : int(p.capacity)),
         h('td', { class: 'r' }, p.loanBalance > 0 ? usd(p.loanBalance) : '—'),
-        h('td', { class: 'r' }, open && p.submitted !== null ? (p.submitted ? '✓' : '…') : '—'),
-        h('td', {}, p.status !== 'left'
-          ? h('div', { class: 'btn-row btn-row--tight' },
-              h('a', { class: 'btn btn--small', href: '#/g/' + ctx.gameId + '/as/' + p.id }, t('host.viewAs')),
-              s.game.status !== 'finished' ? h('button', { class: 'btn btn--ghost btn--small', type: 'button',
-                onclick: (e) => showLink(e.currentTarget, p) }, t('host.linkButton')) : null)
-          : null)));
+        h('td', { class: 'r' }, open && p.submitted !== null ? (p.submitted ? '✓' : '…') : '—')));
       replace(tableBox, card(t('host.teamsTitle', { n: s.players.length }),
-        s.players.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'table' },
+        s.players.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'table table--compact' },
           h('thead', {}, h('tr', {},
             h('th', { scope: 'col' }, t('host.columns.team')),
             h('th', { class: 'r', scope: 'col' }, t('host.columns.money')),
             h('th', { class: 'r', scope: 'col' }, t('host.columns.brand')),
             h('th', { class: 'r', scope: 'col' }, t('host.columns.capacity')),
             h('th', { class: 'r', scope: 'col' }, t('host.columns.loan')),
-            h('th', { class: 'r', scope: 'col' }, t('host.columns.sent')),
-            h('th', { scope: 'col' }, h('span', { class: 'sr' }, t('host.viewAs'))))),
+            h('th', { class: 'r', scope: 'col' }, t('host.columns.sent')))),
           h('tbody', {}, rows)))
           : h('p', { class: 'muted' }, t('host.noTeams')),
         h('p', { class: 'muted small' }, t('host.viewAsLead'))));

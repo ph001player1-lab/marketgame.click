@@ -57,6 +57,21 @@ async function page(browser, kind, email) {
   return p;
 }
 
+/** Ни одна кнопка не обрезает надпись и не вылезает за свою карточку. */
+async function noButtonOverflow(p, where) {
+  await p.waitForTimeout(250);
+  const bad = await p.evaluate(() => [...document.querySelectorAll('.btn')].filter((b) => {
+    if (!b.clientWidth) return false;
+    if (b.scrollWidth > b.clientWidth + 1) return true;
+    const box = b.closest('.card, .offer, .company, .banner, .dialog');
+    if (!box) return false;
+    const r = b.getBoundingClientRect();
+    const c = box.getBoundingClientRect();
+    return r.right > c.right + 1 || r.left < c.left - 1;
+  }).map((b) => b.textContent.trim()));
+  assert.deepEqual(bad, [], where + ': buttons overflow');
+}
+
 const shot = (p, name, full = false) => p.screenshot({ path: `${OUT}/${name}.png`, fullPage: full });
 
 /**
@@ -890,8 +905,27 @@ try {
     for (const x of [buyer, host, rival, proj]) await x.close();
   });
 
+  await step('host console in Russian: every button fits its card on every tab', async () => {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, locale: 'ru-RU' });
+    await ctx.addInitScript((e) => { localStorage.setItem('mg-test-email', e); localStorage.setItem('mg-lang', 'ru'); }, ADMIN);
+    const p = await ctx.newPage();
+    p.on('pageerror', (e) => errors.push('host ru: ' + e.message));
+    await p.goto(base + '#/g/' + live.gameId);
+    for (const sub of ['run', 'teams', 'city', 'settings']) {
+      await p.locator(`.seg--tabs button[data-sub="${sub}"]`).click();
+      await noButtonOverflow(p, 'host ru ' + sub);
+    }
+    await p.locator('.seg--tabs button[data-sub="city"]').click();
+    await p.getByRole('button', { name: 'Городской сбор со всех работающих ресторанов' }).scrollIntoViewIfNeeded();
+    await shot(p, 'host-ru-city-buttons');
+    await ctx.close();
+  });
+
   await step('phone 360 px: five tabs fit in every language, no sideways scroll', async () => {
     const g = await seedGame(server.sql, { months: 1, title: 'Narrow phones', sponsor: false });
+    // Голосование идёт: «За / Против / Воздержаться» в одну строку.
+    const v = await g.call(ADMIN, 'startVote', { gameId: g.gameId, template: 'profit_tax', value: 20, seconds: 300 });
+    assert.equal(v.ok, true, JSON.stringify(v));
     for (const lang of ['en', 'ru', 'es', 'pt']) {
       const ctx = await browser.newContext({ viewport: { width: 360, height: 740 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true });
       await ctx.addInitScript(([e, l]) => { localStorage.setItem('mg-test-email', e); localStorage.setItem('mg-lang', l); }, [TEAMS[1].email, lang]);
@@ -904,11 +938,18 @@ try {
         await p.waitForTimeout(150);
         const wide = await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
         assert.ok(wide <= 0, lang + ' ' + id + ': page scrolls sideways by ' + wide + 'px');
+        await noButtonOverflow(p, lang + ' ' + id);
       }
       const cut = await p.evaluate(() => [...document.querySelectorAll('.tab__label')]
         .filter((el) => el.scrollWidth > el.clientWidth + 1).map((el) => el.textContent));
       assert.deepEqual(cut, [], lang + ': tab labels cut');
-      if (lang === 'ru') await p.screenshot({ path: `${OUT}/phone-360-ru-tabs.png` });
+      if (lang === 'ru') {
+        await p.locator('.tab--city').click();
+        await p.locator('.vote').getByRole('button', { name: 'Воздержаться' }).waitFor();
+        await p.screenshot({ path: `${OUT}/phone-360-ru-vote.png` });
+        await p.locator('.tab--board').click();
+        await p.screenshot({ path: `${OUT}/phone-360-ru-tabs.png` });
+      }
       await ctx.close();
     }
   });

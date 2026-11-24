@@ -1,7 +1,7 @@
 // Рейтинг лиг: marketgame.click/rating/. Открыт без входа.
 
 import { t, setLanguage, pickLanguage } from '../i18n.js';
-import { h, replace } from '../dom.js';
+import { h, replace, watchButtonFit } from '../dom.js';
 import { renderRatingPage } from '../views/rating.js';
 
 const root = document.getElementById('app');
@@ -15,3 +15,6 @@ setLanguage(pickLanguage(null)).then(() => {
     page);
   renderRatingPage(page);
 });
+
+// Длинные надписи на кнопках — меньше шрифт или перенос, но не за край.
+watchButtonFit();

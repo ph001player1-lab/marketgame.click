@@ -107,3 +107,46 @@ export function moneyInput(attrs = {}) {
 export function card(title, ...body) {
   return h('section', { class: 'card' }, title ? h('h3', { class: 'card__title' }, title) : null, ...body);
 }
+
+// ----------------------------------------------------------------- длинные надписи
+
+const FIT_MIN_PX = 12;
+
+/**
+ * Надпись не помещается в кнопку (длинное слово по-русски, узкий экран):
+ * сначала уменьшаем шрифт, но не меньше 12 px, а если и так не влезает —
+ * переносим её на вторую строку внутри кнопки. Кнопка не вылезает за
+ * карточку и не обрезает текст.
+ */
+export function fitButtons(root = document) {
+  for (const el of root.querySelectorAll('.btn')) {
+    const w = el.clientWidth;
+    if (!w) continue;                                   // скрыта — проверим, когда покажут
+    const key = w + '|' + el.textContent;
+    if (el.dataset.fit === key) continue;
+    el.style.fontSize = '';
+    el.classList.remove('is-wrapped');
+    if (el.scrollWidth > el.clientWidth + 1) {
+      let size = parseFloat(getComputedStyle(el).fontSize) || 16;
+      while (el.scrollWidth > el.clientWidth + 1 && size > FIT_MIN_PX) {
+        size -= 1;
+        el.style.fontSize = size + 'px';
+      }
+      if (el.scrollWidth > el.clientWidth + 1) el.classList.add('is-wrapped');
+    }
+    el.dataset.fit = el.clientWidth + '|' + el.textContent;
+  }
+}
+
+/** Следить за страницей: новые кнопки, смена вкладки, поворот экрана. */
+export function watchButtonFit() {
+  let queued = false;
+  const run = () => { queued = false; fitButtons(); };
+  const later = () => { if (!queued) { queued = true; requestAnimationFrame(run); } };
+  new MutationObserver(later).observe(document.body, {
+    childList: true, subtree: true, characterData: true,
+    attributes: true, attributeFilter: ['hidden', 'data-tab', 'data-main', 'data-side', 'open', 'aria-pressed']
+  });
+  window.addEventListener('resize', later);
+  later();
+}

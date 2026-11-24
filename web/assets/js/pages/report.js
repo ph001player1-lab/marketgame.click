@@ -2,7 +2,7 @@
 // без входа и только для чтения.
 
 import { t, errorText, setLanguage, pickLanguage } from '../i18n.js';
-import { h, replace } from '../dom.js';
+import { h, replace, watchButtonFit } from '../dom.js';
 import { read } from '../api.js';
 import { setCurrency } from '../fmt.js';
 import { renderReport } from '../views/history.js';
@@ -35,3 +35,6 @@ function topbar() {
     h('div', { class: 'topbar__title' }, h('a', { class: 'topbar__name topbar__home', href: '../' }, t('brand'))),
     h('a', { class: 'btn btn--small topbar__btn', href: '../' }, t('login.title')));
 }
+
+// Длинные надписи на кнопках — меньше шрифт или перенос, но не за край.
+watchButtonFit();

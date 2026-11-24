@@ -49,7 +49,10 @@ p{margin:0 0 .8em}
 /* ------------------------------------------------------------ кнопки, поля */
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:10px 18px;
   border:2px solid var(--ink);border-radius:var(--r);background:var(--surface);color:var(--ink);
-  font:inherit;font-weight:800;cursor:pointer;text-decoration:none;white-space:nowrap}
+  font:inherit;font-weight:800;cursor:pointer;text-decoration:none;white-space:nowrap;max-width:100%;min-width:0}
+/* Надпись не влезла — fitButtons в dom.js уменьшил шрифт, а если и так не
+   влезает — переносит её внутри кнопки. */
+.btn.is-wrapped{white-space:normal;line-height:1.15;text-align:center;overflow-wrap:anywhere}
 .btn:hover{background:var(--paper-2)}
 .btn--primary{background:var(--btn);border-color:var(--btn);color:#fff}
 .btn--primary:hover{background:var(--btn-dk);border-color:var(--btn-dk)}
@@ -60,7 +63,6 @@ p{margin:0 0 .8em}
 .btn:disabled{opacity:.55;cursor:not-allowed}
 .btn.is-busy{cursor:progress}
 .btn-row{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px}
-.btn-row--tight{gap:6px;margin-top:0;flex-direction:column;align-items:stretch}
 
 .input,select.input,textarea.input{width:100%;min-height:44px;padding:9px 12px;border:2px solid var(--line);
   border-radius:var(--r);background:#fff;color:var(--ink);font:inherit;font-variant-numeric:tabular-nums}
@@ -111,6 +113,11 @@ table.table{width:100%;border-collapse:collapse;font-size:15px}
 .table th,.table td{padding:7px 8px;border-bottom:1px solid var(--line-2);text-align:left;vertical-align:top}
 .table th{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--mute);font-weight:800}
 .table td.r,.table th.r{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+/* Заголовок узкого столбца переносится, а не раздвигает таблицу за край. */
+.table th.r{white-space:normal}
+/* Плотная таблица (команды на пульте): шесть столбцов в половине ноутбука. */
+.table--compact th,.table--compact td{padding:7px 6px}
+.table--compact th{font-size:11px;letter-spacing:.02em}
 .table tr.sub td{font-weight:800;border-top:2px solid var(--line)}
 .table tr.total td{font-weight:800;border-top:2px solid var(--ink)}
 .table tr.me td{background:#FFF4EC}
@@ -376,6 +383,7 @@ select.input.input--inline,.input.input--inline{width:auto;max-width:100%;min-he
 .team-cell{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .team-cell__name{font-weight:800}
 .team-cell__who{font-size:13px;color:var(--mute)}
+.team-cell__actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
 .table--sticky th:first-child,.table--sticky td:first-child{position:sticky;left:0;background:var(--surface);z-index:1;white-space:nowrap}
 .table--sticky tr.me th:first-child{background:#FFF4EC}
 .table th[scope="row"]{font-size:15px;text-transform:none;letter-spacing:0;color:var(--ink);font-weight:700}
@@ -616,7 +624,9 @@ select.input.input--inline,.input.input--inline{width:auto;max-width:100%;min-he
 .vote__clock{font-variant-numeric:tabular-nums;font-weight:800}
 .vote__clock.is-urgent{color:var(--red-ink)}
 .vote__q{font-size:18px;font-weight:700;margin:8px 0 4px}
-.vote__choices .btn{flex:1 1 0;min-width:96px}
+/* Ширина по надписи плюс поровну свободного места: «Воздержаться» остаётся
+   обычным шрифтом, пока строка не кончится; дальше шрифт уменьшает fitButtons. */
+.vote__choices .btn{flex:1 1 auto;min-width:0;padding-left:8px;padding-right:8px}
 .vote__choice--yes[aria-pressed="true"]{background:var(--green);border-color:var(--green);color:#fff}
 .vote__choice--no[aria-pressed="true"]{background:var(--red-ink);border-color:var(--red-ink);color:#fff}
 .vote__choice--abstain[aria-pressed="true"]{background:var(--mute);border-color:var(--mute);color:#fff}

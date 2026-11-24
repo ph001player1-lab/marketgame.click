@@ -12,7 +12,7 @@
 
 import { CONFIG } from '../config.js';
 import { t, errorText, setLanguage, pickLanguage } from '../i18n.js';
-import { h, replace } from '../dom.js';
+import { h, replace, watchButtonFit } from '../dom.js';
 import { clock, setCurrency } from '../fmt.js';
 import { read } from '../api.js';
 import { currentEmail, signOut } from '../auth.js';
@@ -236,3 +236,6 @@ function toggleFull() {
   if (document.fullscreenElement) document.exitFullscreen?.();
   else document.documentElement.requestFullscreen?.();
 }
+
+// Длинные надписи на кнопках — меньше шрифт или перенос, но не за край.
+watchButtonFit();
