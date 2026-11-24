@@ -69,5 +69,19 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
         with:
           path: web
+      # Архив загружен, но в списке артефактов он появляется не сразу: без
+      # этой паузы deploy-pages иногда не находит его («No artifacts named
+      # github-pages») и сайт не выходит.
+      - name: Wait until the site archive is listed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for i in $(seq 1 30); do
+            n=$(gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts" \
+                --jq '[.artifacts[] | select(.name == "github-pages")] | length')
+            if [ "${n:-0}" -ge 1 ]; then echo "Site archive is listed"; exit 0; fi
+            sleep 3
+          done
+          echo "::warning::The site archive is still not listed; deploying anyway"
       - id: deployment
         uses: actions/deploy-pages@v4
